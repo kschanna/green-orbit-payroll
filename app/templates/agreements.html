@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2>Employment Agreements</h2>
+        <p class="text-muted">
+            Employee remuneration and employment conditions
+        </p>
+    </div>
+
+    <span class="badge bg-success fs-6">
+        {{ agreements | length }} Agreements
+    </span>
+</div>
+
+<div class="card p-4">
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+
+            <thead>
+                <tr>
+                    <th>Employee</th>
+                    <th>Employment Type</th>
+                    <th>Pay Basis</th>
+                    <th>Hourly Rate</th>
+                    <th>Weekly Hours</th>
+                    <th>Pay Frequency</th>
+                    <th>Start Date</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+
+            <tbody>
+
+                {% for agreement in agreements %}
+
+                <tr>
+                    <td>
+                        <a href="/ui/employees/{{ agreement.employee_id }}">
+                            {{ agreement.employee_name }}
+                        </a>
+                    </td>
+
+                    <td>
+                        {{ agreement.employment_type | replace("_", " ") | title }}
+                    </td>
+
+                    <td>{{ agreement.pay_basis | title }}</td>
+
+                    <td>
+                        <strong>
+                            ${{ "%.2f" | format(agreement.hourly_rate) }}
+                        </strong>
+                    </td>
+
+                    <td>{{ agreement.ordinary_hours_per_week }}</td>
+
+                    <td>{{ agreement.pay_frequency | title }}</td>
+
+                    <td>{{ agreement.start_date }}</td>
+
+                    <td>
+                        {% if agreement.is_active %}
+                            <span class="badge bg-success">Active</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Inactive</span>
+                        {% endif %}
+                    </td>
+                </tr>
+
+                {% else %}
+
+                <tr>
+                    <td colspan="8" class="text-center text-muted">
+                        No employment agreements found.
+                    </td>
+                </tr>
+
+                {% endfor %}
+
+            </tbody>
+        </table>
+    </div>
+
+</div>
+
+{% endblock %}

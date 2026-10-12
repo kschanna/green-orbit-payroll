@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2>Employees</h2>
+        <p class="text-muted">Manage your workforce</p>
+    </div>
+
+    <span class="badge bg-success fs-6">
+        {{ employees | length }} Employees
+    </span>
+</div>
+
+<div class="card p-4">
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Employee ID</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Organisation</th>
+                <th></th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for employee in employees %}
+            <tr>
+                <td>{{ employee.id }}</td>
+                <td>
+                    <strong>
+                        {{ employee.first_name }}
+                        {{ employee.last_name }}
+                    </strong>
+                </td>
+                <td>{{ employee.email }}</td>
+                <td>{{ employee.organisation.name }}</td>
+                <td>
+                    <a href="/ui/employees/{{ employee.id }}"
+                       class="btn btn-sm btn-outline-success">
+                        View Details
+                    </a>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" class="text-muted text-center">
+                    No employees found.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}

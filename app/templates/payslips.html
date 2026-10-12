@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2>Payslips</h2>
+        <p class="text-muted">
+            View and download employee payslips
+        </p>
+    </div>
+
+    <span class="badge bg-success fs-6">
+        {{ payslips | length }} Payslips
+    </span>
+</div>
+
+<div class="card p-4">
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+
+            <thead>
+                <tr>
+                    <th>Employee</th>
+                    <th>Pay Run</th>
+                    <th>Pay Period</th>
+                    <th>Payment Date</th>
+                    <th>Gross Pay</th>
+                    <th>PAYG</th>
+                    <th>Net Pay</th>
+                    <th>Super</th>
+                    <th>Payslip</th>
+                </tr>
+            </thead>
+
+            <tbody>
+
+                {% for payslip in payslips %}
+
+                <tr>
+                    <td>
+                        <a href="/ui/employees/{{ payslip.employee_id }}">
+                            {{ payslip.employee_name }}
+                        </a>
+                    </td>
+
+                    <td>
+                        <a href="/ui/pay-runs/{{ payslip.pay_run_id }}">
+                            #{{ payslip.pay_run_id }}
+                        </a>
+                    </td>
+
+                    <td>
+                        {{ payslip.period_start }}
+                        to
+                        {{ payslip.period_end }}
+                    </td>
+
+                    <td>{{ payslip.payment_date }}</td>
+
+                    <td>${{ "%.2f" | format(payslip.gross_pay) }}</td>
+
+                    <td>${{ "%.2f" | format(payslip.payg_withholding) }}</td>
+
+                    <td>
+                        <strong>
+                            ${{ "%.2f" | format(payslip.net_pay) }}
+                        </strong>
+                    </td>
+
+                    <td>${{ "%.2f" | format(payslip.superannuation) }}</td>
+
+                    <td>
+                        <a href="/payslips/{{ payslip.id }}/pdf"
+                           class="btn btn-sm btn-outline-success">
+                            Download PDF
+                        </a>
+                    </td>
+                </tr>
+
+                {% else %}
+
+                <tr>
+                    <td colspan="9" class="text-center text-muted">
+                        No payslips have been generated yet.
+                    </td>
+                </tr>
+
+                {% endfor %}
+
+            </tbody>
+        </table>
+    </div>
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h2>Organisations</h2>
+<p class="text-muted">Organisations registered with Green Orbit Payroll</p>
+
+<div class="card p-4 mt-4">
+
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Organisation</th>
+                <th>ABN</th>
+                <th>Country</th>
+                <th>Employees</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for org in organisations %}
+            <tr>
+                <td>{{ org.id }}</td>
+                <td><strong>{{ org.name }}</strong></td>
+                <td>{{ org.abn }}</td>
+                <td>{{ org.country }}</td>
+                <td>
+                    <span class="badge bg-success">
+                        {{ org.employee_count }}
+                    </span>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" class="text-center text-muted">
+                    No organisations found.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<a href="/ui/employees" class="btn btn-link mb-3">
+    ← Back to Employees
+</a>
+
+<h2>{{ employee.first_name }} {{ employee.last_name }}</h2>
+<p class="text-muted">Employee #{{ employee.id }}</p>
+
+<div class="card p-4 mb-4">
+    <h5>Personal Details</h5>
+    <hr>
+
+    <p><strong>Email:</strong> {{ employee.email }}</p>
+    <p><strong>Organisation:</strong> {{ employee.organisation_name }}</p>
+</div>
+
+<div class="card p-4">
+    <h5>Employment Agreements</h5>
+    <hr>
+
+    {% for agreement in agreements %}
+
+    <div class="mb-3">
+        <p><strong>Employment Type:</strong> {{ agreement.employment_type | title }}</p>
+        <p><strong>Pay Basis:</strong> {{ agreement.pay_basis | title }}</p>
+        <p><strong>Hourly Rate:</strong> ${{ "%.2f" | format(agreement.hourly_rate) }}</p>
+        <p><strong>Ordinary Hours:</strong> {{ agreement.ordinary_hours_per_week }} per week</p>
+        <p><strong>Pay Frequency:</strong> {{ agreement.pay_frequency | title }}</p>
+        <p><strong>Start Date:</strong> {{ agreement.start_date }}</p>
+        <p><strong>End Date:</strong> {{ agreement.end_date or "Current" }}</p>
+    </div>
+
+    {% else %}
+
+    <p class="text-muted">No employment agreements found.</p>
+
+    {% endfor %}
+</div>
+
+{% endblock %}

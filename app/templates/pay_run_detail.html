@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<a href="/ui/pay-runs" class="btn btn-link mb-3">
+    ← Back to Pay Runs
+</a>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2>Pay Run #{{ pay_run.id }}</h2>
+        <p class="text-muted">
+            {{ pay_run.period_start }} to {{ pay_run.period_end }}
+        </p>
+    </div>
+
+    <div>
+        {% if pay_run.status == "completed" %}
+            <span class="badge bg-success fs-6">Completed</span>
+        {% elif pay_run.status == "approved" %}
+            <span class="badge bg-primary fs-6">Approved</span>
+        {% else %}
+            <span class="badge bg-warning text-dark fs-6">Draft</span>
+        {% endif %}
+    </div>
+</div>
+
+<!-- PAYROLL ACTIONS -->
+
+<div class="card p-4 mb-4">
+    <h5>Payroll Actions</h5>
+    <p class="text-muted">
+        Manage the payroll processing and approval lifecycle.
+    </p>
+
+    <div class="d-flex gap-3">
+
+        {% if pay_run.status == "draft" %}
+
+            <button
+                class="btn btn-success"
+                onclick="runPayrollAction('process')">
+                Process Payroll
+            </button>
+
+            {% if totals.employees_paid > 0 %}
+                <button
+                    class="btn btn-primary"
+                    onclick="runPayrollAction('approve')">
+                    Approve Payroll
+                </button>
+            {% endif %}
+
+        {% elif pay_run.status == "approved" %}
+
+            <button
+                class="btn btn-success"
+                onclick="runPayrollAction('complete')">
+                Complete Payroll
+            </button>
+
+        {% elif pay_run.status == "completed" %}
+
+            <span class="badge bg-success fs-6">
+                ✓ Payroll Completed
+            </span>
+
+        {% endif %}
+
+    </div>
+</div>
+<!-- PAY RUN INFORMATION -->
+
+<div class="card p-4 mb-4">
+    <h5>Pay Run Information</h5>
+    <hr>
+
+    <div class="row">
+        <div class="col-md-4">
+            <strong>Organisation</strong>
+            <p>{{ pay_run.organisation_name }}</p>
+        </div>
+
+        <div class="col-md-4">
+            <strong>Payment Date</strong>
+            <p>{{ pay_run.payment_date }}</p>
+        </div>
+
+        <div class="col-md-4">
+            <strong>Employees Paid</strong>
+            <p>{{ totals.employees_paid }}</p>
+        </div>
+    </div>
+</div>
+
+<!-- PAYROLL TOTALS -->
+
+<h5 class="mb-3">Payroll Summary</h5>
+
+<div class="row g-3 mb-4">
+
+    <div class="col-md-3">
+        <div class="card p-4">
+            <small class="text-muted">Gross Pay</small>
+            <h4>${{ "%.2f" | format(totals.gross_pay) }}</h4>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card p-4">
+            <small class="text-muted">PAYG Withholding</small>
+            <h4>${{ "%.2f" | format(totals.payg_withholding) }}</h4>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card p-4">
+            <small class="text-muted">Net Pay</small>
+            <h4>${{ "%.2f" | format(totals.net_pay) }}</h4>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card p-4">
+            <small class="text-muted">Superannuation</small>
+            <h4>${{ "%.2f" | format(totals.superannuation) }}</h4>
+        </div>
+    </div>
+
+</div>
+
+<!-- EMPLOYEE PAYSLIPS -->
+
+<div class="card p-4">
+
+    <h5>Employee Payslips</h5>
+    <hr>
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+
+            <thead>
+                <tr>
+                    <th>Employee</th>
+                    <th>Gross Pay</th>
+                    <th>PAYG</th>
+                    <th>Net Pay</th>
+                    <th>Super</th>
+                    <th>Payslip</th>
+                </tr>
+            </thead>
+
+            <tbody>
+
+                {% for payslip in payslips %}
+
+                <tr>
+                    <td>
+                        <a href="/ui/employees/{{ payslip.employee_id }}">
+                            {{ payslip.employee_name }}
+                        </a>
+                    </td>
+
+                    <td>${{ "%.2f" | format(payslip.gross_pay) }}</td>
+
+                    <td>${{ "%.2f" | format(payslip.payg_withholding) }}</td>
+
+                    <td>
+                        <strong>
+                            ${{ "%.2f" | format(payslip.net_pay) }}
+                        </strong>
+                    </td>
+
+                    <td>${{ "%.2f" | format(payslip.superannuation) }}</td>
+
+                    <td>
+                        <a href="/payslips/{{ payslip.id }}/pdf"
+                           class="btn btn-sm btn-outline-success">
+                            Download PDF
+                        </a>
+                    </td>
+                </tr>
+
+                {% else %}
+
+                <tr>
+                    <td colspan="6" class="text-center text-muted">
+                        No payslips generated yet.
+                    </td>
+                </tr>
+
+                {% endfor %}
+
+            </tbody>
+        </table>
+    </div>
+
+</div>
+<script>
+async function runPayrollAction(action) {
+
+    const payRunId = {{ pay_run.id }};
+
+    const confirmed = confirm(
+        `Are you sure you want to ${action} this pay run?`
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        const response = await fetch(
+            `/pay-runs/${payRunId}/${action}`,
+            {
+                method: "POST"
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            alert(result.detail || "Payroll action failed.");
+            return;
+        }
+
+        window.location.reload();
+
+    } catch (error) {
+        alert("Unable to connect to the payroll server.");
+        console.error(error);
+    }
+}
+</script>
+{% endblock %}
+

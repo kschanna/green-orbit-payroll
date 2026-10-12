@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2>Pay Runs</h2>
+        <p class="text-muted">Manage and process employee payroll</p>
+    </div>
+
+    <a href="/ui/pay-runs/new" class="btn btn-success">
+        + Create Pay Run
+    </a>
+</div>
+
+<div class="card p-4">
+
+    <table class="table table-hover align-middle">
+
+        <thead>
+            <tr>
+                <th>Pay Run</th>
+                <th>Pay Period</th>
+                <th>Payment Date</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+
+        <tbody>
+
+            {% for run in pay_runs %}
+
+            <tr>
+                <td><strong>#{{ run.id }}</strong></td>
+
+                <td>
+                    {{ run.period_start }}
+                    to
+                    {{ run.period_end }}
+                </td>
+
+                <td>{{ run.payment_date }}</td>
+
+                <td>
+                    {% if run.status == "completed" %}
+                        <span class="badge bg-success">Completed</span>
+                    {% elif run.status == "approved" %}
+                        <span class="badge bg-primary">Approved</span>
+                    {% else %}
+                        <span class="badge bg-warning text-dark">Draft</span>
+                    {% endif %}
+                </td>
+
+                <td>
+                    <a href="/ui/pay-runs/{{ run.id }}"
+                       class="btn btn-sm btn-outline-success">
+                        View Details
+                    </a>
+                </td>
+            </tr>
+
+            {% else %}
+
+            <tr>
+                <td colspan="5" class="text-center text-muted">
+                    No pay runs found.
+                </td>
+            </tr>
+
+            {% endfor %}
+
+        </tbody>
+    </table>
+
+</div>
+
+{% endblock %}

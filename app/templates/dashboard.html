@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h2>Payroll Dashboard</h2>
+<p class="text-muted">Welcome to Green Orbit Payroll</p>
+
+<div class="row mt-4">
+
+    <div class="col-md-4">
+        <div class="card p-4">
+            <h6>Total Employees</h6>
+            <h2>{{ employee_count }}</h2>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card p-4">
+            <h6>Pay Runs</h6>
+            <h2>{{ pay_run_count }}</h2>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card p-4">
+            <h6>Completed Runs</h6>
+            <h2>{{ completed_count }}</h2>
+        </div>
+    </div>
+
+</div>
+
+<h4 class="mt-5">Recent Pay Runs</h4>
+
+<table class="table mt-3">
+    <thead>
+        <tr>
+            <th>Run ID</th>
+            <th>Payment Date</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        {% for run in pay_runs %}
+        <tr>
+            <td>{{ run.id }}</td>
+            <td>{{ run.payment_date }}</td>
+            <td>{{ run.status | title }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% endblock %}
