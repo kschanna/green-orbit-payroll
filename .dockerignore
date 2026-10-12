@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Git
+.git/
+.gitignore
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Local files
+.DS_Store
+.vscode/
+*.sqlite
+*.db
+
+# Development files
+tests/
+migrations/
+data/
