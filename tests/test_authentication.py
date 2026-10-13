@@ -1,7 +1,11 @@
 import os
 
 # Configure the test database before importing the application.
-os.environ["DATABASE_URL"] = "postgresql+psycopg:///green_orbit_payroll_test"
+# os.environ["DATABASE_URL"] = "postgresql+psycopg:///green_orbit_payroll_test"
+os.environ.setdefault(
+    "DATABASE_URL",
+    "postgresql+psycopg:///green_orbit_payroll_test"
+)
 os.environ.setdefault("SESSION_SECRET", "test-secret-not-for-production")
 os.environ["SESSION_COOKIE_SECURE"] = "false"
 
