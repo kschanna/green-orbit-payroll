@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Timesheets</h2>
+
+    <a href="/ui/timesheets/new" class="btn btn-primary mb-3">
+        + New Timesheet
+    </a>
+    <div class="table-responsive">
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Employee</th>
+                <th>Work Date</th>
+                <th>Hours</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for timesheet in timesheets %}
+            <tr>
+                <td>{{ timesheet.id }}</td>
+                <td>
+                    {{ timesheet.employee.first_name }}
+                    {{ timesheet.employee.last_name }}
+                </td>
+                <td>{{ timesheet.work_date }}</td>
+                <td>{{ timesheet.hours_worked }}</td>
+                <td>{{ timesheet.status }}</td>
+                <td>
+                    {% if timesheet.status == "draft" %}
+                    <a href="/ui/timesheets/{{ timesheet.id }}/edit"
+                    class="btn btn-sm btn-outline-primary me-2">
+                        Edit
+                    </a>
+                    <button
+                        type="button"
+                        class="btn btn-sm btn-success"
+                        onclick="approveTimesheet({{ timesheet.id }})">
+                        Approve
+                    </button>
+                    {% else %}
+                    <span class="badge bg-success">Approved</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6">No timesheets found.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+<script>
+async function approveTimesheet(id) {
+    if (!confirm("Approve this timesheet?")) return;
+
+    const response = await fetch(`/api/timesheets/${id}/approve`, {
+        method: "POST",
+        headers: {
+            "X-CSRF-Token": "{{ csrf_token(request) }}"
+        }
+    });
+
+    if (response.ok) {
+        window.location.reload();
+    } else {
+        const error = await response.json();
+        alert(error.detail || "Approval failed");
+    }
+}
+</script>
+{% endblock %}

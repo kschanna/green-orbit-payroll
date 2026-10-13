@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from app.database import SessionLocal
 from app.models.organisation import Organisation
@@ -26,8 +26,8 @@ from app.security import verify_password
 from fastapi.responses import JSONResponse
 import secrets
 from fastapi.responses import PlainTextResponse
-import secrets
-from fastapi.responses import PlainTextResponse
+from app.models.timesheet import Timesheet
+
 
 # ============================================================
 # SESSION AND ENVIRONMENT
@@ -383,6 +383,159 @@ def get_pay_run_summary(pay_run_id: int):
 # ============================================================
 # CREATE PAY RUN
 # ============================================================
+
+class TimesheetCreate(BaseModel):
+    employee_id: int
+    work_date: date
+    hours_worked: Decimal = Field(ge=0, le=24, max_digits=6, decimal_places=2)
+
+@app.get("/ui/timesheets", response_class=HTMLResponse)
+def list_timesheets(request: Request):
+    with SessionLocal() as db:
+        timesheets = db.scalars(
+            select(Timesheet).order_by(Timesheet.work_date.desc())
+        ).all()
+
+        return templates.TemplateResponse(
+            request=request,
+            name="timesheet_list.html",
+            context={"timesheets": timesheets}
+        )
+
+@app.get("/ui/timesheets/{timesheet_id}/edit", response_class=HTMLResponse)
+def edit_timesheet_page(request: Request, timesheet_id: int):
+    with SessionLocal() as db:
+        timesheet = db.get(Timesheet, timesheet_id)
+
+        if timesheet is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Timesheet not found"
+            )
+
+        if timesheet.status != "draft":
+            raise HTTPException(
+                status_code=409,
+                detail="Approved timesheets cannot be edited"
+            )
+
+        employees = db.scalars(
+            select(Employee).order_by(Employee.first_name)
+        ).all()
+
+        return templates.TemplateResponse(
+            request=request,
+            name="timesheet_create.html",
+            context={
+                "employees": employees,
+                "timesheet": timesheet
+            }
+        )
+
+@app.get("/ui/timesheets/new", response_class=HTMLResponse)
+def new_timesheet_page(request: Request):
+    with SessionLocal() as db:
+        employees = db.scalars(
+            select(Employee).order_by(Employee.first_name)
+        ).all()
+
+        return templates.TemplateResponse(
+            request=request,
+            name="timesheet_create.html",
+            #context={"employees": employees}
+            context={"employees": employees, "timesheet": None}
+        )
+
+@app.post("/api/timesheets", status_code=201)
+def create_timesheet(data: TimesheetCreate):
+
+    with SessionLocal() as db:
+
+        # Verify the employee exists
+        employee = db.get(Employee, data.employee_id)
+
+        if employee is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Employee not found"
+            )
+
+        # Create the timesheet
+        timesheet = Timesheet(
+            employee_id=data.employee_id,
+            work_date=data.work_date,
+            hours_worked=data.hours_worked,
+            status="draft"
+        )
+
+        db.add(timesheet)
+        db.commit()
+        db.refresh(timesheet)
+
+        return {
+            "id": timesheet.id,
+            "employee_id": timesheet.employee_id,
+            "work_date": timesheet.work_date,
+            "hours_worked": timesheet.hours_worked,
+            "status": timesheet.status
+        }
+
+@app.post("/api/timesheets/{timesheet_id}/approve")
+def approve_timesheet(timesheet_id: int):
+    with SessionLocal() as db:
+        timesheet = db.get(Timesheet, timesheet_id)
+
+        if timesheet is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Timesheet not found"
+            )
+
+        if timesheet.status != "draft":
+            raise HTTPException(
+                status_code=409,
+                detail="Only draft timesheets can be approved"
+            )
+
+        timesheet.status = "approved"
+        db.commit()
+
+        return {
+            "id": timesheet.id,
+            "status": timesheet.status
+        }
+
+@app.patch("/api/timesheets/{timesheet_id}")
+def update_timesheet(timesheet_id: int, data: TimesheetCreate):
+    with SessionLocal() as db:
+        timesheet = db.get(Timesheet, timesheet_id)
+
+        if timesheet is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Timesheet not found"
+            )
+
+        if timesheet.status != "draft":
+            raise HTTPException(
+                status_code=409,
+                detail="Approved timesheets cannot be edited"
+            )
+
+        employee = db.get(Employee, data.employee_id)
+        if employee is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Employee not found"
+            )
+
+        timesheet.employee_id = data.employee_id
+        timesheet.work_date = data.work_date
+        timesheet.hours_worked = data.hours_worked
+
+        db.commit()
+
+        return {"id": timesheet.id, "status": timesheet.status}
 
 @app.post("/pay-runs", status_code=201)
 def create_pay_run(data: PayRunCreate):
