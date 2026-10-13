@@ -30,3 +30,49 @@ jobs:
 
       - name: Run automated tests
         run: python -m pytest -v
+
+
+
+  deploy:
+    name: Deploy to Google Cloud Run
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: 'projects/466984655179/locations/global/workloadIdentityPools/github-actions/providers/github'
+          service_account: 'green-orbit-deployer@green-orbit-payroll-demo.iam.gserviceaccount.com'
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker authentication
+        run: gcloud auth configure-docker australia-southeast2-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t australia-southeast2-docker.pkg.dev/green-orbit-payroll-demo/green-orbit-payroll/app:${{ github.sha }} \
+            .
+
+      - name: Push Docker image
+        run: |
+          docker push australia-southeast2-docker.pkg.dev/green-orbit-payroll-demo/green-orbit-payroll/app:${{ github.sha }}
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy green-orbit-payroll \
+            --project=green-orbit-payroll-demo \
+            --region=australia-southeast2 \
+            --image=australia-southeast2-docker.pkg.dev/green-orbit-payroll-demo/green-orbit-payroll/app:${{ github.sha }} \
+            --quiet
