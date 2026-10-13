@@ -98,7 +98,7 @@ async def require_login(request: Request, call_next):
             authenticated = user is not None and user.is_active
 
     if not authenticated:
-        request.session.clear()
+        request.session.pop("user_id", None)
 
         if request.url.path.startswith("/api/") or request.url.path in {
             "/docs", "/redoc", "/openapi.json"
