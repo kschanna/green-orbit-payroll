@@ -1,29 +1,39 @@
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+from starlette.middleware.sessions import SessionMiddleware
 from datetime import date
 from decimal import Decimal
-
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-
 from pydantic import BaseModel
 from sqlalchemy import func, select
-
 from app.database import SessionLocal
-
 from app.models.organisation import Organisation
 from app.models.employee import Employee
 from app.models.pay_run import PayRun
 from app.models.payslip import Payslip
-
 from app.payroll.pay_run_processor import PayRunProcessor
 from app.payroll.pay_run_lifecycle import PayRunLifecycle
-
 from app.reports.payslip_pdf import PayslipPDFGenerator
-
 from app.models.employment_agreement import EmploymentAgreement
+from fastapi import Form
+from fastapi.responses import RedirectResponse
+from app.models.user import User
+from app.security import verify_password
+from fastapi.responses import JSONResponse
+import secrets
+from fastapi.responses import PlainTextResponse
+import secrets
+from fastapi.responses import PlainTextResponse
 
+# ============================================================
+# SESSION AND ENVIRONMENT
+# ============================================================
 
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 # ============================================================
 # APPLICATION CONFIGURATION
@@ -35,6 +45,84 @@ app = FastAPI(
     version="0.1.0"
 )
 
+session_secret = os.environ.get("SESSION_SECRET")
+
+if not session_secret:
+    raise RuntimeError("SESSION_SECRET environment variable is required")
+
+# ============================================================
+# SECURITY
+# ============================================================
+
+@app.middleware("http")
+async def csrf_protection(request: Request, call_next):
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        expected_token = request.session.get("csrf_token")
+        supplied_token = request.headers.get("X-CSRF-Token")
+
+        if not supplied_token:
+            content_type = request.headers.get("content-type", "")
+
+            if content_type.startswith("application/x-www-form-urlencoded"):
+                from urllib.parse import parse_qs
+
+                body = await request.body()
+                fields = parse_qs(body.decode("utf-8"))
+                supplied_token = fields.get("csrf_token", [None])[0]
+
+        if (
+            not expected_token
+            or not isinstance(supplied_token, str)
+            or not secrets.compare_digest(expected_token, supplied_token)
+        ):
+            return PlainTextResponse(
+                "Invalid or missing CSRF token",
+                status_code=403
+            )
+
+    return await call_next(request)
+
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    public_paths = {"/login", "/health"}
+
+    if request.url.path in public_paths or request.url.path.startswith("/static/"):
+        return await call_next(request)
+
+    user_id = request.session.get("user_id")
+    authenticated = False
+
+    if user_id is not None:
+        with SessionLocal() as db:
+            user = db.get(User, user_id)
+            authenticated = user is not None and user.is_active
+
+    if not authenticated:
+        request.session.clear()
+
+        if request.url.path.startswith("/api/") or request.url.path in {
+            "/docs", "/redoc", "/openapi.json"
+        }:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Authentication required"},
+            )
+
+        return RedirectResponse("/login", status_code=303)
+
+    return await call_next(request)
+
+# SessionMiddleware must be registered AFTER require_login.
+# FastAPI executes the last registered middleware first.
+
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=session_secret,
+    session_cookie="green_orbit_session",
+    same_site="lax",
+    https_only=os.getenv("SESSION_COOKIE_SECURE", "true").lower() == "true",
+    max_age=3600,
+)
 
 # ============================================================
 # WEB UI CONFIGURATION
@@ -48,6 +136,10 @@ app.mount(
 
 templates = Jinja2Templates(
     directory="app/templates"
+)
+
+templates.env.globals["csrf_token"] = lambda request: request.session.get(
+    "csrf_token", ""
 )
 
 
@@ -868,3 +960,50 @@ def payslips_page(request: Request):
             "payslips": payslip_data
         }
     )
+
+# ============================================================
+# AUTHENTICATION
+# ============================================================
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    if request.session.get("user_id"):
+        return RedirectResponse("/dashboard", status_code=303)
+
+    if not request.session.get("csrf_token"):
+        request.session["csrf_token"] = secrets.token_urlsafe(32)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="login.html",
+        context={"error": None}
+    )
+
+
+@app.post("/login")
+def login(request: Request, email: str = Form(...), password: str = Form(...)):
+    with SessionLocal() as db:
+        user = db.query(User).filter(
+            User.email == email.strip().lower(),
+            User.is_active == True
+        ).first()
+
+        if not user or not verify_password(password, user.password_hash):
+            return templates.TemplateResponse(
+                request=request,
+                name="login.html",
+                context={"error": "Invalid email or password"},
+                status_code=401
+            )
+
+        request.session.clear()
+        request.session["user_id"] = user.id
+        request.session["csrf_token"] = secrets.token_urlsafe(32)
+
+    return RedirectResponse("/dashboard", status_code=303)
+
+
+@app.post("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/login", status_code=303)

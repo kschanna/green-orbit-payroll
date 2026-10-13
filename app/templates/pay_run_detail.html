@@ -319,7 +319,10 @@ async function runPayrollAction(action) {
         const response = await fetch(
             `/pay-runs/${payRunId}/${action}`,
             {
-                method: "POST"
+                method: "POST",
+                headers: {
+                    "X-CSRF-Token": "{{ csrf_token(request) }}"
+                }
             }
         );
 

@@ -12,6 +12,7 @@ from app.models.employment_agreement import EmploymentAgreement
 from app.models.payg_tax_table import PAYGTaxTable
 from app.models.pay_run import PayRun
 from app.models.payslip import Payslip
+from app.models.user import User
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
