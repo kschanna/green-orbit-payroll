@@ -1,31 +1,131 @@
+/* General */
+
 body {
     background: #f5f7f8;
     font-family: Arial, sans-serif;
 }
 
+/* Application layout */
+
+.app-layout {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* Desktop sidebar */
+
 .sidebar {
     width: 250px;
+    flex-shrink: 0;
     min-height: 100vh;
     background: #123c32;
     color: white;
 }
 
-.sidebar a {
+.sidebar a,
+.mobile-menu a {
     color: #d8e8df;
     text-decoration: none;
+    padding: 6px 0;
 }
 
-.sidebar a:hover {
+.sidebar a:hover,
+.mobile-menu a:hover {
     color: white;
 }
+
+/* Main content */
 
 .main-content {
     flex: 1;
     min-width: 0;
+    padding: 48px;
 }
+
+/* Cards */
 
 .card {
     border: none;
     border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* Mobile header */
+
+.mobile-header {
+    background: #123c32;
+    color: white;
+    padding: 14px 20px;
+
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.mobile-brand {
+    color: white;
+    text-decoration: none;
+    font-size: 20px;
+    font-weight: bold;
+}
+
+/* Mobile navigation */
+
+.mobile-menu {
+    background: #123c32;
+    color: white;
+    width: 280px;
+}
+
+/* Tables */
+
+.table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Tablets */
+
+@media (max-width: 991px) {
+
+    .app-layout {
+        display: block;
+    }
+
+    .main-content {
+        padding: 28px;
+    }
+
+}
+
+/* Mobile phones */
+
+@media (max-width: 576px) {
+
+    .main-content {
+        padding: 16px;
+    }
+
+    h1 {
+        font-size: 1.6rem;
+    }
+
+    h2 {
+        font-size: 1.4rem;
+    }
+
+    .card {
+        margin-bottom: 16px;
+    }
+
+    .btn {
+        max-width: 100%;
+    }
+
+    input,
+    select,
+    textarea {
+        max-width: 100%;
+    }
+
 }

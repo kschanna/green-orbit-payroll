@@ -2,10 +2,13 @@
 
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-4">
+<!-- Page heading -->
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
     <div>
         <h2>Pay Runs</h2>
-        <p class="text-muted">Manage and process employee payroll</p>
+        <p class="text-muted mb-0">
+            Manage and process employee payroll
+        </p>
     </div>
 
     <a href="/ui/pay-runs/new" class="btn btn-success">
@@ -13,65 +16,119 @@
     </a>
 </div>
 
-<div class="card p-4">
+<!-- Desktop table -->
+<div class="card p-4 d-none d-md-block">
 
-    <table class="table table-hover align-middle">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
 
-        <thead>
-            <tr>
-                <th>Pay Run</th>
-                <th>Pay Period</th>
-                <th>Payment Date</th>
-                <th>Status</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
+            <thead>
+                <tr>
+                    <th>Pay Run</th>
+                    <th>Pay Period</th>
+                    <th>Payment Date</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
 
-        <tbody>
+            <tbody>
+                {% for run in pay_runs %}
 
-            {% for run in pay_runs %}
+                <tr>
+                    <td><strong>#{{ run.id }}</strong></td>
 
-            <tr>
-                <td><strong>#{{ run.id }}</strong></td>
+                    <td>
+                        {{ run.period_start }}
+                        to
+                        {{ run.period_end }}
+                    </td>
 
-                <td>
-                    {{ run.period_start }}
-                    to
-                    {{ run.period_end }}
-                </td>
+                    <td>{{ run.payment_date }}</td>
 
-                <td>{{ run.payment_date }}</td>
+                    <td>
+                        {% if run.status == "completed" %}
+                            <span class="badge bg-success">Completed</span>
+                        {% elif run.status == "approved" %}
+                            <span class="badge bg-primary">Approved</span>
+                        {% else %}
+                            <span class="badge bg-warning text-dark">Draft</span>
+                        {% endif %}
+                    </td>
 
-                <td>
-                    {% if run.status == "completed" %}
-                        <span class="badge bg-success">Completed</span>
-                    {% elif run.status == "approved" %}
-                        <span class="badge bg-primary">Approved</span>
-                    {% else %}
-                        <span class="badge bg-warning text-dark">Draft</span>
-                    {% endif %}
-                </td>
+                    <td>
+                        <a href="/ui/pay-runs/{{ run.id }}"
+                           class="btn btn-sm btn-outline-success">
+                            View Details
+                        </a>
+                    </td>
+                </tr>
 
-                <td>
-                    <a href="/ui/pay-runs/{{ run.id }}"
-                       class="btn btn-sm btn-outline-success">
-                        View Details
-                    </a>
-                </td>
-            </tr>
+                {% else %}
 
+                <tr>
+                    <td colspan="5" class="text-center text-muted">
+                        No pay runs found.
+                    </td>
+                </tr>
+
+                {% endfor %}
+            </tbody>
+
+        </table>
+    </div>
+
+</div>
+
+<!-- Mobile pay run cards -->
+<div class="d-md-none">
+
+    {% for run in pay_runs %}
+
+    <div class="card p-3 mb-3">
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+
+            <h5 class="mb-0">Pay Run #{{ run.id }}</h5>
+
+            {% if run.status == "completed" %}
+                <span class="badge bg-success">Completed</span>
+            {% elif run.status == "approved" %}
+                <span class="badge bg-primary">Approved</span>
             {% else %}
+                <span class="badge bg-warning text-dark">Draft</span>
+            {% endif %}
 
-            <tr>
-                <td colspan="5" class="text-center text-muted">
-                    No pay runs found.
-                </td>
-            </tr>
+        </div>
 
-            {% endfor %}
+        <div class="mb-3">
+            <small class="text-muted">Pay Period</small>
+            <div>
+                {{ run.period_start }}
+                to
+                {{ run.period_end }}
+            </div>
+        </div>
 
-        </tbody>
-    </table>
+        <div class="mb-3">
+            <small class="text-muted">Payment Date</small>
+            <div>{{ run.payment_date }}</div>
+        </div>
+
+        <a href="/ui/pay-runs/{{ run.id }}"
+           class="btn btn-outline-success w-100">
+            View Details
+        </a>
+
+    </div>
+
+    {% else %}
+
+    <div class="card p-3 text-center text-muted">
+        No pay runs found.
+    </div>
+
+    {% endfor %}
 
 </div>
 

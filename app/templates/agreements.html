@@ -2,10 +2,13 @@
 
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-4">
+<!-- PAGE HEADER -->
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+
     <div>
         <h2>Employment Agreements</h2>
-        <p class="text-muted">
+        <p class="text-muted mb-0">
             Employee remuneration and employment conditions
         </p>
     </div>
@@ -13,11 +16,16 @@
     <span class="badge bg-success fs-6">
         {{ agreements | length }} Agreements
     </span>
+
 </div>
 
-<div class="card p-4">
+
+<!-- DESKTOP TABLE -->
+
+<div class="card p-4 d-none d-md-block">
 
     <div class="table-responsive">
+
         <table class="table table-hover align-middle">
 
             <thead>
@@ -38,6 +46,7 @@
                 {% for agreement in agreements %}
 
                 <tr>
+
                     <td>
                         <a href="/ui/employees/{{ agreement.employee_id }}">
                             {{ agreement.employee_name }}
@@ -69,6 +78,7 @@
                             <span class="badge bg-secondary">Inactive</span>
                         {% endif %}
                     </td>
+
                 </tr>
 
                 {% else %}
@@ -82,8 +92,113 @@
                 {% endfor %}
 
             </tbody>
+
         </table>
+
     </div>
+
+</div>
+
+
+<!-- MOBILE AGREEMENT CARDS -->
+
+<div class="d-md-none">
+
+    {% for agreement in agreements %}
+
+    <div class="card p-3 mb-3">
+
+        <!-- Employee and status -->
+
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+
+            <h5 class="mb-0">
+                <a href="/ui/employees/{{ agreement.employee_id }}"
+                   class="text-success text-decoration-none">
+                    {{ agreement.employee_name }}
+                </a>
+            </h5>
+
+            {% if agreement.is_active %}
+                <span class="badge bg-success">Active</span>
+            {% else %}
+                <span class="badge bg-secondary">Inactive</span>
+            {% endif %}
+
+        </div>
+
+
+        <!-- Compensation -->
+
+        <div class="mb-3">
+
+            <small class="text-muted">Hourly Rate</small>
+
+            <h4 class="text-success mb-0">
+                ${{ "%.2f" | format(agreement.hourly_rate) }}
+            </h4>
+
+        </div>
+
+
+        <!-- Agreement details -->
+
+        <div class="row g-3">
+
+            <div class="col-6">
+                <small class="text-muted">Employment Type</small>
+                <div class="fw-semibold">
+                    {{ agreement.employment_type | replace("_", " ") | title }}
+                </div>
+            </div>
+
+            <div class="col-6">
+                <small class="text-muted">Pay Basis</small>
+                <div class="fw-semibold">
+                    {{ agreement.pay_basis | title }}
+                </div>
+            </div>
+
+            <div class="col-6">
+                <small class="text-muted">Weekly Hours</small>
+                <div class="fw-semibold">
+                    {{ agreement.ordinary_hours_per_week }}
+                </div>
+            </div>
+
+            <div class="col-6">
+                <small class="text-muted">Pay Frequency</small>
+                <div class="fw-semibold">
+                    {{ agreement.pay_frequency | title }}
+                </div>
+            </div>
+
+            <div class="col-12">
+                <small class="text-muted">Start Date</small>
+                <div class="fw-semibold">
+                    {{ agreement.start_date }}
+                </div>
+            </div>
+
+        </div>
+
+
+        <!-- Employee details link -->
+
+        <a href="/ui/employees/{{ agreement.employee_id }}"
+           class="btn btn-outline-success w-100 mt-3">
+            View Employee
+        </a>
+
+    </div>
+
+    {% else %}
+
+    <div class="card p-3 text-center text-muted">
+        No employment agreements found.
+    </div>
+
+    {% endfor %}
 
 </div>
 

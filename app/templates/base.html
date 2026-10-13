@@ -12,8 +12,53 @@
 </head>
 
 <body>
-    <div class="d-flex">
-        <aside class="sidebar p-4">
+
+    <!-- Mobile navigation -->
+    <header class="mobile-header d-lg-none">
+        <a href="/dashboard" class="mobile-brand">🌿 Green Orbit</a>
+
+        <button class="btn btn-outline-light"
+                type="button"
+                data-bs-toggle="offcanvas"
+                data-bs-target="#mobileMenu"
+                aria-controls="mobileMenu"
+                aria-label="Open navigation">
+            ☰
+        </button>
+    </header>
+
+    <!-- Mobile menu -->
+    <div class="offcanvas offcanvas-start mobile-menu"
+         tabindex="-1"
+         id="mobileMenu"
+         aria-labelledby="mobileMenuLabel">
+
+        <div class="offcanvas-header">
+            <h5 id="mobileMenuLabel">🌿 Green Orbit</h5>
+
+            <button type="button"
+                    class="btn-close btn-close-white"
+                    data-bs-dismiss="offcanvas"
+                    aria-label="Close">
+            </button>
+        </div>
+
+        <div class="offcanvas-body">
+            <nav class="nav flex-column gap-3">
+                <a href="/dashboard">Dashboard</a>
+                <a href="/ui/organisations">Organisations</a>
+                <a href="/ui/employees">Employees</a>
+                <a href="/ui/agreements">Agreements</a>
+                <a href="/ui/pay-runs">Pay Runs</a>
+                <a href="/ui/payslips">Payslips</a>
+            </nav>
+        </div>
+    </div>
+
+    <!-- Desktop layout -->
+    <div class="app-layout">
+
+        <aside class="sidebar p-4 d-none d-lg-block">
             <h4 class="mb-5">🌿 Green Orbit</h4>
 
             <nav class="nav flex-column gap-3">
@@ -26,9 +71,14 @@
             </nav>
         </aside>
 
-        <main class="main-content p-5">
+        <main class="main-content">
             {% block content %}{% endblock %}
         </main>
+
     </div>
+
+    <!-- Bootstrap JavaScript for mobile menu -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
 </body>
 </html>

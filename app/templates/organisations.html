@@ -2,44 +2,134 @@
 
 {% block content %}
 
-<h2>Organisations</h2>
-<p class="text-muted">Organisations registered with Green Orbit Payroll</p>
+<!-- PAGE HEADER -->
 
-<div class="card p-4 mt-4">
+<div class="mb-4">
+    <h2>Organisations</h2>
+    <p class="text-muted">
+        Organisations registered with Green Orbit Payroll
+    </p>
+</div>
 
-    <table class="table table-hover align-middle">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Organisation</th>
-                <th>ABN</th>
-                <th>Country</th>
-                <th>Employees</th>
-            </tr>
-        </thead>
 
-        <tbody>
-            {% for org in organisations %}
-            <tr>
-                <td>{{ org.id }}</td>
-                <td><strong>{{ org.name }}</strong></td>
-                <td>{{ org.abn }}</td>
-                <td>{{ org.country }}</td>
-                <td>
-                    <span class="badge bg-success">
-                        {{ org.employee_count }}
-                    </span>
-                </td>
-            </tr>
-            {% else %}
-            <tr>
-                <td colspan="5" class="text-center text-muted">
-                    No organisations found.
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+<!-- DESKTOP TABLE -->
+
+<div class="card p-4 d-none d-md-block">
+
+    <div class="table-responsive">
+
+        <table class="table table-hover align-middle mb-0">
+
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Organisation</th>
+                    <th>ABN</th>
+                    <th>Country</th>
+                    <th>Employees</th>
+                </tr>
+            </thead>
+
+            <tbody>
+
+                {% for org in organisations %}
+
+                <tr>
+                    <td>{{ org.id }}</td>
+
+                    <td>
+                        <strong>{{ org.name }}</strong>
+                    </td>
+
+                    <td>{{ org.abn }}</td>
+
+                    <td>{{ org.country }}</td>
+
+                    <td>
+                        <span class="badge bg-success">
+                            {{ org.employee_count }}
+                        </span>
+                    </td>
+                </tr>
+
+                {% else %}
+
+                <tr>
+                    <td colspan="5" class="text-center text-muted">
+                        No organisations found.
+                    </td>
+                </tr>
+
+                {% endfor %}
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+</div>
+
+
+<!-- MOBILE ORGANISATION CARDS -->
+
+<div class="d-md-none">
+
+    {% for org in organisations %}
+
+    <div class="card p-3 mb-3">
+
+        <!-- Organisation name -->
+
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+
+            <h5 class="mb-0">
+                {{ org.name }}
+            </h5>
+
+            <span class="badge bg-success">
+                {{ org.employee_count }} Employees
+            </span>
+
+        </div>
+
+
+        <!-- Organisation details -->
+
+        <div class="row g-3">
+
+            <div class="col-6">
+                <small class="text-muted">Organisation ID</small>
+                <div class="fw-semibold">
+                    #{{ org.id }}
+                </div>
+            </div>
+
+            <div class="col-6">
+                <small class="text-muted">Country</small>
+                <div class="fw-semibold">
+                    {{ org.country }}
+                </div>
+            </div>
+
+            <div class="col-12">
+                <small class="text-muted">ABN</small>
+                <div class="fw-semibold">
+                    {{ org.abn }}
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    {% else %}
+
+    <div class="card p-3 text-center text-muted">
+        No organisations found.
+    </div>
+
+    {% endfor %}
 
 </div>
 
