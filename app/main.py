@@ -1176,6 +1176,48 @@ def payslips_page(request: Request):
 # INVOICING
 # ============================================================
 
+@app.post("/ui/engagements/create")
+def create_worker_engagement(
+    employee_id: int = Form(...),
+    customer_id: int = Form(...),
+    billing_rate: Decimal = Form(...)
+):
+    if billing_rate <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Billing rate must be greater than zero"
+        )
+
+    with SessionLocal() as session:
+        employee = session.get(Employee, employee_id)
+        customer = session.get(Organisation, customer_id)
+
+        if employee is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Employee not found"
+            )
+
+        if customer is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Customer organisation not found"
+            )
+
+        engagement = WorkerEngagement(
+            employee_id=employee_id,
+            customer_id=customer_id,
+            billing_rate=billing_rate
+        )
+
+        session.add(engagement)
+        session.commit()
+
+    return RedirectResponse(
+        url="/ui/invoices",
+        status_code=303
+    )
+
 @app.post("/ui/invoices/generate")
 def generate_invoice_from_ui(
     request: Request,
@@ -1239,6 +1281,29 @@ def update_invoice_status(
 def invoices_page(request: Request):
 
     with SessionLocal() as session:
+        employees = session.scalars(
+            select(Employee).order_by(Employee.last_name, Employee.first_name)
+        ).all()
+
+        organisations = session.scalars(
+            select(Organisation).order_by(Organisation.name)
+        ).all()
+
+        employee_options = [
+            {
+                "id": employee.id,
+                "name": f"{employee.first_name} {employee.last_name}"
+            }
+            for employee in employees
+        ]
+
+        customer_options = [
+            {
+                "id": organisation.id,
+                "name": organisation.name
+            }
+            for organisation in organisations
+        ]
 
         engagements = session.execute(
             select(WorkerEngagement, Employee, Organisation)
@@ -1294,7 +1359,12 @@ def invoices_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="invoices.html",
-        context={"invoices": invoice_data,"engagements": engagement_data}
+        context={
+            "invoices": invoice_data,
+            "engagements": engagement_data,
+            "employees": employee_options,
+            "customers": customer_options
+        }
     )
 
 @app.get("/invoices/{invoice_id}/pdf")
