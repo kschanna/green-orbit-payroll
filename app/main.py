@@ -487,6 +487,96 @@ def list_timesheets(request: Request):
             }
         )
 
+@app.get(
+    "/ui/timesheets/weekly/{header_id}/preview",
+    response_class=HTMLResponse,
+)
+def preview_weekly_timesheet(request: Request, header_id: int):
+
+    with SessionLocal() as db:
+
+        header = db.get(TimesheetHeader, header_id)
+
+        if header is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Timesheet not found",
+            )
+
+        entries = db.scalars(
+            select(Timesheet)
+            .where(Timesheet.timesheet_header_id == header_id)
+            .order_by(Timesheet.work_date)
+        ).all()
+
+        total_hours = sum(
+            (entry.hours_worked for entry in entries),
+            Decimal("0.00"),
+        )
+
+        return templates.TemplateResponse(
+            request=request,
+            name="timesheet_preview.html",
+            context={
+                "timesheet_id": header.id,
+                "employee_name": (
+                    f"{header.employee.first_name} "
+                    f"{header.employee.last_name}"
+                ),
+                "period_type": header.period_type,
+                "period_start": header.period_start,
+                "period_end": header.period_end,
+                "status": header.status,
+                "entries": [
+                    {
+                        "work_date": entry.work_date,
+                        "hours_worked": entry.hours_worked,
+                    }
+                    for entry in entries
+                ],
+                "total_hours": total_hours,
+            },
+        )
+
+
+@app.get(
+    "/ui/timesheets/daily/{timesheet_id}/preview",
+    response_class=HTMLResponse,
+)
+def preview_daily_timesheet(request: Request, timesheet_id: int):
+
+    with SessionLocal() as db:
+
+        timesheet = db.get(Timesheet, timesheet_id)
+
+        if timesheet is None or timesheet.timesheet_header_id is not None:
+            raise HTTPException(
+                status_code=404,
+                detail="Daily timesheet not found",
+            )
+
+        return templates.TemplateResponse(
+            request=request,
+            name="timesheet_preview.html",
+            context={
+                "timesheet_id": timesheet.id,
+                "employee_name": (
+                    f"{timesheet.employee.first_name} "
+                    f"{timesheet.employee.last_name}"
+                ),
+                "period_type": "daily",
+                "period_start": timesheet.work_date,
+                "period_end": timesheet.work_date,
+                "status": timesheet.status,
+                "entries": [
+                    {
+                        "work_date": timesheet.work_date,
+                        "hours_worked": timesheet.hours_worked,
+                    }
+                ],
+                "total_hours": timesheet.hours_worked,
+            },
+        )
 
 @app.get("/ui/timesheets/{timesheet_id}/edit", response_class=HTMLResponse)
 def edit_timesheet_page(request: Request, timesheet_id: int):

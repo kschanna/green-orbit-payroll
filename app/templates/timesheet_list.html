@@ -18,11 +18,14 @@
         </a>
     </div>
 
-    <!-- WEEKLY TIMESHEETS -->
+    <!-- ================================================== -->
+    <!-- WEEKLY TIMESHEETS                                  -->
+    <!-- ================================================== -->
 
     <h4 class="mt-4">Weekly Timesheets</h4>
 
     <div class="table-responsive">
+
         <table class="table table-striped align-middle">
 
             <thead>
@@ -42,6 +45,7 @@
                 {% for timesheet in weekly_timesheets %}
 
                 <tr>
+
                     <td>{{ timesheet.id }}</td>
 
                     <td>{{ timesheet.employee_name }}</td>
@@ -50,17 +54,44 @@
 
                     <td>{{ timesheet.period_end }}</td>
 
-                    <td>{{ "%.2f"|format(timesheet.total_hours) }}</td>
+                    <td>
+                        {{ "%.2f"|format(timesheet.total_hours) }}
+                    </td>
 
                     <td>
                         {% if timesheet.status == "approved" %}
-                            <span class="badge bg-success">Approved</span>
+
+                            <span class="badge bg-success">
+                                Approved
+                            </span>
+
+                        {% elif timesheet.status == "draft" %}
+
+                            <span class="badge bg-warning text-dark">
+                                Draft
+                            </span>
+
                         {% else %}
-                            <span class="badge bg-warning text-dark">Draft</span>
+
+                            <span class="badge bg-secondary">
+                                {{ timesheet.status | title }}
+                            </span>
+
                         {% endif %}
                     </td>
 
                     <td>
+
+                        <!-- Preview is always available -->
+
+                        <a
+                            href="/ui/timesheets/weekly/{{ timesheet.id }}/preview"
+                            class="btn btn-sm btn-outline-secondary me-2">
+                            Preview
+                        </a>
+
+                        <!-- Edit and Approve only available for Draft -->
+
                         {% if timesheet.status == "draft" %}
 
                             <a
@@ -76,12 +107,10 @@
                                 Approve
                             </button>
 
-                        {% else %}
-
-                            <span class="text-muted">—</span>
-
                         {% endif %}
+
                     </td>
+
                 </tr>
 
                 {% else %}
@@ -97,14 +126,18 @@
             </tbody>
 
         </table>
+
     </div>
 
 
-    <!-- DAILY TIMESHEETS -->
+    <!-- ================================================== -->
+    <!-- DAILY TIMESHEETS                                   -->
+    <!-- ================================================== -->
 
     <h4 class="mt-5">Daily Timesheets</h4>
 
     <div class="table-responsive">
+
         <table class="table table-striped align-middle">
 
             <thead>
@@ -123,23 +156,51 @@
                 {% for timesheet in daily_timesheets %}
 
                 <tr>
+
                     <td>{{ timesheet.id }}</td>
 
                     <td>{{ timesheet.employee_name }}</td>
 
                     <td>{{ timesheet.work_date }}</td>
 
-                    <td>{{ "%.2f"|format(timesheet.hours) }}</td>
+                    <td>
+                        {{ "%.2f"|format(timesheet.hours) }}
+                    </td>
 
                     <td>
                         {% if timesheet.status == "approved" %}
-                            <span class="badge bg-success">Approved</span>
+
+                            <span class="badge bg-success">
+                                Approved
+                            </span>
+
+                        {% elif timesheet.status == "draft" %}
+
+                            <span class="badge bg-warning text-dark">
+                                Draft
+                            </span>
+
                         {% else %}
-                            <span class="badge bg-warning text-dark">Draft</span>
+
+                            <span class="badge bg-secondary">
+                                {{ timesheet.status | title }}
+                            </span>
+
                         {% endif %}
                     </td>
 
                     <td>
+
+                        <!-- Preview is always available -->
+
+                        <a
+                            href="/ui/timesheets/daily/{{ timesheet.id }}/preview"
+                            class="btn btn-sm btn-outline-secondary me-2">
+                            Preview
+                        </a>
+
+                        <!-- Edit and Approve only available for Draft -->
+
                         {% if timesheet.status == "draft" %}
 
                             <a
@@ -155,12 +216,10 @@
                                 Approve
                             </button>
 
-                        {% else %}
-
-                            <span class="text-muted">—</span>
-
                         {% endif %}
+
                     </td>
+
                 </tr>
 
                 {% else %}
@@ -176,17 +235,21 @@
             </tbody>
 
         </table>
+
     </div>
 
 </div>
 
 
+<!-- ====================================================== -->
+<!-- JAVASCRIPT                                             -->
+<!-- ====================================================== -->
+
 <script>
 
-// const csrfToken = "{{ csrf_token(request) }}";
-
-
-// Approve standalone daily timesheet
+// ==========================================================
+// APPROVE DAILY TIMESHEET
+// ==========================================================
 
 async function approveTimesheet(id) {
 
@@ -198,7 +261,9 @@ async function approveTimesheet(id) {
 }
 
 
-// Approve entire weekly timesheet
+// ==========================================================
+// APPROVE WEEKLY TIMESHEET
+// ==========================================================
 
 async function approveWeeklyTimesheet(id) {
 
@@ -210,18 +275,22 @@ async function approveWeeklyTimesheet(id) {
 }
 
 
-// Shared approval handler
+// ==========================================================
+// SHARED APPROVAL HANDLER
+// ==========================================================
 
 async function submitApproval(endpoint) {
 
     try {
 
         const response = await fetch(endpoint, {
+
             method: "POST",
+
             headers: {
-                //"X-CSRF-Token": csrfToken
                 "X-CSRF-Token": "{{ csrf_token(request) }}"
             }
+
         });
 
         if (response.ok) {
@@ -237,6 +306,7 @@ async function submitApproval(endpoint) {
                     ? error.detail
                     : "Approval failed"
             );
+
         }
 
     } catch (error) {

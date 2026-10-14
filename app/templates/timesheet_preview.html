@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="container mt-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Timesheet Preview</h2>
+
+        <a href="/ui/timesheets" class="btn btn-outline-secondary">
+            Back to Timesheets
+        </a>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+
+            <div class="row g-3">
+
+                <div class="col-md-4">
+                    <strong>Timesheet ID</strong>
+                    <div>{{ timesheet_id }}</div>
+                </div>
+
+                <div class="col-md-4">
+                    <strong>Employee</strong>
+                    <div>{{ employee_name }}</div>
+                </div>
+
+                <div class="col-md-4">
+                    <strong>Type</strong>
+                    <div>{{ period_type | title }}</div>
+                </div>
+
+                <div class="col-md-4">
+                    <strong>Period Start</strong>
+                    <div>{{ period_start }}</div>
+                </div>
+
+                <div class="col-md-4">
+                    <strong>Period End</strong>
+                    <div>{{ period_end }}</div>
+                </div>
+
+                <div class="col-md-4">
+                    <strong>Status</strong>
+
+                    {% if status == "approved" %}
+                        <span class="badge bg-success">Approved</span>
+                    {% elif status == "draft" %}
+                        <span class="badge bg-warning text-dark">Draft</span>
+                    {% else %}
+                        <span class="badge bg-secondary">
+                            {{ status | title }}
+                        </span>
+                    {% endif %}
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <div class="card">
+
+        <div class="card-header">
+            <strong>Timesheet Entries</strong>
+        </div>
+
+        <div class="card-body">
+
+            <div class="table-responsive">
+
+                <table class="table table-striped align-middle">
+
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Day</th>
+                            <th class="text-end">Hours Worked</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                        {% for entry in entries %}
+
+                        <tr>
+                            <td>{{ entry.work_date }}</td>
+
+                            <td>
+                                {{ entry.work_date.strftime("%A") }}
+                            </td>
+
+                            <td class="text-end">
+                                {{ "%.2f"|format(entry.hours_worked) }}
+                            </td>
+                        </tr>
+
+                        {% endfor %}
+
+                    </tbody>
+
+                    <tfoot>
+                        <tr class="table-light">
+                            <th colspan="2">Total Hours</th>
+
+                            <th class="text-end">
+                                {{ "%.2f"|format(total_hours) }}
+                            </th>
+                        </tr>
+                    </tfoot>
+
+                </table>
+
+            </div>
+
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}
