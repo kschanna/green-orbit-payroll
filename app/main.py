@@ -28,6 +28,12 @@ import secrets
 from fastapi.responses import PlainTextResponse
 from app.models.timesheet import Timesheet
 from app.models.payslip_timesheet import PayslipTimesheet
+from app.models.invoice import Invoice
+from app.models.worker_engagement import WorkerEngagement
+from app.models.invoice_timesheet import InvoiceTimesheet
+from app.models.timesheet import Timesheet
+from app.reports.invoice_pdf import InvoicePDFGenerator
+from app.invoicing.engine import generate_invoice
 
 
 
@@ -1166,7 +1172,174 @@ def payslips_page(request: Request):
             "payslips": payslip_data
         }
     )
+# ============================================================
+# INVOICING
+# ============================================================
 
+@app.post("/ui/invoices/generate")
+def generate_invoice_from_ui(
+    request: Request,
+    engagement_id: int = Form(...),
+    start_date: date = Form(...),
+    end_date: date = Form(...)
+):
+    try:
+        generate_invoice(
+            engagement_id=engagement_id,
+            start_date=start_date,
+            end_date=end_date
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error)
+        )
+
+    return RedirectResponse(
+        url="/ui/invoices",
+        status_code=303
+    )
+
+@app.post("/ui/invoices/{invoice_id}/status")
+def update_invoice_status(
+    invoice_id: int,
+    status: str = Form(...)
+):
+    allowed_transitions = {
+        "draft": "issued",
+        "issued": "paid",
+    }
+
+    with SessionLocal() as session:
+        invoice = session.get(Invoice, invoice_id)
+
+        if invoice is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Invoice not found"
+            )
+
+        expected_status = allowed_transitions.get(invoice.status)
+
+        if status != expected_status:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid invoice status transition"
+            )
+
+        invoice.status = status
+        session.commit()
+
+    return RedirectResponse(
+        url="/ui/invoices",
+        status_code=303
+    )
+
+@app.get("/ui/invoices", response_class=HTMLResponse)
+def invoices_page(request: Request):
+
+    with SessionLocal() as session:
+
+        engagements = session.execute(
+            select(WorkerEngagement, Employee, Organisation)
+            .join(Employee, WorkerEngagement.employee_id == Employee.id)
+            .join(Organisation, WorkerEngagement.customer_id == Organisation.id)
+            .order_by(Employee.last_name)
+        ).all()
+
+        engagement_data = [
+            {
+                "id": engagement.id,
+                "label": (
+                    f"{employee.first_name} {employee.last_name} "
+                    f"— {customer.name} "
+                    f"(${engagement.billing_rate:.2f}/hr)"
+                )
+            }
+            for engagement, employee, customer in engagements
+        ]
+
+        rows = session.execute(
+            select(Invoice, WorkerEngagement, Employee, Organisation)
+            .join(
+                WorkerEngagement,
+                Invoice.engagement_id == WorkerEngagement.id
+            )
+            .join(
+                Employee,
+                WorkerEngagement.employee_id == Employee.id
+            )
+            .join(
+                Organisation,
+                WorkerEngagement.customer_id == Organisation.id
+            )
+            .order_by(Invoice.issue_date.desc(), Invoice.id.desc())
+        ).all()
+
+        invoice_data = [
+            {
+                "id": invoice.id,
+                "invoice_number": invoice.invoice_number,
+                "issue_date": invoice.issue_date,
+                "customer": customer.name,
+                "worker": f"{employee.first_name} {employee.last_name}",
+                "subtotal": invoice.subtotal,
+                "gst": invoice.gst,
+                "total": invoice.total,
+                "status": invoice.status,
+            }
+            for invoice, engagement, employee, customer in rows
+        ]
+
+    return templates.TemplateResponse(
+        request=request,
+        name="invoices.html",
+        context={"invoices": invoice_data,"engagements": engagement_data}
+    )
+
+@app.get("/invoices/{invoice_id}/pdf")
+def download_invoice_pdf(invoice_id: int):
+
+    with SessionLocal() as session:
+
+        invoice = session.get(Invoice, invoice_id)
+
+        if invoice is None:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+
+        engagement = session.get(WorkerEngagement, invoice.engagement_id)
+        employee = session.get(Employee, engagement.employee_id)
+        supplier = session.get(Organisation, employee.organisation_id)
+        customer = session.get(Organisation, engagement.customer_id)
+
+        timesheets = session.scalars(
+            select(Timesheet)
+            .join(
+                InvoiceTimesheet,
+                InvoiceTimesheet.timesheet_id == Timesheet.id
+            )
+            .where(InvoiceTimesheet.invoice_id == invoice.id)
+        ).all()
+
+        hours = sum(t.hours_worked for t in timesheets)
+
+        pdf = InvoicePDFGenerator().generate(
+            invoice=invoice,
+            engagement=engagement,
+            employee=employee,
+            supplier=supplier,
+            customer=customer,
+            hours=hours,
+        )
+
+        return StreamingResponse(
+            pdf,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition":
+                    f'attachment; filename="{invoice.invoice_number}.pdf"'
+            }
+        )
 # ============================================================
 # AUTHENTICATION
 # ============================================================

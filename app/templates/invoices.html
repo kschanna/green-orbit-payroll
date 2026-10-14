@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<!-- GENERATE INVOICE -->
+
+<div class="card p-4 mb-4">
+
+    <h4 class="mb-3">Generate Invoice</h4>
+
+    <form action="/ui/invoices/generate" method="post">
+
+        <input type="hidden"
+               name="csrf_token"
+               value="{{ csrf_token(request) }}">
+
+        <div class="row g-3">
+
+            <div class="col-md-4">
+                <label class="form-label">Worker Engagement</label>
+
+                <select name="engagement_id"
+                        class="form-select"
+                        required>
+
+                    <option value="">Select engagement</option>
+
+                    {% for engagement in engagements %}
+                    <option value="{{ engagement.id }}">
+                        {{ engagement.label }}
+                    </option>
+                    {% endfor %}
+
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">Start Date</label>
+                <input type="date"
+                       name="start_date"
+                       class="form-control"
+                       required>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">End Date</label>
+                <input type="date"
+                       name="end_date"
+                       class="form-control"
+                       required>
+            </div>
+
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit"
+                        class="btn btn-success w-100">
+                    Generate
+                </button>
+            </div>
+
+        </div>
+
+    </form>
+
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2>Invoices</h2>
+        <p class="text-muted mb-0">Manage customer invoices</p>
+    </div>
+
+    <span class="badge bg-success fs-6">
+        {{ invoices | length }} Invoices
+    </span>
+</div>
+
+<div class="card p-4">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+
+            <thead>
+                <tr>
+                    <th>Invoice</th>
+                    <th>Date</th>
+                    <th>Customer</th>
+                    <th>Worker</th>
+                    <th>Subtotal</th>
+                    <th>GST</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                    <th>Invoice PDF</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for invoice in invoices %}
+                <tr>
+                    <td>{{ invoice.invoice_number }}</td>
+                    <td>{{ invoice.issue_date }}</td>
+                    <td>{{ invoice.customer }}</td>
+                    <td>{{ invoice.worker }}</td>
+                    <td>${{ "%.2f" | format(invoice.subtotal) }}</td>
+                    <td>${{ "%.2f" | format(invoice.gst) }}</td>
+                    <td>
+                        <strong>
+                            ${{ "%.2f" | format(invoice.total) }}
+                        </strong>
+                    </td>
+                    <td>
+                        <span class="badge bg-secondary">
+                            {{ invoice.status | capitalize }}
+                        </span>
+                    </td>
+                    <td>
+                        <a href="/invoices/{{ invoice.id }}/pdf"
+                        class="btn btn-sm btn-outline-success">
+                            Download PDF
+                        </a>
+                    </td>
+                    <td>
+                        {% if invoice.status == "draft" %}
+
+                        <form action="/ui/invoices/{{ invoice.id }}/status" method="post">
+                            <input type="hidden"
+                                name="csrf_token"
+                                value="{{ csrf_token(request) }}">
+
+                            <input type="hidden" name="status" value="issued">
+
+                            <button type="submit" class="btn btn-sm btn-primary">
+                                Issue Invoice
+                            </button>
+                        </form>
+
+                        {% elif invoice.status == "issued" %}
+
+                        <form action="/ui/invoices/{{ invoice.id }}/status" method="post">
+                            <input type="hidden"
+                                name="csrf_token"
+                                value="{{ csrf_token(request) }}">
+
+                            <input type="hidden" name="status" value="paid">
+
+                            <button type="submit" class="btn btn-sm btn-success">
+                                Mark Paid
+                            </button>
+                        </form>
+
+                        {% else %}
+
+                        <span class="badge bg-success">Completed</span>
+
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="10" class="text-center text-muted">
+                        No invoices have been generated yet.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+
+        </table>
+    </div>
+</div>
+
+{% endblock %}
