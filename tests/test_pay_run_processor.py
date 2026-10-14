@@ -5,6 +5,7 @@ import pytest
 
 from app.models.pay_run import PayRun
 from app.payroll.pay_run_processor import PayRunProcessor
+from app.models.timesheet import Timesheet
 
 
 def test_missing_pay_run():
@@ -67,17 +68,17 @@ def test_invalid_payment_date():
 
 
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
-
+from app.models.payslip_timesheet import PayslipTimesheet
 from app.models.organisation import Base, Organisation
 from app.models.employee import Employee
 from app.models.employment_agreement import EmploymentAgreement
 from app.models.payslip import Payslip
 
 
-def test_existing_payslip_is_skipped():
+def test_draft_payslip_is_recalculated():
 
     engine = create_engine(
         "sqlite://",
@@ -94,7 +95,6 @@ def test_existing_payslip_is_skipped():
             abn="12345678901",
             country="AU"
         )
-
         session.add(organisation)
         session.flush()
 
@@ -104,9 +104,31 @@ def test_existing_payslip_is_skipped():
             last_name="Khan",
             email="ahmed@test.com"
         )
-
         session.add(employee)
         session.flush()
+
+        agreement = EmploymentAgreement(
+            employee_id=employee.id,
+            employment_type="full_time",
+            pay_basis="hourly",
+            hourly_rate=Decimal("45.00"),
+            ordinary_hours_per_week=Decimal("38.00"),
+            pay_frequency="fortnightly",
+            start_date=date(2026, 10, 1),
+            end_date=None
+        )
+        session.add(agreement)
+
+        # Four approved timesheets totalling 30 hours
+        for day, hours in enumerate(["7.50"] * 4, start=1):
+            session.add(
+                Timesheet(
+                    employee_id=employee.id,
+                    work_date=date(2026, 10, day),
+                    hours_worked=Decimal(hours),
+                    status="approved"
+                )
+            )
 
         pay_run = PayRun(
             organisation_id=organisation.id,
@@ -115,29 +137,66 @@ def test_existing_payslip_is_skipped():
             payment_date=date(2026, 10, 15),
             status="draft"
         )
-
         session.add(pay_run)
-        session.flush()
-
-        payslip = Payslip(
-            pay_run_id=pay_run.id,
-            employee_id=employee.id,
-            gross_pay=3420,
-            payg_withholding=732,
-            net_pay=2688,
-            superannuation=410.40
-        )
-
-        session.add(payslip)
         session.commit()
 
-        result = PayRunProcessor().process(
-            session=session,
-            pay_run_id=pay_run.id
-        )
+        with patch(
+            "app.payroll.engine.PAYGWithholdingCalculator.calculate",
+            return_value=Decimal("200.00")
+        ):
 
-        assert result["processed"] == 0
-        assert result["skipped"] == 1
+            # First processing: 30 hours
+            first_result = PayRunProcessor().process(
+                session=session,
+                pay_run_id=pay_run.id
+            )
+
+            assert first_result["processed"] == 1
+
+            first_payslip = session.scalar(
+                select(Payslip).where(
+                    Payslip.pay_run_id == pay_run.id
+                )
+            )
+
+            assert first_payslip.gross_pay == Decimal("1350.00")
+
+            # Approve an additional 8 hours
+            additional_timesheet = Timesheet(
+                employee_id=employee.id,
+                work_date=date(2026, 10, 5),
+                hours_worked=Decimal("8.00"),
+                status="approved"
+            )
+            session.add(additional_timesheet)
+            session.commit()
+
+            # Reprocess the same draft pay run
+            second_result = PayRunProcessor().process(
+                session=session,
+                pay_run_id=pay_run.id
+            )
+
+        assert second_result["processed"] == 1
+
+        payslips = session.scalars(
+            select(Payslip).where(
+                Payslip.pay_run_id == pay_run.id
+            )
+        ).all()
+
+        # Still only one payslip, recalculated for 38 hours
+        assert len(payslips) == 1
+        assert payslips[0].gross_pay == Decimal("1710.00")
+
+        # Both approved timesheets are linked
+        links = session.scalars(
+            select(PayslipTimesheet).where(
+                PayslipTimesheet.payslip_id == payslips[0].id
+            )
+        ).all()
+
+        assert len(links) == 5
 
 
 from decimal import Decimal
@@ -193,6 +252,17 @@ def test_process_multiple_employees():
             )
 
             session.add(agreement)
+
+            # Create 10 approved timesheets for each employee
+            for day in range(1, 11):
+                timesheet = Timesheet(
+                    employee_id=employee.id,
+                    work_date=date(2026, 10, day),
+                    hours_worked=Decimal("7.60"),
+                    status="approved"
+                )
+
+                session.add(timesheet)
 
         pay_run = PayRun(
             organisation_id=organisation.id,

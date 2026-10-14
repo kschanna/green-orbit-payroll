@@ -1,12 +1,14 @@
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.orm import Session
 
 from app.models.employee import Employee
 from app.models.employment_agreement import EmploymentAgreement
 from app.models.pay_run import PayRun
 from app.models.payslip import Payslip
+from app.models.timesheet import Timesheet
+from app.models.payslip_timesheet import PayslipTimesheet
 
 from app.payroll.engine import PayrollEngine
 
@@ -49,10 +51,6 @@ class PayRunProcessor:
                 )
             )
 
-            if existing:
-                skipped += 1
-                continue
-
             # Find the employee's employment agreement
             agreement = session.scalar(
                 select(EmploymentAgreement).where(
@@ -71,11 +69,28 @@ class PayRunProcessor:
                 skipped += 1
                 continue
 
-            # Prototype assumption: full fortnight worked
-            hours_worked = (
-                agreement.ordinary_hours_per_week * Decimal("2")
+            # Retrieve approved timesheets within the pay period
+            timesheets = session.scalars(
+                select(Timesheet).where(
+                    Timesheet.employee_id == employee.id,
+                    Timesheet.work_date >= pay_run.period_start,
+                    Timesheet.work_date <= pay_run.period_end,
+                    Timesheet.status == "approved"
+                )
+            ).all()
+
+            # Skip employees without approved timesheets
+            if not timesheets:
+                skipped += 1
+                continue
+
+            # Calculate actual hours worked
+            hours_worked = sum(
+                (timesheet.hours_worked for timesheet in timesheets),
+                Decimal("0")
             )
 
+            # Calculate payroll using approved timesheet hours
             result = PayrollEngine().calculate(
                 session=session,
                 agreement=agreement,
@@ -84,6 +99,19 @@ class PayRunProcessor:
                 claims_tax_free_threshold=True
             )
 
+            # Remove the existing draft payslip and its links
+            # only after payroll calculation succeeds
+            if existing:
+                session.execute(
+                    delete(PayslipTimesheet).where(
+                        PayslipTimesheet.payslip_id == existing.id
+                    )
+                )
+
+                session.delete(existing)
+                session.flush()
+
+            # Create the employee's updated payslip
             payslip = Payslip(
                 pay_run_id=pay_run.id,
                 employee_id=employee.id,
@@ -94,9 +122,20 @@ class PayRunProcessor:
             )
 
             session.add(payslip)
+            session.flush()
+
+            # Link approved timesheets to the payslip
+            for timesheet in timesheets:
+                session.add(
+                    PayslipTimesheet(
+                        payslip_id=payslip.id,
+                        timesheet_id=timesheet.id
+                    )
+                )
+
             processed += 1
 
-        # Commit all new payslips together
+        # Commit all payslips and timesheet links together
         session.commit()
 
         return {

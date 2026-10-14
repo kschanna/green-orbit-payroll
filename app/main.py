@@ -27,6 +27,9 @@ from fastapi.responses import JSONResponse
 import secrets
 from fastapi.responses import PlainTextResponse
 from app.models.timesheet import Timesheet
+from app.models.payslip_timesheet import PayslipTimesheet
+
+
 
 
 # ============================================================
@@ -647,6 +650,12 @@ def approve_pay_run_api(pay_run_id: int):
             )
 
         try:
+            # Serialise pay run completion within this organisation
+            session.execute(
+                select(Organisation.id)
+                .where(Organisation.id == pay_run.organisation_id)
+                .with_for_update()
+            ).scalar_one()
             PayRunLifecycle().transition(
                 pay_run=pay_run,
                 new_status="approved"
@@ -688,6 +697,50 @@ def complete_pay_run_api(pay_run_id: int):
             )
 
         try:
+            # Lock the organisation row to prevent
+            # concurrent payroll completion
+            session.execute(
+                select(Organisation.id)
+                .where(Organisation.id == pay_run.organisation_id)
+                .with_for_update()
+            ).scalar_one()
+
+            # Find timesheets in this pay run that have
+            # already been included in a completed pay run
+            duplicate_timesheet_ids = session.scalars(
+                select(PayslipTimesheet.timesheet_id)
+                .join(
+                    Payslip,
+                    Payslip.id == PayslipTimesheet.payslip_id
+                )
+                .join(
+                    PayRun,
+                    PayRun.id == Payslip.pay_run_id
+                )
+                .where(
+                    PayRun.status == "completed",
+                    PayRun.id != pay_run.id,
+                    PayslipTimesheet.timesheet_id.in_(
+                        select(PayslipTimesheet.timesheet_id)
+                        .join(
+                            Payslip,
+                            Payslip.id == PayslipTimesheet.payslip_id
+                        )
+                        .where(
+                            Payslip.pay_run_id == pay_run.id
+                        )
+                    )
+                )
+            ).all()
+
+            # Block completion if timesheets were already paid
+            if duplicate_timesheet_ids:
+                raise ValueError(
+                    "Cannot complete pay run: timesheets already paid "
+                    f"{sorted(set(duplicate_timesheet_ids))}"
+                )
+
+            # Transition pay run from approved to completed
             PayRunLifecycle().transition(
                 pay_run=pay_run,
                 new_status="completed"

@@ -14,6 +14,7 @@ from app.models.pay_run import PayRun
 from app.models.payslip import Payslip
 from app.models.user import User
 from app.models.timesheet import Timesheet
+from app.models.payslip_timesheet import PayslipTimesheet
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
