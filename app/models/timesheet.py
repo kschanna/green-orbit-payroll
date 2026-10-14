@@ -1,12 +1,11 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Date, ForeignKey, Numeric, String
+from sqlalchemy import CheckConstraint, Date, ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.organisation import Base
-
-from sqlalchemy import CheckConstraint, Date, ForeignKey, Numeric, String
+from app.models.timesheet_header import TimesheetHeader
 
 
 class Timesheet(Base):
@@ -27,6 +26,13 @@ class Timesheet(Base):
         nullable=False
     )
 
+    # Links daily entries to a timesheet header.
+    # Nullable to preserve existing timesheets.
+    timesheet_header_id: Mapped[int | None] = mapped_column(
+        ForeignKey("timesheet_headers.id"),
+        nullable=True
+    )
+
     work_date: Mapped[date] = mapped_column(
         Date,
         nullable=False
@@ -44,3 +50,8 @@ class Timesheet(Base):
     )
 
     employee: Mapped["Employee"] = relationship()
+
+    header: Mapped["TimesheetHeader | None"] = relationship(
+        "TimesheetHeader",
+        back_populates="timesheets"
+    )

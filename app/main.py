@@ -31,11 +31,9 @@ from app.models.payslip_timesheet import PayslipTimesheet
 from app.models.invoice import Invoice
 from app.models.worker_engagement import WorkerEngagement
 from app.models.invoice_timesheet import InvoiceTimesheet
-from app.models.timesheet import Timesheet
 from app.reports.invoice_pdf import InvoicePDFGenerator
 from app.invoicing.engine import generate_invoice
-
-
+from app.models.timesheet_header import TimesheetHeader
 
 
 # ============================================================
@@ -91,6 +89,7 @@ async def csrf_protection(request: Request, call_next):
 
     return await call_next(request)
 
+
 @app.middleware("http")
 async def require_login(request: Request, call_next):
     public_paths = {"/login", "/health"}
@@ -120,6 +119,7 @@ async def require_login(request: Request, call_next):
         return RedirectResponse("/login", status_code=303)
 
     return await call_next(request)
+
 
 # SessionMiddleware must be registered AFTER require_login.
 # FastAPI executes the last registered middleware first.
@@ -390,26 +390,103 @@ def get_pay_run_summary(pay_run_id: int):
 
 
 # ============================================================
-# CREATE PAY RUN
+# TIMESHEETS
 # ============================================================
+
+class WeeklyTimesheetEntry(BaseModel):
+    work_date: date
+    hours_worked: Decimal = Field(
+        ge=0,
+        le=24,
+        max_digits=6,
+        decimal_places=2
+    )
+
+
+class WeeklyTimesheetCreate(BaseModel):
+    employee_id: int
+    week_start: date
+    entries: list[WeeklyTimesheetEntry]
+
 
 class TimesheetCreate(BaseModel):
     employee_id: int
     work_date: date
-    hours_worked: Decimal = Field(ge=0, le=24, max_digits=6, decimal_places=2)
+    hours_worked: Decimal = Field(
+        ge=0,
+        le=24,
+        max_digits=6,
+        decimal_places=2
+    )
+
 
 @app.get("/ui/timesheets", response_class=HTMLResponse)
 def list_timesheets(request: Request):
+
     with SessionLocal() as db:
-        timesheets = db.scalars(
-            select(Timesheet).order_by(Timesheet.work_date.desc())
+
+        # Retrieve weekly timesheet headers
+        weekly_headers = db.scalars(
+            select(TimesheetHeader)
+            .where(TimesheetHeader.period_type == "weekly")
+            .order_by(TimesheetHeader.period_start.desc())
         ).all()
+
+        # Prepare weekly timesheet records
+        weekly_timesheets = []
+
+        for header in weekly_headers:
+
+            entries = db.scalars(
+                select(Timesheet)
+                .where(Timesheet.timesheet_header_id == header.id)
+            ).all()
+
+            weekly_timesheets.append({
+                "id": header.id,
+                "employee_name": (
+                    f"{header.employee.first_name} "
+                    f"{header.employee.last_name}"
+                ),
+                "period_start": header.period_start,
+                "period_end": header.period_end,
+                "total_hours": sum(
+                    (entry.hours_worked for entry in entries),
+                    Decimal("0.00")
+                ),
+                "status": header.status
+            })
+
+        # Retrieve standalone daily timesheets only
+        daily_timesheets = db.scalars(
+            select(Timesheet)
+            .where(Timesheet.timesheet_header_id.is_(None))
+            .order_by(Timesheet.work_date.desc())
+        ).all()
+
+        daily_data = [
+            {
+                "id": timesheet.id,
+                "employee_name": (
+                    f"{timesheet.employee.first_name} "
+                    f"{timesheet.employee.last_name}"
+                ),
+                "work_date": timesheet.work_date,
+                "hours": timesheet.hours_worked,
+                "status": timesheet.status
+            }
+            for timesheet in daily_timesheets
+        ]
 
         return templates.TemplateResponse(
             request=request,
             name="timesheet_list.html",
-            context={"timesheets": timesheets}
+            context={
+                "weekly_timesheets": weekly_timesheets,
+                "daily_timesheets": daily_data
+            }
         )
+
 
 @app.get("/ui/timesheets/{timesheet_id}/edit", response_class=HTMLResponse)
 def edit_timesheet_page(request: Request, timesheet_id: int):
@@ -420,6 +497,13 @@ def edit_timesheet_page(request: Request, timesheet_id: int):
             raise HTTPException(
                 status_code=404,
                 detail="Timesheet not found"
+            )
+
+        # Weekly entries must be edited through their parent timesheet
+        if timesheet.timesheet_header_id is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Weekly timesheet entries cannot be edited individually"
             )
 
         if timesheet.status != "draft":
@@ -441,6 +525,71 @@ def edit_timesheet_page(request: Request, timesheet_id: int):
             }
         )
 
+@app.get("/ui/timesheets/weekly/{header_id}/edit", response_class=HTMLResponse)
+def edit_weekly_timesheet_page(request: Request, header_id: int):
+
+    with SessionLocal() as db:
+        header = db.get(TimesheetHeader, header_id)
+
+        if header is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Weekly timesheet not found"
+            )
+
+        if header.period_type != "weekly":
+            raise HTTPException(
+                status_code=409,
+                detail="Timesheet is not weekly"
+            )
+
+        if header.status != "draft":
+            raise HTTPException(
+                status_code=409,
+                detail="Only draft weekly timesheets can be edited"
+            )
+
+        entries = db.scalars(
+            select(Timesheet)
+            .where(Timesheet.timesheet_header_id == header_id)
+            .order_by(Timesheet.work_date)
+        ).all()
+
+        if len(entries) != 7:
+            raise HTTPException(
+                status_code=409,
+                detail="Weekly timesheet must contain seven daily entries"
+            )
+
+        employees = db.scalars(
+            select(Employee).order_by(Employee.first_name)
+        ).all()
+
+        return templates.TemplateResponse(
+            request=request,
+            name="timesheet_weekly.html",
+            context={
+                "employees": employees,
+                "header": header,
+                "entries": entries,
+                "edit_mode": True
+            }
+        )
+
+@app.get("/ui/timesheets/weekly", response_class=HTMLResponse)
+def new_weekly_timesheet_page(request: Request):
+    with SessionLocal() as db:
+        employees = db.scalars(
+            select(Employee).order_by(Employee.first_name)
+        ).all()
+
+        return templates.TemplateResponse(
+            request=request,
+            name="timesheet_weekly.html",
+            context={"employees": employees}
+        )
+
+
 @app.get("/ui/timesheets/new", response_class=HTMLResponse)
 def new_timesheet_page(request: Request):
     with SessionLocal() as db:
@@ -451,9 +600,199 @@ def new_timesheet_page(request: Request):
         return templates.TemplateResponse(
             request=request,
             name="timesheet_create.html",
-            #context={"employees": employees}
-            context={"employees": employees, "timesheet": None}
+            context={
+                "employees": employees,
+                "timesheet": None
+            }
         )
+
+
+@app.post("/api/timesheets/weekly", status_code=201)
+def create_weekly_timesheet(data: WeeklyTimesheetCreate):
+
+    # Validate week starts on Monday
+    if data.week_start.weekday() != 0:
+        raise HTTPException(
+            status_code=422,
+            detail="Week must start on Monday"
+        )
+
+    # Validate exactly seven entries
+    if len(data.entries) != 7:
+        raise HTTPException(
+            status_code=422,
+            detail="Exactly seven daily entries are required"
+        )
+
+    # Validate consecutive dates, Monday through Sunday
+    from datetime import timedelta
+
+    expected_dates = [
+        data.week_start + timedelta(days=i)
+        for i in range(7)
+    ]
+
+    submitted_dates = [entry.work_date for entry in data.entries]
+
+    if submitted_dates != expected_dates:
+        raise HTTPException(
+            status_code=422,
+            detail="Entries must cover Monday through Sunday in order"
+        )
+
+    with SessionLocal() as db:
+
+        # Verify employee exists
+        employee = db.get(Employee, data.employee_id)
+
+        if employee is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Employee not found"
+            )
+
+        # Prevent duplicate entries
+        existing = db.scalars(
+            select(Timesheet).where(
+                Timesheet.employee_id == data.employee_id,
+                Timesheet.work_date.in_(expected_dates)
+            )
+        ).all()
+
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail="Timesheet entries already exist for this week"
+            )
+
+        # Create one weekly timesheet header
+        header = TimesheetHeader(
+            employee_id=data.employee_id,
+            period_type="weekly",
+            period_start=data.week_start,
+            period_end=expected_dates[-1],
+            status="draft"
+        )
+
+        db.add(header)
+        db.flush()
+
+        # Create seven daily entries linked to the header
+        timesheets = [
+            Timesheet(
+                employee_id=data.employee_id,
+                timesheet_header_id=header.id,
+                work_date=entry.work_date,
+                hours_worked=entry.hours_worked,
+                status="draft"
+            )
+            for entry in data.entries
+        ]
+
+        db.add_all(timesheets)
+        db.commit()
+
+        return {
+            "message": "Weekly timesheet saved successfully",
+            "timesheet_header_id": header.id,
+            "employee_id": data.employee_id,
+            "week_start": data.week_start,
+            "days_created": len(timesheets),
+            "total_hours": sum(
+                entry.hours_worked for entry in data.entries
+            )
+        }
+
+
+@app.patch("/api/timesheets/weekly/{header_id}")
+def update_weekly_timesheet(
+    header_id: int,
+    data: WeeklyTimesheetCreate
+):
+    from datetime import timedelta
+
+    with SessionLocal() as db:
+
+        header = db.get(TimesheetHeader, header_id)
+
+        if header is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Weekly timesheet not found"
+            )
+
+        if header.period_type != "weekly":
+            raise HTTPException(
+                status_code=409,
+                detail="Timesheet is not weekly"
+            )
+
+        if header.status != "draft":
+            raise HTTPException(
+                status_code=409,
+                detail="Only draft weekly timesheets can be edited"
+            )
+
+        if data.employee_id != header.employee_id:
+            raise HTTPException(
+                status_code=422,
+                detail="Cannot change the employee"
+            )
+
+        if data.week_start != header.period_start:
+            raise HTTPException(
+                status_code=422,
+                detail="Cannot change the week commencing date"
+            )
+
+        expected_dates = [
+            header.period_start + timedelta(days=i)
+            for i in range(7)
+        ]
+
+        if (
+            len(data.entries) != 7
+            or [entry.work_date for entry in data.entries] != expected_dates
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Entries must cover Monday through Sunday"
+            )
+
+        entries = db.scalars(
+            select(Timesheet)
+            .where(Timesheet.timesheet_header_id == header_id)
+            .order_by(Timesheet.work_date)
+        ).all()
+
+        if (
+            len(entries) != 7
+            or [entry.work_date for entry in entries] != expected_dates
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Weekly timesheet has incomplete daily entries"
+            )
+
+        if any(entry.status != "draft" for entry in entries):
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot edit approved daily entries"
+            )
+
+        for existing, submitted in zip(entries, data.entries):
+            existing.hours_worked = submitted.hours_worked
+
+        db.commit()
+
+        return {
+            "timesheet_header_id": header.id,
+            "status": header.status,
+            "days_updated": len(entries),
+            "total_hours": sum(
+                entry.hours_worked for entry in entries
+            )
+        }
 
 @app.post("/api/timesheets", status_code=201)
 def create_timesheet(data: TimesheetCreate):
@@ -489,6 +828,72 @@ def create_timesheet(data: TimesheetCreate):
             "status": timesheet.status
         }
 
+
+
+@app.post("/api/timesheets/weekly/{header_id}/approve")
+def approve_weekly_timesheet(header_id: int):
+
+    with SessionLocal() as db:
+
+        # Retrieve weekly timesheet header
+        header = db.get(TimesheetHeader, header_id)
+
+        if header is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Weekly timesheet not found"
+            )
+
+        if header.period_type != "weekly":
+            raise HTTPException(
+                status_code=409,
+                detail="Timesheet is not weekly"
+            )
+
+        if header.status != "draft":
+            raise HTTPException(
+                status_code=409,
+                detail="Only draft weekly timesheets can be approved"
+            )
+
+        # Retrieve all daily entries
+        entries = db.scalars(
+            select(Timesheet)
+            .where(Timesheet.timesheet_header_id == header_id)
+            .order_by(Timesheet.work_date)
+        ).all()
+
+        # Ensure the weekly timesheet is complete
+        if len(entries) != 7:
+            raise HTTPException(
+                status_code=409,
+                detail="Weekly timesheet must contain seven daily entries"
+            )
+
+        if any(entry.status != "draft" for entry in entries):
+            raise HTTPException(
+                status_code=409,
+                detail="All daily entries must be in draft status"
+            )
+
+        # Approve header and all daily entries
+        header.status = "approved"
+
+        for entry in entries:
+            entry.status = "approved"
+
+        db.commit()
+
+        return {
+            "timesheet_header_id": header.id,
+            "status": header.status,
+            "days_approved": len(entries),
+            "total_hours": sum(
+                entry.hours_worked for entry in entries
+            )
+        }
+
+
 @app.post("/api/timesheets/{timesheet_id}/approve")
 def approve_timesheet(timesheet_id: int):
     with SessionLocal() as db:
@@ -498,6 +903,13 @@ def approve_timesheet(timesheet_id: int):
             raise HTTPException(
                 status_code=404,
                 detail="Timesheet not found"
+            )
+
+        # Weekly entries must be approved through their header
+        if timesheet.timesheet_header_id is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Weekly timesheet entries must be approved together"
             )
 
         if timesheet.status != "draft":
@@ -514,6 +926,7 @@ def approve_timesheet(timesheet_id: int):
             "status": timesheet.status
         }
 
+
 @app.patch("/api/timesheets/{timesheet_id}")
 def update_timesheet(timesheet_id: int, data: TimesheetCreate):
     with SessionLocal() as db:
@@ -524,6 +937,14 @@ def update_timesheet(timesheet_id: int, data: TimesheetCreate):
                 status_code=404,
                 detail="Timesheet not found"
             )
+
+        # Weekly entries must be edited through their parent timesheet
+        if timesheet.timesheet_header_id is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Weekly timesheet entries cannot be edited individually"
+            )
+
 
         if timesheet.status != "draft":
             raise HTTPException(
@@ -545,6 +966,11 @@ def update_timesheet(timesheet_id: int, data: TimesheetCreate):
         db.commit()
 
         return {"id": timesheet.id, "status": timesheet.status}
+
+
+# ============================================================
+# CREATE PAY RUN
+# ============================================================
 
 @app.post("/pay-runs", status_code=201)
 def create_pay_run(data: PayRunCreate):
@@ -662,6 +1088,7 @@ def approve_pay_run_api(pay_run_id: int):
                 .where(Organisation.id == pay_run.organisation_id)
                 .with_for_update()
             ).scalar_one()
+
             PayRunLifecycle().transition(
                 pay_run=pay_run,
                 new_status="approved"
@@ -739,14 +1166,12 @@ def complete_pay_run_api(pay_run_id: int):
                 )
             ).all()
 
-            # Block completion if timesheets were already paid
             if duplicate_timesheet_ids:
                 raise ValueError(
                     "Cannot complete pay run: timesheets already paid "
                     f"{sorted(set(duplicate_timesheet_ids))}"
                 )
 
-            # Transition pay run from approved to completed
             PayRunLifecycle().transition(
                 pay_run=pay_run,
                 new_status="completed"
@@ -818,6 +1243,8 @@ def download_payslip_pdf(payslip_id: int):
                     f'attachment; filename="{filename}"'
             }
         )
+
+
 @app.get("/ui/employees", response_class=HTMLResponse)
 def employees_page(request: Request):
 
@@ -828,7 +1255,6 @@ def employees_page(request: Request):
             .order_by(Employee.last_name, Employee.first_name)
         ).all()
 
-        # Prepare the data while the database session is open
         employee_data = [
             {
                 "id": employee.id,
@@ -847,6 +1273,7 @@ def employees_page(request: Request):
         name="employees.html",
         context={"employees": employee_data}
     )
+
 
 @app.get("/ui/employees/{employee_id}", response_class=HTMLResponse)
 def employee_detail_page(request: Request, employee_id: int):
@@ -902,6 +1329,7 @@ def employee_detail_page(request: Request, employee_id: int):
         }
     )
 
+
 @app.get("/ui/pay-runs", response_class=HTMLResponse)
 def pay_runs_page(request: Request):
 
@@ -926,10 +1354,9 @@ def pay_runs_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="pay_runs.html",
-        context={
-            "pay_runs": run_data
-        }
+        context={"pay_runs": run_data}
     )
+
 
 @app.get("/ui/pay-runs/new", response_class=HTMLResponse)
 def create_pay_run_page(request: Request):
@@ -951,11 +1378,8 @@ def create_pay_run_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="pay_run_create.html",
-        context={
-            "organisations": organisation_data
-        }
+        context={"organisations": organisation_data}
     )
-
 
 
 @app.get("/ui/pay-runs/{pay_run_id}", response_class=HTMLResponse)
@@ -963,7 +1387,6 @@ def pay_run_detail_page(request: Request, pay_run_id: int):
 
     with SessionLocal() as session:
 
-        # Retrieve pay run
         pay_run = session.get(PayRun, pay_run_id)
 
         if pay_run is None:
@@ -977,7 +1400,6 @@ def pay_run_detail_page(request: Request, pay_run_id: int):
             pay_run.organisation_id
         )
 
-        # Retrieve employee payslips
         rows = session.execute(
             select(Payslip, Employee)
             .join(Employee, Payslip.employee_id == Employee.id)
@@ -1000,7 +1422,6 @@ def pay_run_detail_page(request: Request, pay_run_id: int):
             for payslip, employee in rows
         ]
 
-        # Calculate payroll totals
         totals = {
             "employees_paid": len(payslip_data),
             "gross_pay": sum(
@@ -1040,6 +1461,7 @@ def pay_run_detail_page(request: Request, pay_run_id: int):
         }
     )
 
+
 @app.get("/ui/organisations", response_class=HTMLResponse)
 def organisations_page(request: Request):
 
@@ -1074,6 +1496,7 @@ def organisations_page(request: Request):
         name="organisations.html",
         context={"organisations": organisation_data}
     )
+
 
 @app.get("/ui/agreements", response_class=HTMLResponse)
 def agreements_page(request: Request):
@@ -1119,10 +1542,9 @@ def agreements_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="agreements.html",
-        context={
-            "agreements": agreement_data
-        }
+        context={"agreements": agreement_data}
     )
+
 
 @app.get("/ui/payslips", response_class=HTMLResponse)
 def payslips_page(request: Request):
@@ -1168,10 +1590,10 @@ def payslips_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="payslips.html",
-        context={
-            "payslips": payslip_data
-        }
+        context={"payslips": payslip_data}
     )
+
+
 # ============================================================
 # INVOICING
 # ============================================================
@@ -1218,6 +1640,7 @@ def create_worker_engagement(
         status_code=303
     )
 
+
 @app.post("/ui/invoices/generate")
 def generate_invoice_from_ui(
     request: Request,
@@ -1241,6 +1664,7 @@ def generate_invoice_from_ui(
         url="/ui/invoices",
         status_code=303
     )
+
 
 @app.post("/ui/invoices/{invoice_id}/status")
 def update_invoice_status(
@@ -1276,6 +1700,7 @@ def update_invoice_status(
         url="/ui/invoices",
         status_code=303
     )
+
 
 @app.get("/ui/invoices", response_class=HTMLResponse)
 def invoices_page(request: Request):
@@ -1367,6 +1792,7 @@ def invoices_page(request: Request):
         }
     )
 
+
 @app.get("/invoices/{invoice_id}/pdf")
 def download_invoice_pdf(invoice_id: int):
 
@@ -1375,7 +1801,10 @@ def download_invoice_pdf(invoice_id: int):
         invoice = session.get(Invoice, invoice_id)
 
         if invoice is None:
-            raise HTTPException(status_code=404, detail="Invoice not found")
+            raise HTTPException(
+                status_code=404,
+                detail="Invoice not found"
+            )
 
         engagement = session.get(WorkerEngagement, invoice.engagement_id)
         employee = session.get(Employee, engagement.employee_id)
@@ -1410,6 +1839,8 @@ def download_invoice_pdf(invoice_id: int):
                     f'inline; filename="{invoice.invoice_number}.pdf"'
             }
         )
+
+
 # ============================================================
 # AUTHENTICATION
 # ============================================================

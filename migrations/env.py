@@ -14,6 +14,7 @@ from app.models.pay_run import PayRun
 from app.models.payslip import Payslip
 from app.models.user import User
 from app.models.timesheet import Timesheet
+from app.models.timesheet_header import TimesheetHeader
 from app.models.payslip_timesheet import PayslipTimesheet
 from app.models.worker_engagement import WorkerEngagement
 from app.models.invoice import Invoice

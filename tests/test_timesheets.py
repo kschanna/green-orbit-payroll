@@ -9,13 +9,17 @@ from app.database import SessionLocal
 from app.models.employee import Employee
 from app.models.timesheet import Timesheet
 from app.models.organisation import Organisation
+import uuid
+
+def unique_test_abn():
+    return str(uuid.uuid4().int % 100_000_000_000).zfill(11)
 
 
 def test_create_timesheet(client):
     login(client)
 
     with SessionLocal() as db:
-        organisation = Organisation(name="Timesheet Test Organisation",abn="12345678901")
+        organisation = Organisation(name="Timesheet Test Organisation",abn=unique_test_abn())
         db.add(organisation)
         db.flush()
 
@@ -74,7 +78,7 @@ def test_edit_timesheet(client):
     with SessionLocal() as db:
         organisation = Organisation(
             name="Edit Test Organisation",
-            abn="12345678901"
+            abn=unique_test_abn()
         )
         db.add(organisation)
         db.flush()
@@ -142,7 +146,7 @@ def test_approve_timesheet(client):
     with SessionLocal() as db:
         organisation = Organisation(
             name="Approval Test Organisation",
-            abn="12345678901"
+            abn=unique_test_abn()
         )
         db.add(organisation)
         db.flush()

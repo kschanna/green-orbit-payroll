@@ -1,79 +1,251 @@
 {% extends "base.html" %}
 
 {% block content %}
+
 <div class="container mt-4">
+
     <h2>Timesheets</h2>
 
-    <a href="/ui/timesheets/new" class="btn btn-primary mb-3">
-        + New Timesheet
-    </a>
-    <div class="table-responsive">
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Employee</th>
-                <th>Work Date</th>
-                <th>Hours</th>
-                <th>Status</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
+    <div class="mb-3">
+        <a href="/ui/timesheets/new"
+           class="btn btn-outline-primary me-2">
+            + New Daily Timesheet
+        </a>
 
-        <tbody>
-            {% for timesheet in timesheets %}
-            <tr>
-                <td>{{ timesheet.id }}</td>
-                <td>
-                    {{ timesheet.employee.first_name }}
-                    {{ timesheet.employee.last_name }}
-                </td>
-                <td>{{ timesheet.work_date }}</td>
-                <td>{{ timesheet.hours_worked }}</td>
-                <td>{{ timesheet.status }}</td>
-                <td>
-                    {% if timesheet.status == "draft" %}
-                    <a href="/ui/timesheets/{{ timesheet.id }}/edit"
-                    class="btn btn-sm btn-outline-primary me-2">
-                        Edit
-                    </a>
-                    <button
-                        type="button"
-                        class="btn btn-sm btn-success"
-                        onclick="approveTimesheet({{ timesheet.id }})">
-                        Approve
-                    </button>
-                    {% else %}
-                    <span class="badge bg-success">Approved</span>
-                    {% endif %}
-                </td>
-            </tr>
-            {% else %}
-            <tr>
-                <td colspan="6">No timesheets found.</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+        <a href="/ui/timesheets/weekly"
+           class="btn btn-primary">
+            + New Weekly Timesheet
+        </a>
     </div>
+
+    <!-- WEEKLY TIMESHEETS -->
+
+    <h4 class="mt-4">Weekly Timesheets</h4>
+
+    <div class="table-responsive">
+        <table class="table table-striped align-middle">
+
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Employee</th>
+                    <th>Week Commencing</th>
+                    <th>Week Ending</th>
+                    <th>Total Hours</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+
+            <tbody>
+
+                {% for timesheet in weekly_timesheets %}
+
+                <tr>
+                    <td>{{ timesheet.id }}</td>
+
+                    <td>{{ timesheet.employee_name }}</td>
+
+                    <td>{{ timesheet.period_start }}</td>
+
+                    <td>{{ timesheet.period_end }}</td>
+
+                    <td>{{ "%.2f"|format(timesheet.total_hours) }}</td>
+
+                    <td>
+                        {% if timesheet.status == "approved" %}
+                            <span class="badge bg-success">Approved</span>
+                        {% else %}
+                            <span class="badge bg-warning text-dark">Draft</span>
+                        {% endif %}
+                    </td>
+
+                    <td>
+                        {% if timesheet.status == "draft" %}
+
+                            <a
+                                href="/ui/timesheets/weekly/{{ timesheet.id }}/edit"
+                                class="btn btn-sm btn-outline-primary me-2">
+                                Edit
+                            </a>
+
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-success"
+                                onclick="approveWeeklyTimesheet({{ timesheet.id }})">
+                                Approve
+                            </button>
+
+                        {% else %}
+
+                            <span class="text-muted">—</span>
+
+                        {% endif %}
+                    </td>
+                </tr>
+
+                {% else %}
+
+                <tr>
+                    <td colspan="7" class="text-muted">
+                        No weekly timesheets found.
+                    </td>
+                </tr>
+
+                {% endfor %}
+
+            </tbody>
+
+        </table>
+    </div>
+
+
+    <!-- DAILY TIMESHEETS -->
+
+    <h4 class="mt-5">Daily Timesheets</h4>
+
+    <div class="table-responsive">
+        <table class="table table-striped align-middle">
+
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Employee</th>
+                    <th>Work Date</th>
+                    <th>Hours</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+
+            <tbody>
+
+                {% for timesheet in daily_timesheets %}
+
+                <tr>
+                    <td>{{ timesheet.id }}</td>
+
+                    <td>{{ timesheet.employee_name }}</td>
+
+                    <td>{{ timesheet.work_date }}</td>
+
+                    <td>{{ "%.2f"|format(timesheet.hours) }}</td>
+
+                    <td>
+                        {% if timesheet.status == "approved" %}
+                            <span class="badge bg-success">Approved</span>
+                        {% else %}
+                            <span class="badge bg-warning text-dark">Draft</span>
+                        {% endif %}
+                    </td>
+
+                    <td>
+                        {% if timesheet.status == "draft" %}
+
+                            <a
+                                href="/ui/timesheets/{{ timesheet.id }}/edit"
+                                class="btn btn-sm btn-outline-primary me-2">
+                                Edit
+                            </a>
+
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-success"
+                                onclick="approveTimesheet({{ timesheet.id }})">
+                                Approve
+                            </button>
+
+                        {% else %}
+
+                            <span class="text-muted">—</span>
+
+                        {% endif %}
+                    </td>
+                </tr>
+
+                {% else %}
+
+                <tr>
+                    <td colspan="6" class="text-muted">
+                        No daily timesheets found.
+                    </td>
+                </tr>
+
+                {% endfor %}
+
+            </tbody>
+
+        </table>
+    </div>
+
 </div>
+
+
 <script>
+
+// const csrfToken = "{{ csrf_token(request) }}";
+
+
+// Approve standalone daily timesheet
+
 async function approveTimesheet(id) {
-    if (!confirm("Approve this timesheet?")) return;
 
-    const response = await fetch(`/api/timesheets/${id}/approve`, {
-        method: "POST",
-        headers: {
-            "X-CSRF-Token": "{{ csrf_token(request) }}"
+    if (!confirm("Approve this daily timesheet?")) {
+        return;
+    }
+
+    await submitApproval(`/api/timesheets/${id}/approve`);
+}
+
+
+// Approve entire weekly timesheet
+
+async function approveWeeklyTimesheet(id) {
+
+    if (!confirm("Approve all seven days of this weekly timesheet?")) {
+        return;
+    }
+
+    await submitApproval(`/api/timesheets/weekly/${id}/approve`);
+}
+
+
+// Shared approval handler
+
+async function submitApproval(endpoint) {
+
+    try {
+
+        const response = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+                //"X-CSRF-Token": csrfToken
+                "X-CSRF-Token": "{{ csrf_token(request) }}"
+            }
+        });
+
+        if (response.ok) {
+
+            window.location.reload();
+
+        } else {
+
+            const error = await response.json();
+
+            alert(
+                typeof error.detail === "string"
+                    ? error.detail
+                    : "Approval failed"
+            );
         }
-    });
 
-    if (response.ok) {
-        window.location.reload();
-    } else {
-        const error = await response.json();
-        alert(error.detail || "Approval failed");
+    } catch (error) {
+
+        alert("Unable to approve timesheet.");
+
     }
 }
+
 </script>
+
 {% endblock %}

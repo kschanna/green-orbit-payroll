@@ -1,0 +1,416 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+{% set is_edit = edit_mode | default(false) %}
+
+<div class="container mt-4">
+
+    <h2>
+        {% if is_edit %}
+            Edit Weekly Timesheet
+        {% else %}
+            New Weekly Timesheet
+        {% endif %}
+    </h2>
+
+    <p class="text-muted">
+        {% if is_edit %}
+            Update hours for Monday through Sunday.
+        {% else %}
+            Enter hours for Monday through Sunday.
+        {% endif %}
+    </p>
+
+    <div class="card p-4 mt-4">
+
+        <form id="weeklyTimesheetForm">
+
+            <div class="row mb-4">
+
+                <div class="col-md-6">
+                    <label class="form-label">Employee</label>
+
+                    <select
+                        id="employee_id"
+                        class="form-select"
+                        required
+                        {% if is_edit %}disabled{% endif %}
+                    >
+                        <option value="">Select employee</option>
+
+                        {% for employee in employees %}
+                        <option
+                            value="{{ employee.id }}"
+                            {% if is_edit and employee.id == header.employee_id %}
+                                selected
+                            {% endif %}
+                        >
+                            {{ employee.first_name }}
+                            {{ employee.last_name }}
+                        </option>
+                        {% endfor %}
+
+                    </select>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">
+                        Week Commencing (Monday)
+                    </label>
+
+                    <input
+                        type="date"
+                        id="week_start"
+                        class="form-control"
+                        required
+                        {% if is_edit %}
+                            value="{{ header.period_start.isoformat() }}"
+                            readonly
+                        {% endif %}
+                    >
+                </div>
+
+            </div>
+
+            <table class="table table-bordered align-middle">
+
+                <thead>
+                    <tr>
+                        <th>Day</th>
+                        <th>Date</th>
+                        <th>Hours Worked</th>
+                    </tr>
+                </thead>
+
+                <tbody id="weekDays"></tbody>
+
+                <tfoot>
+                    <tr>
+                        <th colspan="2">Total Weekly Hours</th>
+                        <th>
+                            <span id="weeklyTotal">0.00</span>
+                        </th>
+                    </tr>
+                </tfoot>
+
+            </table>
+
+            <button type="submit" class="btn btn-primary">
+
+                {% if is_edit %}
+                    Update Weekly Timesheet
+                {% else %}
+                    Save Weekly Timesheet
+                {% endif %}
+
+            </button>
+
+            <a
+                href="/ui/timesheets"
+                class="btn btn-outline-secondary ms-2"
+            >
+                Cancel
+            </a>
+
+        </form>
+
+        <div id="message" class="mt-3" role="status"></div>
+
+    </div>
+
+</div>
+
+<script>
+
+const editMode = {{ is_edit | tojson }};
+
+const headerId = {% if is_edit %}{{ header.id | tojson }}{% else %}null{% endif %};
+
+const existingEntries = {% if is_edit %}
+    [
+        {% for entry in entries %}
+        {
+            work_date: {{ entry.work_date.isoformat() | tojson }},
+            hours_worked: {{ entry.hours_worked | float | tojson }}
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ]
+{% else %}
+    []
+{% endif %};
+
+const days = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday"
+];
+
+const weekStartInput = document.getElementById("week_start");
+const weekDays = document.getElementById("weekDays");
+const weeklyTotal = document.getElementById("weeklyTotal");
+const message = document.getElementById("message");
+
+
+// ============================================================
+// DATE FORMATTING
+// ============================================================
+
+function formatDate(date) {
+
+    const year = date.getUTCFullYear();
+
+    const month = String(
+        date.getUTCMonth() + 1
+    ).padStart(2, "0");
+
+    const day = String(
+        date.getUTCDate()
+    ).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+}
+
+
+// ============================================================
+// RENDER WEEK
+// ============================================================
+
+function renderWeek() {
+
+    const value = weekStartInput.value;
+
+    if (!value) {
+
+        weekDays.innerHTML = "";
+
+        weeklyTotal.textContent = "0.00";
+
+        return;
+    }
+
+    const start = new Date(`${value}T00:00:00Z`);
+
+    if (start.getUTCDay() !== 1) {
+
+        message.className = "alert alert-warning mt-3";
+
+        message.textContent = "Please select a Monday.";
+
+        weekDays.innerHTML = "";
+
+        weeklyTotal.textContent = "0.00";
+
+        return;
+    }
+
+    message.textContent = "";
+
+    message.className = "mt-3";
+
+    weekDays.innerHTML = "";
+
+    days.forEach((day, index) => {
+
+        const current = new Date(start);
+
+        current.setUTCDate(
+            start.getUTCDate() + index
+        );
+
+        const currentDate = formatDate(current);
+
+        let hours = index < 5 ? "8.00" : "0.00";
+
+        // Load previously saved hours when editing
+        if (editMode) {
+
+            const existing = existingEntries.find(
+                entry => entry.work_date === currentDate
+            );
+
+            if (existing) {
+                hours = Number(
+                    existing.hours_worked
+                ).toFixed(2);
+            }
+        }
+
+        weekDays.insertAdjacentHTML(
+            "beforeend",
+            `
+            <tr>
+
+                <td>${day}</td>
+
+                <td>${currentDate}</td>
+
+                <td>
+                    <input
+                        type="number"
+                        class="form-control day-hours"
+                        data-date="${currentDate}"
+                        min="0"
+                        max="24"
+                        step="0.01"
+                        value="${hours}"
+                        required
+                    >
+                </td>
+
+            </tr>
+            `
+        );
+
+    });
+
+    calculateTotal();
+}
+
+
+// ============================================================
+// CALCULATE TOTAL
+// ============================================================
+
+function calculateTotal() {
+
+    const total = [
+        ...document.querySelectorAll(".day-hours")
+    ].reduce(
+        (sum, input) => sum + Number(input.value || 0),
+        0
+    );
+
+    weeklyTotal.textContent = total.toFixed(2);
+}
+
+
+// ============================================================
+// EVENT LISTENERS
+// ============================================================
+
+weekStartInput.addEventListener(
+    "change",
+    renderWeek
+);
+
+weekDays.addEventListener(
+    "input",
+    calculateTotal
+);
+
+
+// ============================================================
+// SAVE TIMESHEET
+// ============================================================
+
+document.getElementById("weeklyTimesheetForm")
+    .addEventListener("submit", async function(event) {
+
+        event.preventDefault();
+
+        const entries = [
+            ...document.querySelectorAll(".day-hours")
+        ].map(input => ({
+            work_date: input.dataset.date,
+            hours_worked: Number(input.value)
+        }));
+
+        if (entries.length !== 7) {
+
+            message.className = "alert alert-danger mt-3";
+
+            message.textContent =
+                "Please select a valid Monday.";
+
+            return;
+        }
+
+        message.className = "text-muted mt-3";
+
+        message.textContent = editMode
+            ? "Updating..."
+            : "Saving...";
+
+        const endpoint = editMode
+            ? `/api/timesheets/weekly/${headerId}`
+            : "/api/timesheets/weekly";
+
+        const method = editMode
+            ? "PATCH"
+            : "POST";
+
+        try {
+
+            const response = await fetch(endpoint, {
+
+                method: method,
+
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-Token": "{{ csrf_token(request) }}"
+                },
+
+                body: JSON.stringify({
+
+                    employee_id: Number(
+                        document.getElementById(
+                            "employee_id"
+                        ).value
+                    ),
+
+                    week_start: weekStartInput.value,
+
+                    entries: entries
+
+                })
+
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+
+                window.location.href = "/ui/timesheets";
+
+            } else {
+
+                message.className =
+                    "alert alert-danger mt-3";
+
+                message.textContent = JSON.stringify(
+                    result.detail
+                );
+
+            }
+
+        } catch (error) {
+
+            message.className =
+                "alert alert-danger mt-3";
+
+            message.textContent = editMode
+                ? "Unable to update weekly timesheet."
+                : "Unable to save weekly timesheet.";
+
+        }
+
+    });
+
+
+// ============================================================
+// INITIALISE EDIT FORM
+// ============================================================
+
+// Automatically display saved entries when editing.
+if (editMode) {
+    renderWeek();
+}
+
+</script>
+
+{% endblock %}
