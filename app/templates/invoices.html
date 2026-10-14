@@ -170,7 +170,14 @@
             <tbody>
                 {% for invoice in invoices %}
                 <tr>
-                    <td>{{ invoice.invoice_number }}</td>
+                    <td>
+                        <a href="/invoices/{{ invoice.id }}/pdf"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="text-decoration-none fw-semibold">
+                            {{ invoice.invoice_number }}
+                        </a>
+                    </td>
                     <td>{{ invoice.issue_date }}</td>
                     <td>{{ invoice.customer }}</td>
                     <td>{{ invoice.worker }}</td>

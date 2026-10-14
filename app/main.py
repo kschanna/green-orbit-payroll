@@ -1407,7 +1407,7 @@ def download_invoice_pdf(invoice_id: int):
             media_type="application/pdf",
             headers={
                 "Content-Disposition":
-                    f'attachment; filename="{invoice.invoice_number}.pdf"'
+                    f'inline; filename="{invoice.invoice_number}.pdf"'
             }
         )
 # ============================================================
