@@ -103,7 +103,6 @@ jobs:
           docker push australia-southeast2-docker.pkg.dev/green-orbit-payroll-demo/green-orbit-payroll/app:${{ github.sha }}
 
       - name: Deploy to Cloud Run
-        if: ${{ false }} # TEMPORARILY DISABLED
         run: |
           gcloud run deploy green-orbit-payroll \
             --project=green-orbit-payroll-demo \
