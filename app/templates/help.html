@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mb-4">
+  <h2>Green Orbit Help</h2>
+  <p class="text-muted">End-user documentation</p>
+  <p class="small text-muted">Last updated: 15 October 2026</p>
+</div>
+<div class="card mb-4"><div class="card-body">
+  <h5>Contents</h5>
+  <div class="d-flex flex-wrap gap-3">
+    <a href="#getting-started">Getting Started</a>
+    <a href="#organisations">Organisations</a>
+    <a href="#employees">Employees</a>
+    <a href="#agreements">Agreements (Work Patterns)</a>
+    <a href="#engagements">Work Engagements (Assignment)</a>
+    <a href="#timesheets">Timesheets</a>
+    <a href="#payroll">Pay Runs</a>
+    <a href="#payslips">Payslips</a>
+    <a href="#invoices">Invoices</a>
+    <a href="#troubleshooting">Troubleshooting</a>
+  </div>
+</div></div>
+<section id="getting-started" class="card mb-3">
+  <div class="card-body">
+    <h4>Getting Started</h4>
+    <p class="mb-0">Sign in using your Green Orbit account. Use the navigation menu to access the main application screens. On mobile devices, open the navigation menu using the menu button.</p>
+  </div>
+</section>
+<section id="organisations" class="card mb-3">
+  <div class="card-body">
+    <h4>Organisations</h4>
+    <p class="mb-0">Use Organisations to manage business and customer records. Select New Organisation to create a record. Enter the organisation name and its 11-digit Australian Business Number (ABN). Existing organisations can be edited from the organisation list.</p>
+  </div>
+</section>
+<section id="employees" class="card mb-3">
+  <div class="card-body">
+    <h4>Employees</h4>
+    <p class="mb-0">Use Employees to create and maintain employee records. Select an employee to view their details and employment agreements. Employee information should be checked before processing payroll.</p>
+  </div>
+</section>
+<section id="agreements" class="card mb-3">
+  <div class="card-body">
+    <h4>Agreements (Work Patterns)</h4>
+    <p class="mb-0">Employment Agreements define an employee's employment type, pay basis, hourly rate, ordinary weekly hours, pay frequency and effective dates. Create agreements from the employee's details page. Review the agreement before processing payroll.</p>
+  </div>
+</section>
+<section id="engagements" class="card mb-3">
+  <div class="card-body">
+    <h4>Work Engagements (Assignment)</h4>
+    <p class="mb-0">Work Engagements connect an employee to a customer organisation and define the hourly billing rate. Create or edit assignments from the Work Engagements screen. An appropriate assignment is required when generating an invoice from a timesheet.</p>
+  </div>
+</section>
+<section id="timesheets" class="card mb-3">
+  <div class="card-body">
+    <h4>Timesheets</h4>
+    <p class="mb-0">Use Timesheets to record hours worked. Green Orbit supports daily and weekly timesheets. Review hours and dates before approving a timesheet. Approved timesheets can be used for payroll and invoicing, subject to system validation.</p>
+  </div>
+</section>
+<section id="payroll" class="card mb-3">
+  <div class="card-body">
+    <h4>Pay Runs</h4>
+    <p class="mb-0">Use Pay Runs to prepare employee payroll. Create a pay run, process it, review the results and approve it before completion. Check employee agreements, approved timesheets and calculated amounts carefully. Do not treat a draft or unapproved pay run as a completed payroll.</p>
+  </div>
+</section>
+<section id="payslips" class="card mb-3">
+  <div class="card-body">
+    <h4>Payslips</h4>
+    <p class="mb-0">Use Payslips to view payroll results and access available payslip PDFs. Verify the pay period, employee, earnings and deductions before distributing a payslip.</p>
+  </div>
+</section>
+<section id="invoices" class="card mb-3">
+  <div class="card-body">
+    <h4>Invoices</h4>
+    <p class="mb-0">Invoices are generated from approved timesheets using the selected Work Engagement and its customer billing rate. Open Timesheets, select Generate Invoice for an eligible approved timesheet and choose the relevant engagement. The Invoices screen lists generated invoices and provides available invoice actions and PDF access.</p>
+  </div>
+</section>
+<section id="troubleshooting" class="card mb-3">
+  <div class="card-body">
+    <h4>Troubleshooting</h4>
+    <p class="mb-0">If a Worker Engagement does not appear during invoice generation, confirm that an engagement exists for the timesheet employee. If an action is rejected, read the displayed error and check required fields, approval status and record dates. Contact your system administrator if the problem persists.</p>
+  </div>
+</section>
+<p class="text-muted small mt-4">
+Green Orbit — End-user guide. Review this documentation with each production release.
+</p>
+{% endblock %}

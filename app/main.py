@@ -211,6 +211,15 @@ def health():
 # WEB UI — DASHBOARD
 # ============================================================
 
+@app.get("/ui/help", response_class=HTMLResponse)
+def help_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="help.html",
+        context={}
+    )
+
+
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request):
 
