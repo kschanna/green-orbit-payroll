@@ -90,6 +90,19 @@
                             Preview
                         </a>
 
+
+                        {% if timesheet.status == "approved" %}
+                            {% if timesheet.is_invoiced %}
+                                <span class="badge bg-secondary">Invoiced</span>
+                            {% else %}
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-success"
+                                        onclick="openInvoiceDialog('weekly', {{ timesheet.id }}, {{ timesheet.employee_id }})">
+                                    Generate Invoice
+                                </button>
+                            {% endif %}
+                        {% endif %}
+
                         <!-- Edit and Approve only available for Draft -->
 
                         {% if timesheet.status == "draft" %}
@@ -198,6 +211,19 @@
                             class="btn btn-sm btn-outline-secondary me-2">
                             Preview
                         </a>
+
+
+                        {% if timesheet.status == "approved" %}
+                            {% if timesheet.is_invoiced %}
+                                <span class="badge bg-secondary">Invoiced</span>
+                            {% else %}
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-success"
+                                        onclick="openInvoiceDialog('daily', {{ timesheet.id }}, {{ timesheet.employee_id }})">
+                                    Generate Invoice
+                                </button>
+                            {% endif %}
+                        {% endif %}
 
                         <!-- Edit and Approve only available for Draft -->
 
@@ -318,4 +344,133 @@ async function submitApproval(endpoint) {
 
 </script>
 
-{% endblock %}
+
+<!-- Timesheet invoice dialog -->
+<div class="modal fade" id="timesheetInvoiceModal" tabindex="-1"
+     aria-labelledby="timesheetInvoiceModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="timesheetInvoiceModalLabel">
+                    Generate Invoice
+                </h5>
+                <button type="button" class="btn-close"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <label for="invoiceEngagement" class="form-label">
+                    Worker Engagement
+                </label>
+
+                <select id="invoiceEngagement" class="form-select"></select>
+
+                <div id="invoiceEngagementInfo"
+                     class="form-text mt-2"></div>
+
+                <div id="invoiceError"
+                     class="alert alert-danger mt-3 d-none"></div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary"
+                        data-bs-dismiss="modal">Cancel</button>
+
+                <button type="button" class="btn btn-success"
+                        id="confirmInvoiceButton"
+                        onclick="confirmTimesheetInvoice()">
+                    Generate Invoice
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const invoiceEngagements = {{ engagement_options | tojson }};
+let selectedInvoiceTimesheet = null;
+
+function openInvoiceDialog(periodType, timesheetId, employeeId) {
+    selectedInvoiceTimesheet = { periodType, timesheetId };
+
+    const select = document.getElementById("invoiceEngagement");
+    const info = document.getElementById("invoiceEngagementInfo");
+    const error = document.getElementById("invoiceError");
+
+    error.classList.add("d-none");
+    select.innerHTML = "";
+
+    const available = invoiceEngagements.filter(
+        engagement => engagement.employee_id === employeeId
+    );
+
+    if (!available.length) {
+        select.innerHTML = '<option value="">No engagement available</option>';
+        info.textContent = "Create a Worker Engagement for this employee first.";
+    } else {
+        for (const engagement of available) {
+            const option = document.createElement("option");
+            option.value = engagement.id;
+            option.textContent =
+                engagement.customer_name +
+                " — $" + engagement.billing_rate + "/hr";
+            select.appendChild(option);
+        }
+        info.textContent = "Invoice will use the selected engagement billing rate.";
+    }
+
+    document.getElementById("confirmInvoiceButton").disabled =
+        available.length === 0;
+
+    bootstrap.Modal.getOrCreateInstance(
+        document.getElementById("timesheetInvoiceModal")
+    ).show();
+}
+
+async function confirmTimesheetInvoice() {
+    if (!selectedInvoiceTimesheet) return;
+
+    const engagementId = Number(
+        document.getElementById("invoiceEngagement").value
+    );
+
+    const button = document.getElementById("confirmInvoiceButton");
+    const errorBox = document.getElementById("invoiceError");
+
+    button.disabled = true;
+    errorBox.classList.add("d-none");
+
+    try {
+        const response = await fetch("/api/timesheets/invoice", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-Token": {{ csrf_token(request) | tojson }}
+            },
+            body: JSON.stringify({
+                period_type: selectedInvoiceTimesheet.periodType,
+                timesheet_id: selectedInvoiceTimesheet.timesheetId,
+                engagement_id: engagementId
+            })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                typeof result.detail === "string"
+                    ? result.detail
+                    : JSON.stringify(result.detail)
+            );
+        }
+
+        window.location.href = "/ui/invoices";
+
+    } catch (error) {
+        errorBox.textContent = error.message;
+        errorBox.classList.remove("d-none");
+        button.disabled = false;
+    }
+}
+</script>
+\n{% endblock %}

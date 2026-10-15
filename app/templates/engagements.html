@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div>
+        <h2>Worker Engagements</h2>
+        <p class="text-muted mb-0">
+            Manage employee assignments and client billing rates
+        </p>
+    </div>
+
+    <button type="button" class="btn btn-success"
+            onclick="newEngagement()">
+        + New Engagement
+    </button>
+</div>
+
+<div class="card p-3 p-md-4 mb-4">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Employee</th>
+                    <th>Customer</th>
+                    <th>Billing Rate</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for engagement in engagements %}
+                <tr>
+                    <td>{{ engagement.id }}</td>
+                    <td>{{ engagement.employee_name }}</td>
+                    <td>{{ engagement.customer_name }}</td>
+                    <td>${{ engagement.billing_rate }}/hr</td>
+                    <td>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary"
+                                onclick='editEngagement({{ engagement | tojson }})'>
+                            Edit
+                        </button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="text-center text-muted">
+                        No worker engagements found.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div id="engagementEditor" class="card d-none">
+    <div class="card-body p-4">
+        <h5 id="formTitle" class="mb-4">New Engagement</h5>
+
+        <form id="engagementForm">
+            <input type="hidden" id="engagementId">
+
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label for="employeeId" class="form-label">Employee</label>
+                    <select id="employeeId" class="form-select" required>
+                        <option value="">Select employee</option>
+                        {% for employee in employees %}
+                        <option value="{{ employee.id }}">
+                            {{ employee.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-4">
+                    <label for="customerId" class="form-label">
+                        Customer Organisation
+                    </label>
+                    <select id="customerId" class="form-select" required>
+                        <option value="">Select customer</option>
+                        {% for customer in customers %}
+                        <option value="{{ customer.id }}">
+                            {{ customer.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-4">
+                    <label for="billingRate" class="form-label">
+                        Billing Rate ($/hour)
+                    </label>
+                    <input type="number" id="billingRate"
+                           class="form-control"
+                           min="0.01" step="0.01" required>
+                </div>
+            </div>
+
+            <div id="formMessage" class="alert alert-danger mt-3 d-none"
+                 role="alert"></div>
+
+            <div class="d-flex gap-2 mt-4">
+                <button type="submit" id="saveButton"
+                        class="btn btn-success">
+                    Save Engagement
+                </button>
+
+                <button type="button"
+                        class="btn btn-outline-secondary"
+                        onclick="cancelEngagement()">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+const editor = document.getElementById("engagementEditor");
+const form = document.getElementById("engagementForm");
+const message = document.getElementById("formMessage");
+const saveButton = document.getElementById("saveButton");
+
+function showEditor() {
+    message.classList.add("d-none");
+    editor.classList.remove("d-none");
+    editor.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function newEngagement() {
+    form.reset();
+    document.getElementById("engagementId").value = "";
+    document.getElementById("formTitle").textContent = "New Engagement";
+    showEditor();
+}
+
+function editEngagement(engagement) {
+    form.reset();
+    document.getElementById("engagementId").value = engagement.id;
+    document.getElementById("employeeId").value = engagement.employee_id;
+    document.getElementById("customerId").value = engagement.customer_id;
+    document.getElementById("billingRate").value = engagement.billing_rate;
+    document.getElementById("formTitle").textContent =
+        "Edit Engagement #" + engagement.id;
+    showEditor();
+}
+
+function cancelEngagement() {
+    editor.classList.add("d-none");
+    form.reset();
+}
+
+form.addEventListener("submit", async event => {
+    event.preventDefault();
+
+    const id = document.getElementById("engagementId").value;
+    const payload = {
+        employee_id: Number(document.getElementById("employeeId").value),
+        customer_id: Number(document.getElementById("customerId").value),
+        billing_rate: document.getElementById("billingRate").value
+    };
+
+    saveButton.disabled = true;
+    message.classList.add("d-none");
+
+    try {
+        const response = await fetch(
+            id ? "/api/engagements/" + id : "/api/engagements",
+            {
+                method: id ? "PATCH" : "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-Token": {{ csrf_token(request) | tojson }}
+                },
+                body: JSON.stringify(payload)
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                typeof result.detail === "string"
+                    ? result.detail
+                    : JSON.stringify(result.detail)
+            );
+        }
+
+        window.location.reload();
+
+    } catch (error) {
+        message.textContent = error.message;
+        message.classList.remove("d-none");
+        saveButton.disabled = false;
+    }
+});
+</script>
+
+{% endblock %}

@@ -63,127 +63,93 @@
 
 <!-- EMPLOYMENT AGREEMENTS -->
 
-<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+    <div>
+        <h5 class="mb-1">Employment Agreements</h5>
+        <span class="badge bg-success">
+            {{ agreements | length }} Agreements
+        </span>
+    </div>
 
-    <h5 class="mb-0">Employment Agreements</h5>
-
-    <span class="badge bg-success">
-        {{ agreements | length }} Agreements
-    </span>
-
+    <a href="/ui/employees/{{ employee.id }}/agreements/new"
+       class="btn btn-success">
+        + New Employment Agreement
+    </a>
 </div>
-
-
-{% for agreement in agreements %}
-
-<div class="card p-3 p-md-4 mb-3">
-
-    <!-- AGREEMENT HEADER -->
-
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-
-        <h6 class="mb-0">
-            {{ agreement.employment_type | replace("_", " ") | title }}
-        </h6>
-
-        {% if agreement.is_active %}
-            <span class="badge bg-success">
-                Active
-            </span>
-        {% else %}
-            <span class="badge bg-secondary">
-                Inactive
-            </span>
-        {% endif %}
-
-    </div>
-
-
-    <!-- REMUNERATION -->
-
-    <div class="mb-4">
-
-        <small class="text-muted">Hourly Rate</small>
-
-        <h3 class="text-success mb-0">
-            ${{ "%.2f" | format(agreement.hourly_rate) }}
-        </h3>
-
-        <small class="text-muted">
-            Per hour
-        </small>
-
-    </div>
-
-
-    <!-- AGREEMENT DETAILS -->
-
-    <div class="row g-3">
-
-        <div class="col-6 col-md-4">
-
-            <small class="text-muted">Pay Basis</small>
-
-            <div class="fw-semibold">
-                {{ agreement.pay_basis | title }}
-            </div>
-
-        </div>
-
-        <div class="col-6 col-md-4">
-
-            <small class="text-muted">Ordinary Hours</small>
-
-            <div class="fw-semibold">
-                {{ agreement.ordinary_hours_per_week }} / week
-            </div>
-
-        </div>
-
-        <div class="col-6 col-md-4">
-
-            <small class="text-muted">Pay Frequency</small>
-
-            <div class="fw-semibold">
-                {{ agreement.pay_frequency | title }}
-            </div>
-
-        </div>
-
-        <div class="col-6 col-md-4">
-
-            <small class="text-muted">Start Date</small>
-
-            <div class="fw-semibold">
-                {{ agreement.start_date | date_au }}
-            </div>
-
-        </div>
-
-        <div class="col-6 col-md-4">
-
-            <small class="text-muted">End Date</small>
-
-            <div class="fw-semibold">
-                {{ agreement.end_date | date_au if agreement.end_date else "Current" }}
-            </div>
-
-        </div>
-
-    </div>
-
-</div>
-
-{% else %}
 
 <div class="card p-3 p-md-4">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Employment Type</th>
+                    <th>Pay Basis</th>
+                    <th>Hourly Rate</th>
+                    <th>Hours / Week</th>
+                    <th>Frequency</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
 
-    <p class="text-muted mb-0">
-        No employment agreements found.
-    </p>
+            <tbody>
+                {% for agreement in agreements %}
+                <tr>
+                    <td>{{ agreement.id }}</td>
 
+                    <td>
+                        {{ agreement.employment_type | replace("_", " ") | title }}
+                    </td>
+
+                    <td>{{ agreement.pay_basis | title }}</td>
+
+                    <td>${{ "%.2f" | format(agreement.hourly_rate) }}</td>
+
+                    <td>{{ agreement.ordinary_hours_per_week }}</td>
+
+                    <td>{{ agreement.pay_frequency | title }}</td>
+
+                    <td>{{ agreement.start_date | date_au }}</td>
+
+                    <td>
+                        {{ agreement.end_date | date_au if agreement.end_date else "Ongoing" }}
+                    </td>
+
+                    <td>
+                        {% if agreement.is_active %}
+                        <span class="badge bg-success">Active</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Inactive</span>
+                        {% endif %}
+                    </td>
+
+                    <td>
+                        <div class="d-flex gap-2">
+                            <a href="/ui/agreements/{{ agreement.id }}"
+                               class="btn btn-sm btn-outline-success">
+                                View
+                            </a>
+
+                            <a href="/ui/agreements/{{ agreement.id }}/edit"
+                               class="btn btn-sm btn-outline-secondary">
+                                Edit
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="10" class="text-center text-muted">
+                        No employment agreements found.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
-
-{% endfor %}
 
 {% endblock %}

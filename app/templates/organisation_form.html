@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+{% set editing = organisation is not none %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2>{{ "Edit Organisation" if editing else "New Organisation" }}</h2>
+        <p class="text-muted mb-0">Organisation details</p>
+    </div>
+    <a href="/ui/organisations" class="btn btn-outline-secondary">Back</a>
+</div>
+<div class="card"><div class="card-body p-4">
+<form id="recordForm">
+    <div class="row g-3">
+        <div class="col-md-6">
+            <label class="form-label" for="name">Organisation Name</label>
+            <input class="form-control" id="name" maxlength="200" required
+                   value="{{ organisation.name if editing else '' }}">
+        </div>
+        <div class="col-md-6">
+            <label class="form-label" for="abn">ABN</label>
+            <input class="form-control" id="abn" maxlength="14" required
+                   value="{{ organisation.abn if editing else '' }}">
+            <div class="form-text">11-digit Australian Business Number</div>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label" for="country">Country</label>
+            <input class="form-control" id="country" value="AU" readonly>
+        </div>
+    </div>
+    <div id="formMessage" class="alert mt-3 d-none" role="alert"></div>
+    <div class="d-flex gap-2 mt-4">
+        <button class="btn btn-success" id="saveButton" type="submit">
+            {{ "Save Changes" if editing else "Create Organisation" }}
+        </button>
+        <a href="/ui/organisations" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+</div></div>
+<script>
+document.getElementById("recordForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    const button = document.getElementById("saveButton");
+    const message = document.getElementById("formMessage");
+    button.disabled = true;
+    message.classList.add("d-none");
+    try {
+        const response = await fetch(
+            {{ ("/api/organisations/" ~ organisation.id if editing else "/api/organisations") | tojson }},
+            {
+                method: {{ ("PATCH" if editing else "POST") | tojson }},
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-Token": {{ csrf_token(request) | tojson }}
+                },
+                body: JSON.stringify({
+                    name: document.getElementById("name").value,
+                    abn: document.getElementById("abn").value,
+                    country: "AU"
+                })
+            }
+        );
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(typeof result.detail === "string"
+                ? result.detail : JSON.stringify(result.detail));
+        }
+        window.location.href = "/ui/organisations";
+    } catch (error) {
+        message.textContent = error.message;
+        message.className = "alert alert-danger mt-3";
+        button.disabled = false;
+    }
+});
+</script>
+{% endblock %}

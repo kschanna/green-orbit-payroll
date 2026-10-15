@@ -2,24 +2,23 @@
 
 {% block content %}
 
-<!-- PAGE HEADER -->
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div>
+        <h2>Organisations</h2>
+        <p class="text-muted mb-0">
+            Organisations registered with Green Orbit Payroll
+        </p>
+    </div>
 
-<div class="mb-4">
-    <h2>Organisations</h2>
-    <p class="text-muted">
-        Organisations registered with Green Orbit Payroll
-    </p>
+    <a href="/ui/organisations/new" class="btn btn-success">
+        + New Organisation
+    </a>
 </div>
 
-
-<!-- DESKTOP TABLE -->
-
+<!-- Desktop listing -->
 <div class="card p-4 d-none d-md-block">
-
     <div class="table-responsive">
-
         <table class="table table-hover align-middle mb-0">
-
             <thead>
                 <tr>
                     <th>ID</th>
@@ -27,110 +26,79 @@
                     <th>ABN</th>
                     <th>Country</th>
                     <th>Employees</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
 
             <tbody>
-
                 {% for org in organisations %}
-
                 <tr>
                     <td>{{ org.id }}</td>
-
-                    <td>
-                        <strong>{{ org.name }}</strong>
-                    </td>
-
+                    <td><strong>{{ org.name }}</strong></td>
                     <td>{{ org.abn }}</td>
-
                     <td>{{ org.country }}</td>
-
                     <td>
                         <span class="badge bg-success">
                             {{ org.employee_count }}
                         </span>
                     </td>
+                    <td>
+                        <a href="/ui/organisations/{{ org.id }}/edit"
+                           class="btn btn-sm btn-outline-secondary">
+                            Edit
+                        </a>
+                    </td>
                 </tr>
-
                 {% else %}
-
                 <tr>
-                    <td colspan="5" class="text-center text-muted">
+                    <td colspan="6" class="text-center text-muted">
                         No organisations found.
                     </td>
                 </tr>
-
                 {% endfor %}
-
             </tbody>
-
         </table>
-
     </div>
-
 </div>
 
-
-<!-- MOBILE ORGANISATION CARDS -->
-
+<!-- Mobile listing -->
 <div class="d-md-none">
-
     {% for org in organisations %}
-
     <div class="card p-3 mb-3">
-
-        <!-- Organisation name -->
-
-        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
-
-            <h5 class="mb-0">
-                {{ org.name }}
-            </h5>
-
+        <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
+            <h5 class="mb-0">{{ org.name }}</h5>
             <span class="badge bg-success">
                 {{ org.employee_count }} Employees
             </span>
-
         </div>
 
-
-        <!-- Organisation details -->
-
         <div class="row g-3">
-
             <div class="col-6">
                 <small class="text-muted">Organisation ID</small>
-                <div class="fw-semibold">
-                    #{{ org.id }}
-                </div>
+                <div class="fw-semibold">#{{ org.id }}</div>
             </div>
 
             <div class="col-6">
                 <small class="text-muted">Country</small>
-                <div class="fw-semibold">
-                    {{ org.country }}
-                </div>
+                <div class="fw-semibold">{{ org.country }}</div>
             </div>
 
             <div class="col-12">
                 <small class="text-muted">ABN</small>
-                <div class="fw-semibold">
-                    {{ org.abn }}
-                </div>
+                <div class="fw-semibold">{{ org.abn }}</div>
             </div>
-
         </div>
 
+        <a href="/ui/organisations/{{ org.id }}/edit"
+           class="btn btn-outline-secondary w-100 mt-3">
+            Edit Organisation
+        </a>
     </div>
-
     {% else %}
-
     <div class="card p-3 text-center text-muted">
         No organisations found.
     </div>
-
     {% endfor %}
-
 </div>
 
 {% endblock %}

@@ -446,6 +446,82 @@ class TimesheetCreate(BaseModel):
     )
 
 
+
+# ============================================================
+# GENERATE INVOICE FROM APPROVED TIMESHEET
+# ============================================================
+
+class TimesheetInvoiceInput(BaseModel):
+    period_type: str
+    timesheet_id: int
+    engagement_id: int
+
+
+@app.post("/api/timesheets/invoice")
+def create_invoice_from_timesheet(data: TimesheetInvoiceInput):
+
+    with SessionLocal() as db:
+
+        if data.period_type == "daily":
+            timesheet = db.get(Timesheet, data.timesheet_id)
+
+            if timesheet is None or timesheet.timesheet_header_id is not None:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Daily timesheet not found"
+                )
+
+            timesheet_ids = [timesheet.id]
+
+        elif data.period_type == "weekly":
+            header = db.get(TimesheetHeader, data.timesheet_id)
+
+            if header is None or header.period_type != "weekly":
+                raise HTTPException(
+                    status_code=404,
+                    detail="Weekly timesheet not found"
+                )
+
+            if header.status != "approved":
+                raise HTTPException(
+                    status_code=409,
+                    detail="Weekly timesheet must be approved"
+                )
+
+            entries = db.scalars(
+                select(Timesheet)
+                .where(Timesheet.timesheet_header_id == header.id)
+                .order_by(Timesheet.work_date)
+            ).all()
+
+            if len(entries) != 7:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Weekly timesheet must contain seven entries"
+                )
+
+            timesheet_ids = [entry.id for entry in entries]
+
+        else:
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid timesheet period type"
+            )
+
+    from app.invoicing.engine import generate_invoice_for_timesheet
+
+    try:
+        return generate_invoice_for_timesheet(
+            engagement_id=data.engagement_id,
+            timesheet_ids=timesheet_ids
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=409,
+            detail=str(error)
+        )
+
+
 @app.get("/ui/timesheets", response_class=HTMLResponse)
 def list_timesheets(request: Request):
 
@@ -470,6 +546,7 @@ def list_timesheets(request: Request):
 
             weekly_timesheets.append({
                 "id": header.id,
+                "employee_id": header.employee_id,
                 "employee_name": (
                     f"{header.employee.first_name} "
                     f"{header.employee.last_name}"
@@ -493,6 +570,7 @@ def list_timesheets(request: Request):
         daily_data = [
             {
                 "id": timesheet.id,
+                "employee_id": timesheet.employee_id,
                 "employee_name": (
                     f"{timesheet.employee.first_name} "
                     f"{timesheet.employee.last_name}"
@@ -509,7 +587,19 @@ def list_timesheets(request: Request):
             name="timesheet_list.html",
             context={
                 "weekly_timesheets": weekly_timesheets,
-                "daily_timesheets": daily_data
+                "daily_timesheets": daily_data,
+                "engagement_options": [
+                    {
+                        "id": engagement.id,
+                        "employee_id": engagement.employee_id,
+                        "customer_name": engagement.customer.name,
+                        "billing_rate": str(engagement.billing_rate)
+                    }
+                    for engagement in db.scalars(
+                        select(WorkerEngagement)
+                        .order_by(WorkerEngagement.id)
+                    ).all()
+                ]
             }
         )
 
@@ -1391,6 +1481,130 @@ def employees_page(request: Request):
     )
 
 
+
+# ============================================================
+# EMPLOYEE CREATION AND EDITING
+# ============================================================
+
+class EmployeeFormInput(BaseModel):
+    first_name: str
+    last_name: str
+    email: str
+    organisation_id: int
+
+
+@app.get("/ui/employees/new", response_class=HTMLResponse)
+def new_employee_page(request: Request):
+    with SessionLocal() as db:
+        organisations = db.scalars(
+            select(Organisation).order_by(Organisation.name)
+        ).all()
+
+        organisation_data = [
+            {"id": org.id, "name": org.name}
+            for org in organisations
+        ]
+
+    return templates.TemplateResponse(
+        request=request,
+        name="employee_form.html",
+        context={
+            "employee": None,
+            "organisations": organisation_data,
+        },
+    )
+
+
+@app.get("/ui/employees/{employee_id}/edit", response_class=HTMLResponse)
+def edit_employee_page(request: Request, employee_id: int):
+    with SessionLocal() as db:
+        employee = db.get(Employee, employee_id)
+
+        if employee is None:
+            raise HTTPException(status_code=404, detail="Employee not found")
+
+        employee_data = {
+            "id": employee.id,
+            "first_name": employee.first_name,
+            "last_name": employee.last_name,
+            "email": employee.email,
+            "organisation_id": employee.organisation_id,
+        }
+
+        organisations = db.scalars(
+            select(Organisation).order_by(Organisation.name)
+        ).all()
+
+        organisation_data = [
+            {"id": org.id, "name": org.name}
+            for org in organisations
+        ]
+
+    return templates.TemplateResponse(
+        request=request,
+        name="employee_form.html",
+        context={
+            "employee": employee_data,
+            "organisations": organisation_data,
+        },
+    )
+
+
+@app.post("/api/employees")
+def create_employee(data: EmployeeFormInput):
+    first_name = data.first_name.strip()
+    last_name = data.last_name.strip()
+    email = data.email.strip()
+
+    if not first_name or not last_name or not email:
+        raise HTTPException(status_code=422, detail="All employee fields are required")
+
+    with SessionLocal() as db:
+        if db.get(Organisation, data.organisation_id) is None:
+            raise HTTPException(status_code=404, detail="Organisation not found")
+
+        employee = Employee(
+            organisation_id=data.organisation_id,
+            first_name=first_name,
+            last_name=last_name,
+            email=email,
+        )
+
+        db.add(employee)
+        db.commit()
+        db.refresh(employee)
+
+        return {"id": employee.id}
+
+
+@app.patch("/api/employees/{employee_id}")
+def update_employee(employee_id: int, data: EmployeeFormInput):
+    first_name = data.first_name.strip()
+    last_name = data.last_name.strip()
+    email = data.email.strip()
+
+    if not first_name or not last_name or not email:
+        raise HTTPException(status_code=422, detail="All employee fields are required")
+
+    with SessionLocal() as db:
+        employee = db.get(Employee, employee_id)
+
+        if employee is None:
+            raise HTTPException(status_code=404, detail="Employee not found")
+
+        if db.get(Organisation, data.organisation_id) is None:
+            raise HTTPException(status_code=404, detail="Organisation not found")
+
+        employee.first_name = first_name
+        employee.last_name = last_name
+        employee.email = email
+        employee.organisation_id = data.organisation_id
+
+        db.commit()
+
+        return {"id": employee.id}
+
+
 @app.get("/ui/employees/{employee_id}", response_class=HTMLResponse)
 def employee_detail_page(request: Request, employee_id: int):
 
@@ -1613,6 +1827,108 @@ def organisations_page(request: Request):
         context={"organisations": organisation_data}
     )
 
+
+class OrganisationInput(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    abn: str
+    country: str = "AU"
+
+
+def validate_organisation(data: OrganisationInput):
+    if not data.name.strip():
+        raise HTTPException(422, "Organisation name is required")
+
+    abn = "".join(data.abn.split())
+
+    if len(abn) != 11 or not abn.isdigit():
+        raise HTTPException(422, "ABN must contain 11 digits")
+
+    if data.country != "AU":
+        raise HTTPException(422, "Only Australian organisations are supported")
+
+    return abn
+
+
+@app.get("/ui/organisations/new", response_class=HTMLResponse)
+def new_organisation_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="organisation_form.html",
+        context={"organisation": None}
+    )
+
+
+@app.get("/ui/organisations/{organisation_id}/edit", response_class=HTMLResponse)
+def edit_organisation_page(request: Request, organisation_id: int):
+    with SessionLocal() as db:
+        organisation = db.get(Organisation, organisation_id)
+
+        if organisation is None:
+            raise HTTPException(404, "Organisation not found")
+
+        data = {
+            "id": organisation.id,
+            "name": organisation.name,
+            "abn": organisation.abn,
+            "country": organisation.country
+        }
+
+    return templates.TemplateResponse(
+        request=request,
+        name="organisation_form.html",
+        context={"organisation": data}
+    )
+
+
+@app.post("/api/organisations", status_code=201)
+def create_organisation(data: OrganisationInput):
+    from sqlalchemy.exc import IntegrityError
+
+    abn = validate_organisation(data)
+
+    with SessionLocal() as db:
+        organisation = Organisation(
+            name=data.name.strip(),
+            abn=abn,
+            country="AU"
+        )
+        db.add(organisation)
+
+        try:
+            db.commit()
+            db.refresh(organisation)
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(409, "Organisation ABN already exists")
+
+        return {"id": organisation.id, "status": "created"}
+
+
+@app.patch("/api/organisations/{organisation_id}")
+def update_organisation(organisation_id: int, data: OrganisationInput):
+    from sqlalchemy.exc import IntegrityError
+
+    abn = validate_organisation(data)
+
+    with SessionLocal() as db:
+        organisation = db.get(Organisation, organisation_id)
+
+        if organisation is None:
+            raise HTTPException(404, "Organisation not found")
+
+        organisation.name = data.name.strip()
+        organisation.abn = abn
+        organisation.country = "AU"
+
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(409, "Organisation ABN already exists")
+
+        return {"id": organisation_id, "status": "updated"}
+
+
 # ============================================================
 # EMPLOYMENT AGREEMENT VIEW AND EDIT
 # ============================================================
@@ -1627,6 +1943,76 @@ class EmploymentAgreementUpdate(BaseModel):
     pay_frequency: str
     start_date: date
     end_date: date | None = None
+
+
+
+@app.get(
+    "/ui/employees/{employee_id}/agreements/new",
+    response_class=HTMLResponse
+)
+def new_employment_agreement_page(request: Request, employee_id: int):
+    with SessionLocal() as db:
+        employee = db.get(Employee, employee_id)
+
+        if employee is None:
+            raise HTTPException(404, "Employee not found")
+
+        employee_data = {
+            "id": employee.id,
+            "first_name": employee.first_name,
+            "last_name": employee.last_name
+        }
+
+    return templates.TemplateResponse(
+        request=request,
+        name="agreement_create.html",
+        context={"employee": employee_data}
+    )
+
+
+@app.post("/api/employees/{employee_id}/agreements", status_code=201)
+def create_employment_agreement(
+    employee_id: int,
+    data: EmploymentAgreementUpdate
+):
+    if data.employment_type not in {
+        "full_time", "part_time", "casual", "fixed_term"
+    }:
+        raise HTTPException(422, "Invalid employment type")
+
+    if data.pay_basis not in {"hourly", "salary"}:
+        raise HTTPException(422, "Invalid pay basis")
+
+    if data.pay_frequency not in {
+        "weekly", "fortnightly", "monthly"
+    }:
+        raise HTTPException(422, "Invalid pay frequency")
+
+    if data.end_date is not None and data.end_date < data.start_date:
+        raise HTTPException(422, "End date cannot be before start date")
+
+    with SessionLocal() as db:
+        employee = db.get(Employee, employee_id)
+
+        if employee is None:
+            raise HTTPException(404, "Employee not found")
+
+        agreement = EmploymentAgreement(
+            employee_id=employee_id,
+            employment_type=data.employment_type,
+            pay_basis=data.pay_basis,
+            hourly_rate=data.hourly_rate,
+            ordinary_hours_per_week=data.ordinary_hours_per_week,
+            pay_frequency=data.pay_frequency,
+            start_date=data.start_date,
+            end_date=data.end_date
+        )
+
+        db.add(agreement)
+        db.commit()
+        db.refresh(agreement)
+
+        return {"id": agreement.id, "status": "created"}
 
 
 @app.get("/ui/agreements/{agreement_id}", response_class=HTMLResponse)
@@ -1860,6 +2246,143 @@ def payslips_page(request: Request):
 # ============================================================
 # INVOICING
 # ============================================================
+
+
+# ============================================================
+# WORKER ENGAGEMENT MANAGEMENT
+# ============================================================
+
+class WorkerEngagementInput(BaseModel):
+    employee_id: int
+    customer_id: int
+    billing_rate: Decimal
+
+
+@app.get("/ui/engagements", response_class=HTMLResponse)
+def worker_engagements_page(request: Request):
+    with SessionLocal() as db:
+        engagements = db.scalars(
+            select(WorkerEngagement).order_by(WorkerEngagement.id)
+        ).all()
+
+        engagement_data = [
+            {
+                "id": engagement.id,
+                "employee_id": engagement.employee_id,
+                "customer_id": engagement.customer_id,
+                "employee_name": (
+                    f"{engagement.employee.first_name} "
+                    f"{engagement.employee.last_name}"
+                ),
+                "customer_name": engagement.customer.name,
+                "billing_rate": str(engagement.billing_rate),
+            }
+            for engagement in engagements
+        ]
+
+        employees = db.scalars(
+            select(Employee).order_by(Employee.last_name, Employee.first_name)
+        ).all()
+
+        employee_data = [
+            {
+                "id": employee.id,
+                "name": f"{employee.first_name} {employee.last_name}",
+            }
+            for employee in employees
+        ]
+
+        customers = db.scalars(
+            select(Organisation).order_by(Organisation.name)
+        ).all()
+
+        customer_data = [
+            {"id": customer.id, "name": customer.name}
+            for customer in customers
+        ]
+
+    return templates.TemplateResponse(
+        request=request,
+        name="engagements.html",
+        context={
+            "engagements": engagement_data,
+            "employees": employee_data,
+            "customers": customer_data,
+        },
+    )
+
+
+def validate_engagement_input(db, data):
+    if not data.billing_rate.is_finite() or data.billing_rate <= 0:
+        raise HTTPException(
+            status_code=422,
+            detail="Billing rate must be greater than zero",
+        )
+
+    if data.billing_rate.as_tuple().exponent < -2:
+        raise HTTPException(
+            status_code=422,
+            detail="Billing rate cannot have more than two decimal places",
+        )
+
+    if data.billing_rate > Decimal("99999999.99"):
+        raise HTTPException(
+            status_code=422,
+            detail="Billing rate exceeds the maximum allowed",
+        )
+
+    if db.get(Employee, data.employee_id) is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Employee not found",
+        )
+
+    if db.get(Organisation, data.customer_id) is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Customer organisation not found",
+        )
+
+
+@app.post("/api/engagements")
+def create_engagement(data: WorkerEngagementInput):
+    with SessionLocal() as db:
+        validate_engagement_input(db, data)
+
+        engagement = WorkerEngagement(
+            employee_id=data.employee_id,
+            customer_id=data.customer_id,
+            billing_rate=data.billing_rate,
+        )
+
+        db.add(engagement)
+        db.commit()
+        db.refresh(engagement)
+
+        return {"id": engagement.id}
+
+
+@app.patch("/api/engagements/{engagement_id}")
+def update_engagement(engagement_id: int, data: WorkerEngagementInput):
+    with SessionLocal() as db:
+        engagement = db.get(WorkerEngagement, engagement_id)
+
+        if engagement is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Worker engagement not found",
+            )
+
+        validate_engagement_input(db, data)
+
+        engagement.employee_id = data.employee_id
+        engagement.customer_id = data.customer_id
+        engagement.billing_rate = data.billing_rate
+
+        db.commit()
+
+        return {"id": engagement.id}
+
 
 @app.post("/ui/engagements/create")
 def create_worker_engagement(
