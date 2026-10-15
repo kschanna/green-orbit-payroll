@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from app.database import SessionLocal
 from app.models.employee import Employee
-from app.models.employment_agreement import EmploymentAgreement
+from app.models.work_pattern import WorkPattern
 
 
 def main():
@@ -32,8 +32,8 @@ def main():
         session.add(employee)
         session.flush()
 
-        # Create her employment agreement
-        agreement = EmploymentAgreement(
+        # Create her work pattern
+        agreement = WorkPattern(
             employee_id=employee.id,
             employment_type="full_time",
             pay_basis="hourly",

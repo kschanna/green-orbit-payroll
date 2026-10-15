@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from app.database import SessionLocal
 from app.models.employee import Employee
-from app.models.employment_agreement import EmploymentAgreement
+from app.models.work_pattern import WorkPattern
 from app.models.pay_run import PayRun
 from app.models.payslip import Payslip
 
@@ -23,9 +23,9 @@ def main():
         if employee is None:
             raise ValueError("Employee not found")
 
-        # Retrieve the employee's employment agreement
+        # Retrieve the employee's work pattern
         agreement = (
-            session.query(EmploymentAgreement)
+            session.query(WorkPattern)
             .filter_by(employee_id=employee.id)
             .first()
         )

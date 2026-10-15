@@ -2,12 +2,12 @@ from datetime import date
 from decimal import Decimal
 
 from app.database import SessionLocal
-from app.models.employment_agreement import EmploymentAgreement
+from app.models.work_pattern import WorkPattern
 
 
 def main():
     with SessionLocal() as session:
-        agreement = EmploymentAgreement(
+        agreement = WorkPattern(
             employee_id=1,
             employment_type="full_time",
             pay_basis="hourly",

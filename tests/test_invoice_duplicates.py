@@ -8,7 +8,7 @@ from app.database import SessionLocal
 from app.invoicing.engine import generate_invoice
 from app.models.organisation import Organisation
 from app.models.employee import Employee
-from app.models.worker_engagement import WorkerEngagement
+from app.models.assignment import Assignment
 from app.models.timesheet import Timesheet
 from app.models.invoice import Invoice
 from app.models.invoice_timesheet import InvoiceTimesheet
@@ -47,7 +47,7 @@ def test_duplicate_invoice_prevention():
         session.add(employee)
         session.flush()
 
-        engagement = WorkerEngagement(
+        engagement = Assignment(
             employee_id=employee.id,
             customer_id=customer.id,
             billing_rate=Decimal("150.00"),
@@ -105,8 +105,8 @@ def test_duplicate_invoice_prevention():
                 Timesheet.employee_id == employee_id
             ).delete()
 
-            session.query(WorkerEngagement).filter(
-                WorkerEngagement.id == engagement_id
+            session.query(Assignment).filter(
+                Assignment.id == engagement_id
             ).delete()
 
             session.query(Employee).filter(

@@ -4,7 +4,7 @@ from decimal import Decimal
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models.employment_agreement import EmploymentAgreement
+from app.models.work_pattern import WorkPattern
 from app.payroll.gross_pay import GrossPayCalculator
 from app.payroll.payg_withholding import PAYGWithholdingCalculator
 from app.payroll.superannuation import SuperannuationCalculator
@@ -14,8 +14,8 @@ def main():
     with SessionLocal() as session:
 
         agreement = session.scalar(
-            select(EmploymentAgreement)
-            .where(EmploymentAgreement.employee_id == 1)
+            select(WorkPattern)
+            .where(WorkPattern.employee_id == 1)
         )
 
         if agreement is None:

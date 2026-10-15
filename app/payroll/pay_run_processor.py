@@ -4,7 +4,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.orm import Session
 
 from app.models.employee import Employee
-from app.models.employment_agreement import EmploymentAgreement
+from app.models.work_pattern import WorkPattern
 from app.models.pay_run import PayRun
 from app.models.payslip import Payslip
 from app.models.timesheet import Timesheet
@@ -51,17 +51,17 @@ class PayRunProcessor:
                 )
             )
 
-            # Find the employee's employment agreement
+            # Find the employee's work pattern
             agreement = session.scalar(
-                select(EmploymentAgreement).where(
-                    EmploymentAgreement.employee_id == employee.id,
-                    EmploymentAgreement.start_date <= pay_run.period_end,
+                select(WorkPattern).where(
+                    WorkPattern.employee_id == employee.id,
+                    WorkPattern.start_date <= pay_run.period_end,
                     (
-                        EmploymentAgreement.end_date.is_(None)
-                        | (EmploymentAgreement.end_date >= pay_run.period_start)
+                        WorkPattern.end_date.is_(None)
+                        | (WorkPattern.end_date >= pay_run.period_start)
                     )
                 ).order_by(
-                    EmploymentAgreement.start_date.desc()
+                    WorkPattern.start_date.desc()
                 )
             )
 

@@ -74,7 +74,7 @@ from sqlalchemy.pool import StaticPool
 from app.models.payslip_timesheet import PayslipTimesheet
 from app.models.organisation import Base, Organisation
 from app.models.employee import Employee
-from app.models.employment_agreement import EmploymentAgreement
+from app.models.work_pattern import WorkPattern
 from app.models.payslip import Payslip
 
 
@@ -107,7 +107,7 @@ def test_draft_payslip_is_recalculated():
         session.add(employee)
         session.flush()
 
-        agreement = EmploymentAgreement(
+        agreement = WorkPattern(
             employee_id=employee.id,
             employment_type="full_time",
             pay_basis="hourly",
@@ -240,7 +240,7 @@ def test_process_multiple_employees():
             session.add(employee)
             session.flush()
 
-            agreement = EmploymentAgreement(
+            agreement = WorkPattern(
                 employee_id=employee.id,
                 employment_type="full_time",
                 pay_basis="hourly",

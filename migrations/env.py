@@ -8,7 +8,7 @@ from alembic import context
 from app.database import DATABASE_URL
 from app.models.organisation import Base, Organisation
 from app.models.employee import Employee
-from app.models.employment_agreement import EmploymentAgreement
+from app.models.work_pattern import WorkPattern
 from app.models.payg_tax_table import PAYGTaxTable
 from app.models.pay_run import PayRun
 from app.models.payslip import Payslip
@@ -16,7 +16,7 @@ from app.models.user import User
 from app.models.timesheet import Timesheet
 from app.models.timesheet_header import TimesheetHeader
 from app.models.payslip_timesheet import PayslipTimesheet
-from app.models.worker_engagement import WorkerEngagement
+from app.models.assignment import Assignment
 from app.models.invoice import Invoice
 from app.models.invoice_timesheet import InvoiceTimesheet
 

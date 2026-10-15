@@ -360,7 +360,7 @@ async function submitApproval(endpoint) {
 
             <div class="modal-body">
                 <label for="invoiceEngagement" class="form-label">
-                    Worker Engagement
+                    Assignment
                 </label>
 
                 <select id="invoiceEngagement" class="form-select"></select>
@@ -406,7 +406,7 @@ function openInvoiceDialog(periodType, timesheetId, employeeId) {
 
     if (!available.length) {
         select.innerHTML = '<option value="">No engagement available</option>';
-        info.textContent = "Create a Worker Engagement for this employee first.";
+        info.textContent = "Create a Assignment for this employee first.";
     } else {
         for (const engagement of available) {
             const option = document.createElement("option");

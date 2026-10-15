@@ -18,7 +18,7 @@ from app.models.payslip import Payslip
 from app.payroll.pay_run_processor import PayRunProcessor
 from app.payroll.pay_run_lifecycle import PayRunLifecycle
 from app.reports.payslip_pdf import PayslipPDFGenerator
-from app.models.employment_agreement import EmploymentAgreement
+from app.models.work_pattern import WorkPattern
 from fastapi import Form
 from fastapi.responses import RedirectResponse
 from app.models.user import User
@@ -29,7 +29,7 @@ from fastapi.responses import PlainTextResponse
 from app.models.timesheet import Timesheet
 from app.models.payslip_timesheet import PayslipTimesheet
 from app.models.invoice import Invoice
-from app.models.worker_engagement import WorkerEngagement
+from app.models.assignment import Assignment
 from app.models.invoice_timesheet import InvoiceTimesheet
 from app.reports.invoice_pdf import InvoicePDFGenerator
 from app.invoicing.engine import generate_invoice
@@ -605,8 +605,8 @@ def list_timesheets(request: Request):
                         "billing_rate": str(engagement.billing_rate)
                     }
                     for engagement in db.scalars(
-                        select(WorkerEngagement)
-                        .order_by(WorkerEngagement.id)
+                        select(Assignment)
+                        .order_by(Assignment.id)
                     ).all()
                 ]
             }
@@ -1633,9 +1633,9 @@ def employee_detail_page(request: Request, employee_id: int):
         )
 
         agreements = session.scalars(
-            select(EmploymentAgreement)
-            .where(EmploymentAgreement.employee_id == employee_id)
-            .order_by(EmploymentAgreement.start_date.desc())
+            select(WorkPattern)
+            .where(WorkPattern.employee_id == employee_id)
+            .order_by(WorkPattern.start_date.desc())
         ).all()
 
         employee_data = {
@@ -1942,7 +1942,7 @@ def update_organisation(organisation_id: int, data: OrganisationInput):
 # EMPLOYMENT AGREEMENT VIEW AND EDIT
 # ============================================================
 
-class EmploymentAgreementUpdate(BaseModel):
+class WorkPatternUpdate(BaseModel):
     employment_type: str
     pay_basis: str
     hourly_rate: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
@@ -1959,7 +1959,7 @@ class EmploymentAgreementUpdate(BaseModel):
     "/ui/employees/{employee_id}/agreements/new",
     response_class=HTMLResponse
 )
-def new_employment_agreement_page(request: Request, employee_id: int):
+def new_work_pattern_page(request: Request, employee_id: int):
     with SessionLocal() as db:
         employee = db.get(Employee, employee_id)
 
@@ -1980,9 +1980,9 @@ def new_employment_agreement_page(request: Request, employee_id: int):
 
 
 @app.post("/api/employees/{employee_id}/agreements", status_code=201)
-def create_employment_agreement(
+def create_work_pattern(
     employee_id: int,
-    data: EmploymentAgreementUpdate
+    data: WorkPatternUpdate
 ):
     if data.employment_type not in {
         "full_time", "part_time", "casual", "fixed_term"
@@ -2006,7 +2006,7 @@ def create_employment_agreement(
         if employee is None:
             raise HTTPException(404, "Employee not found")
 
-        agreement = EmploymentAgreement(
+        agreement = WorkPattern(
             employee_id=employee_id,
             employment_type=data.employment_type,
             pay_basis=data.pay_basis,
@@ -2025,11 +2025,11 @@ def create_employment_agreement(
 
 
 @app.get("/ui/agreements/{agreement_id}", response_class=HTMLResponse)
-def view_employment_agreement(request: Request, agreement_id: int):
+def view_work_pattern(request: Request, agreement_id: int):
 
     with SessionLocal() as db:
 
-        agreement = db.get(EmploymentAgreement, agreement_id)
+        agreement = db.get(WorkPattern, agreement_id)
 
         if agreement is None:
             raise HTTPException(
@@ -2065,11 +2065,11 @@ def view_employment_agreement(request: Request, agreement_id: int):
 
 
 @app.get("/ui/agreements/{agreement_id}/edit", response_class=HTMLResponse)
-def edit_employment_agreement(request: Request, agreement_id: int):
+def edit_work_pattern(request: Request, agreement_id: int):
 
     with SessionLocal() as db:
 
-        agreement = db.get(EmploymentAgreement, agreement_id)
+        agreement = db.get(WorkPattern, agreement_id)
 
         if agreement is None:
             raise HTTPException(
@@ -2098,9 +2098,9 @@ def edit_employment_agreement(request: Request, agreement_id: int):
 
 
 @app.patch("/api/agreements/{agreement_id}")
-def update_employment_agreement(
+def update_work_pattern(
     agreement_id: int,
-    data: EmploymentAgreementUpdate
+    data: WorkPatternUpdate
 ):
 
     if data.employment_type not in {
@@ -2133,7 +2133,7 @@ def update_employment_agreement(
 
     with SessionLocal() as db:
 
-        agreement = db.get(EmploymentAgreement, agreement_id)
+        agreement = db.get(WorkPattern, agreement_id)
 
         if agreement is None:
             raise HTTPException(
@@ -2162,10 +2162,10 @@ def agreements_page(request: Request):
     with SessionLocal() as session:
 
         rows = session.execute(
-            select(EmploymentAgreement, Employee)
+            select(WorkPattern, Employee)
             .join(
                 Employee,
-                EmploymentAgreement.employee_id == Employee.id
+                WorkPattern.employee_id == Employee.id
             )
             .order_by(Employee.last_name, Employee.first_name)
         ).all()
@@ -2261,17 +2261,17 @@ def payslips_page(request: Request):
 # WORKER ENGAGEMENT MANAGEMENT
 # ============================================================
 
-class WorkerEngagementInput(BaseModel):
+class AssignmentInput(BaseModel):
     employee_id: int
     customer_id: int
     billing_rate: Decimal
 
 
 @app.get("/ui/engagements", response_class=HTMLResponse)
-def worker_engagements_page(request: Request):
+def assignments_page(request: Request):
     with SessionLocal() as db:
         engagements = db.scalars(
-            select(WorkerEngagement).order_by(WorkerEngagement.id)
+            select(Assignment).order_by(Assignment.id)
         ).all()
 
         engagement_data = [
@@ -2354,11 +2354,11 @@ def validate_engagement_input(db, data):
 
 
 @app.post("/api/engagements")
-def create_engagement(data: WorkerEngagementInput):
+def create_engagement(data: AssignmentInput):
     with SessionLocal() as db:
         validate_engagement_input(db, data)
 
-        engagement = WorkerEngagement(
+        engagement = Assignment(
             employee_id=data.employee_id,
             customer_id=data.customer_id,
             billing_rate=data.billing_rate,
@@ -2372,9 +2372,9 @@ def create_engagement(data: WorkerEngagementInput):
 
 
 @app.patch("/api/engagements/{engagement_id}")
-def update_engagement(engagement_id: int, data: WorkerEngagementInput):
+def update_engagement(engagement_id: int, data: AssignmentInput):
     with SessionLocal() as db:
-        engagement = db.get(WorkerEngagement, engagement_id)
+        engagement = db.get(Assignment, engagement_id)
 
         if engagement is None:
             raise HTTPException(
@@ -2394,7 +2394,7 @@ def update_engagement(engagement_id: int, data: WorkerEngagementInput):
 
 
 @app.post("/ui/engagements/create")
-def create_worker_engagement(
+def create_assignment(
     employee_id: int = Form(...),
     customer_id: int = Form(...),
     billing_rate: Decimal = Form(...)
@@ -2421,7 +2421,7 @@ def create_worker_engagement(
                 detail="Customer organisation not found"
             )
 
-        engagement = WorkerEngagement(
+        engagement = Assignment(
             employee_id=employee_id,
             customer_id=customer_id,
             billing_rate=billing_rate
@@ -2526,9 +2526,9 @@ def invoices_page(request: Request):
         ]
 
         engagements = session.execute(
-            select(WorkerEngagement, Employee, Organisation)
-            .join(Employee, WorkerEngagement.employee_id == Employee.id)
-            .join(Organisation, WorkerEngagement.customer_id == Organisation.id)
+            select(Assignment, Employee, Organisation)
+            .join(Employee, Assignment.employee_id == Employee.id)
+            .join(Organisation, Assignment.customer_id == Organisation.id)
             .order_by(Employee.last_name)
         ).all()
 
@@ -2545,18 +2545,18 @@ def invoices_page(request: Request):
         ]
 
         rows = session.execute(
-            select(Invoice, WorkerEngagement, Employee, Organisation)
+            select(Invoice, Assignment, Employee, Organisation)
             .join(
-                WorkerEngagement,
-                Invoice.engagement_id == WorkerEngagement.id
+                Assignment,
+                Invoice.engagement_id == Assignment.id
             )
             .join(
                 Employee,
-                WorkerEngagement.employee_id == Employee.id
+                Assignment.employee_id == Employee.id
             )
             .join(
                 Organisation,
-                WorkerEngagement.customer_id == Organisation.id
+                Assignment.customer_id == Organisation.id
             )
             .order_by(Invoice.issue_date.desc(), Invoice.id.desc())
         ).all()
@@ -2601,7 +2601,7 @@ def download_invoice_pdf(invoice_id: int):
                 detail="Invoice not found"
             )
 
-        engagement = session.get(WorkerEngagement, invoice.engagement_id)
+        engagement = session.get(Assignment, invoice.engagement_id)
         employee = session.get(Employee, engagement.employee_id)
         supplier = session.get(Organisation, employee.organisation_id)
         customer = session.get(Organisation, engagement.customer_id)

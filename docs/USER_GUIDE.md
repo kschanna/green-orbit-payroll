@@ -14,11 +14,11 @@ Use Organisations to manage business and customer records. Select New Organisati
 
 ## Employees
 
-Use Employees to create and maintain employee records. Select an employee to view their details and employment agreements. Employee information should be checked before processing payroll.
+Use Employees to create and maintain employee records. Select an employee to view their details and work patterns. Employee information should be checked before processing payroll.
 
 ## Agreements (Work Patterns)
 
-Employment Agreements define an employee's employment type, pay basis, hourly rate, ordinary weekly hours, pay frequency and effective dates. Create agreements from the employee's details page. Review the agreement before processing payroll.
+Work Patterns define an employee's employment type, pay basis, hourly rate, ordinary weekly hours, pay frequency and effective dates. Create agreements from the employee's details page. Review the agreement before processing payroll.
 
 ## Work Engagements (Assignment)
 
@@ -42,5 +42,5 @@ Invoices are generated from approved timesheets using the selected Work Engageme
 
 ## Troubleshooting
 
-If a Worker Engagement does not appear during invoice generation, confirm that an engagement exists for the timesheet employee. If an action is rejected, read the displayed error and check required fields, approval status and record dates. Contact your system administrator if the problem persists.
+If a Assignment does not appear during invoice generation, confirm that an engagement exists for the timesheet employee. If an action is rejected, read the displayed error and check required fields, approval status and record dates. Contact your system administrator if the problem persists.
 

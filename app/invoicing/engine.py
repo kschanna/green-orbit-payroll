@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
-from app.models.worker_engagement import WorkerEngagement
+from app.models.assignment import Assignment
 from app.models.employee import Employee
 from app.models.timesheet import Timesheet
 from app.models.invoice import Invoice
@@ -21,7 +21,7 @@ def generate_invoice(engagement_id: int, start_date: date, end_date: date):
 
     with SessionLocal() as session:
 
-        engagement = session.get(WorkerEngagement, engagement_id)
+        engagement = session.get(Assignment, engagement_id)
 
         if engagement is None:
             raise ValueError("Worker engagement not found")
@@ -110,7 +110,7 @@ def generate_invoice_for_timesheet(
         raise ValueError("Invalid timesheet selection")
 
     with SessionLocal() as session:
-        engagement = session.get(WorkerEngagement, engagement_id)
+        engagement = session.get(Assignment, engagement_id)
 
         if engagement is None:
             raise ValueError("Worker engagement not found")

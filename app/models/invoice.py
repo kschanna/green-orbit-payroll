@@ -13,7 +13,7 @@ class Invoice(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
 
     engagement_id: Mapped[int] = mapped_column(
-        ForeignKey("worker_engagements.id"),
+        ForeignKey("assignments.id"),
         nullable=False
     )
 
@@ -35,4 +35,4 @@ class Invoice(Base):
         nullable=False
     )
 
-    engagement = relationship("WorkerEngagement")
+    engagement = relationship("Assignment")

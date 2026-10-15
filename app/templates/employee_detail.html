@@ -61,11 +61,11 @@
 </div>
 
 
-<!-- EMPLOYMENT AGREEMENTS -->
+<!-- WORK PATTERNS -->
 
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
     <div>
-        <h5 class="mb-1">Employment Agreements</h5>
+        <h5 class="mb-1">Work Patterns</h5>
         <span class="badge bg-success">
             {{ agreements | length }} Agreements
         </span>
@@ -73,7 +73,7 @@
 
     <a href="/ui/employees/{{ employee.id }}/agreements/new"
        class="btn btn-success">
-        + New Employment Agreement
+        + New Work Pattern
     </a>
 </div>
 
@@ -143,7 +143,7 @@
                 {% else %}
                 <tr>
                     <td colspan="10" class="text-center text-muted">
-                        No employment agreements found.
+                        No work patterns found.
                     </td>
                 </tr>
                 {% endfor %}

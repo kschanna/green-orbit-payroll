@@ -8,9 +8,9 @@ from app.models.organisation import Base
 from app.models.employee import Employee
 
 
-class EmploymentAgreement(Base):
+class WorkPattern(Base):
 
-    __tablename__ = "employment_agreements"
+    __tablename__ = "work_patterns"
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
