@@ -91,7 +91,7 @@
                         <strong>#{{ run.id }}</strong>
                     </td>
 
-                    <td>{{ run.payment_date }}</td>
+                    <td>{{ run.payment_date | date_au }}</td>
 
                     <td>
                         {% if run.status == "completed" %}
@@ -168,7 +168,7 @@
 
         <div class="mb-3">
             <small class="text-muted">Payment Date</small>
-            <div>{{ run.payment_date }}</div>
+            <div>{{ run.payment_date | date_au }}</div>
         </div>
 
         <a href="/ui/pay-runs/{{ run.id }}"

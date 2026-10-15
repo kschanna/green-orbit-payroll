@@ -155,7 +155,7 @@
             <small class="text-muted">Start Date</small>
 
             <div class="fw-semibold">
-                {{ agreement.start_date }}
+                {{ agreement.start_date | date_au }}
             </div>
 
         </div>
@@ -165,7 +165,7 @@
             <small class="text-muted">End Date</small>
 
             <div class="fw-semibold">
-                {{ agreement.end_date or "Current" }}
+                {{ agreement.end_date | date_au if agreement.end_date else "Current" }}
             </div>
 
         </div>

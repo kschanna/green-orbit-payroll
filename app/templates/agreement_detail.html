@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="container mt-4">
+
+    <!-- PAGE HEADER -->
+
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+
+        <div>
+            <h2>Employment Agreement #{{ agreement.id }}</h2>
+            <p class="text-muted mb-0">
+                Employment conditions and remuneration details
+            </p>
+        </div>
+
+        <div class="d-flex gap-2">
+
+            <a href="/ui/agreements"
+               class="btn btn-outline-secondary">
+                Back to Agreements
+            </a>
+
+            <a href="/ui/agreements/{{ agreement.id }}/edit"
+               class="btn btn-primary">
+                Edit Agreement
+            </a>
+
+        </div>
+
+    </div>
+
+
+    <!-- AGREEMENT DETAILS -->
+
+    <div class="card">
+
+        <div class="card-body p-4">
+
+            <div class="row g-4">
+
+                <!-- EMPLOYEE -->
+
+                <div class="col-md-6">
+                    <label class="text-muted">Employee</label>
+                    <div class="fs-5 fw-semibold">
+                        {{ employee_name }}
+                    </div>
+                </div>
+
+
+                <!-- STATUS -->
+
+                <div class="col-md-6">
+                    <label class="text-muted">Agreement Status</label>
+
+                    <div>
+                        {% if is_active %}
+                            <span class="badge bg-success">Active</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Inactive</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+
+                <!-- EMPLOYMENT TYPE -->
+
+                <div class="col-md-6">
+                    <label class="text-muted">Employment Type</label>
+
+                    <div class="fw-semibold">
+                        {{ agreement.employment_type | replace("_", " ") | title }}
+                    </div>
+                </div>
+
+
+                <!-- PAY BASIS -->
+
+                <div class="col-md-6">
+                    <label class="text-muted">Pay Basis</label>
+
+                    <div class="fw-semibold">
+                        {{ agreement.pay_basis | title }}
+                    </div>
+                </div>
+
+
+                <!-- HOURLY RATE -->
+
+                <div class="col-md-6">
+                    <label class="text-muted">Hourly Rate (AUD)</label>
+
+                    <div class="fs-4 text-success fw-semibold">
+                        ${{ "%.2f" | format(agreement.hourly_rate) }}
+                    </div>
+                </div>
+
+
+                <!-- ORDINARY HOURS -->
+
+                <div class="col-md-6">
+                    <label class="text-muted">Ordinary Hours per Week</label>
+
+                    <div class="fw-semibold">
+                        {{ agreement.ordinary_hours_per_week }}
+                    </div>
+                </div>
+
+
+                <!-- PAY FREQUENCY -->
+
+                <div class="col-md-6">
+                    <label class="text-muted">Pay Frequency</label>
+
+                    <div class="fw-semibold">
+                        {{ agreement.pay_frequency | title }}
+                    </div>
+                </div>
+
+
+                <!-- START DATE -->
+
+                <div class="col-md-6">
+                    <label class="text-muted">Agreement Start Date</label>
+
+                    <div class="fw-semibold">
+                        {{ agreement.start_date | date_au }}
+                    </div>
+                </div>
+
+
+                <!-- END DATE -->
+
+                <div class="col-md-6">
+                    <label class="text-muted">Agreement End Date</label>
+
+                    <div class="fw-semibold">
+                        {{ agreement.end_date | date_au if agreement.end_date else "Ongoing" }}
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- ACTION BUTTONS -->
+
+    <div class="d-flex gap-2 mt-4">
+
+        <a href="/ui/agreements/{{ agreement.id }}/edit"
+           class="btn btn-primary">
+            Edit Agreement
+        </a>
+
+        <a href="/ui/agreements"
+           class="btn btn-outline-secondary">
+            Back to Agreements
+        </a>
+
+    </div>
+
+</div>
+
+{% endblock %}

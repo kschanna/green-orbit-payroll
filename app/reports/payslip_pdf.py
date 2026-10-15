@@ -1,3 +1,4 @@
+from app.utils.dates import format_date_au
 from io import BytesIO
 
 from reportlab.lib import colors
@@ -52,14 +53,14 @@ class PayslipPDFGenerator:
         elements.append(
             Paragraph(
                 f"<b>Pay period:</b> "
-                f"{pay_run.period_start} to {pay_run.period_end}",
+                f"{format_date_au(pay_run.period_start)} to {format_date_au(pay_run.period_end)}",
                 styles["Normal"]
             )
         )
 
         elements.append(
             Paragraph(
-                f"<b>Payment date:</b> {pay_run.payment_date}",
+                f"<b>Payment date:</b> {format_date_au(pay_run.payment_date)}",
                 styles["Normal"]
             )
         )

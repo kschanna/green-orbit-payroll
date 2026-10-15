@@ -50,9 +50,9 @@
 
                     <td>{{ timesheet.employee_name }}</td>
 
-                    <td>{{ timesheet.period_start }}</td>
+                    <td>{{ timesheet.period_start | date_au }}</td>
 
-                    <td>{{ timesheet.period_end }}</td>
+                    <td>{{ timesheet.period_end | date_au }}</td>
 
                     <td>
                         {{ "%.2f"|format(timesheet.total_hours) }}
@@ -161,7 +161,7 @@
 
                     <td>{{ timesheet.employee_name }}</td>
 
-                    <td>{{ timesheet.work_date }}</td>
+                    <td>{{ timesheet.work_date | date_au }}</td>
 
                     <td>
                         {{ "%.2f"|format(timesheet.hours) }}

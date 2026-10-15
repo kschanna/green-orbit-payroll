@@ -38,6 +38,7 @@
                     <th>Pay Frequency</th>
                     <th>Start Date</th>
                     <th>Status</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
 
@@ -69,7 +70,7 @@
 
                     <td>{{ agreement.pay_frequency | title }}</td>
 
-                    <td>{{ agreement.start_date }}</td>
+                    <td>{{ agreement.start_date | date_au }}</td>
 
                     <td>
                         {% if agreement.is_active %}
@@ -79,12 +80,30 @@
                         {% endif %}
                     </td>
 
+                    <td>
+                        <div class="d-flex gap-2">
+
+                            <a
+                                href="/ui/agreements/{{ agreement.id }}"
+                                class="btn btn-sm btn-outline-secondary">
+                                View
+                            </a>
+
+                            <a
+                                href="/ui/agreements/{{ agreement.id }}/edit"
+                                class="btn btn-sm btn-outline-primary">
+                                Edit
+                            </a>
+
+                        </div>
+                    </td>
+
                 </tr>
 
                 {% else %}
 
                 <tr>
-                    <td colspan="8" class="text-center text-muted">
+                    <td colspan="9" class="text-center text-muted">
                         No employment agreements found.
                     </td>
                 </tr>
@@ -176,17 +195,33 @@
             <div class="col-12">
                 <small class="text-muted">Start Date</small>
                 <div class="fw-semibold">
-                    {{ agreement.start_date }}
+                    {{ agreement.start_date | date_au }}
                 </div>
             </div>
 
         </div>
 
 
-        <!-- Employee details link -->
+        <!-- ACTION BUTTONS -->
+
+        <div class="d-flex gap-2 mt-3">
+
+            <a
+                href="/ui/agreements/{{ agreement.id }}"
+                class="btn btn-outline-secondary flex-fill">
+                View
+            </a>
+
+            <a
+                href="/ui/agreements/{{ agreement.id }}/edit"
+                class="btn btn-outline-primary flex-fill">
+                Edit
+            </a>
+
+        </div>
 
         <a href="/ui/employees/{{ agreement.employee_id }}"
-           class="btn btn-outline-success w-100 mt-3">
+           class="btn btn-outline-success w-100 mt-2">
             View Employee
         </a>
 

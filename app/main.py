@@ -147,6 +147,32 @@ templates = Jinja2Templates(
     directory="app/templates"
 )
 
+# ============================================================
+
+# GLOBAL DATE FORMATTING
+
+# ============================================================
+
+def format_date_au(value):
+
+    if value is None:
+
+        return "—"
+
+    if isinstance(value, (date,)):
+
+        return value.strftime("%d/%m/%Y")
+
+    try:
+
+        return date.fromisoformat(str(value)).strftime("%d/%m/%Y")
+
+    except (ValueError, TypeError):
+
+        return str(value)
+
+templates.env.filters["date_au"] = format_date_au
+
 templates.env.globals["csrf_token"] = lambda request: request.session.get(
     "csrf_token", ""
 )
@@ -1587,6 +1613,153 @@ def organisations_page(request: Request):
         context={"organisations": organisation_data}
     )
 
+# ============================================================
+# EMPLOYMENT AGREEMENT VIEW AND EDIT
+# ============================================================
+
+class EmploymentAgreementUpdate(BaseModel):
+    employment_type: str
+    pay_basis: str
+    hourly_rate: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
+    ordinary_hours_per_week: Decimal = Field(
+        gt=0, le=168, max_digits=5, decimal_places=2
+    )
+    pay_frequency: str
+    start_date: date
+    end_date: date | None = None
+
+
+@app.get("/ui/agreements/{agreement_id}", response_class=HTMLResponse)
+def view_employment_agreement(request: Request, agreement_id: int):
+
+    with SessionLocal() as db:
+
+        agreement = db.get(EmploymentAgreement, agreement_id)
+
+        if agreement is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Employment agreement not found"
+            )
+
+        employee = db.get(Employee, agreement.employee_id)
+
+        if employee is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Employee not found"
+            )
+
+        return templates.TemplateResponse(
+            request=request,
+            name="agreement_detail.html",
+            context={
+                "agreement": agreement,
+                "employee_name": (
+                    f"{employee.first_name} {employee.last_name}"
+                ),
+                "is_active": (
+                    agreement.start_date <= date.today()
+                    and (
+                        agreement.end_date is None
+                        or agreement.end_date >= date.today()
+                    )
+                )
+            }
+        )
+
+
+@app.get("/ui/agreements/{agreement_id}/edit", response_class=HTMLResponse)
+def edit_employment_agreement(request: Request, agreement_id: int):
+
+    with SessionLocal() as db:
+
+        agreement = db.get(EmploymentAgreement, agreement_id)
+
+        if agreement is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Employment agreement not found"
+            )
+
+        employee = db.get(Employee, agreement.employee_id)
+
+        if employee is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Employee not found"
+            )
+
+        return templates.TemplateResponse(
+            request=request,
+            name="agreement_edit.html",
+            context={
+                "agreement": agreement,
+                "employee_name": (
+                    f"{employee.first_name} {employee.last_name}"
+                )
+            }
+        )
+
+
+@app.patch("/api/agreements/{agreement_id}")
+def update_employment_agreement(
+    agreement_id: int,
+    data: EmploymentAgreementUpdate
+):
+
+    if data.employment_type not in {
+        "full_time", "part_time", "casual", "fixed_term"
+    }:
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid employment type"
+        )
+
+    if data.pay_basis not in {"hourly", "salary"}:
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid pay basis"
+        )
+
+    if data.pay_frequency not in {
+        "weekly", "fortnightly", "monthly"
+    }:
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid pay frequency"
+        )
+
+    if data.end_date is not None and data.end_date < data.start_date:
+        raise HTTPException(
+            status_code=422,
+            detail="End date cannot be before start date"
+        )
+
+    with SessionLocal() as db:
+
+        agreement = db.get(EmploymentAgreement, agreement_id)
+
+        if agreement is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Employment agreement not found"
+            )
+
+        agreement.employment_type = data.employment_type
+        agreement.pay_basis = data.pay_basis
+        agreement.hourly_rate = data.hourly_rate
+        agreement.ordinary_hours_per_week = data.ordinary_hours_per_week
+        agreement.pay_frequency = data.pay_frequency
+        agreement.start_date = data.start_date
+        agreement.end_date = data.end_date
+
+        db.commit()
+
+        return {
+            "id": agreement_id,
+            "status": "updated"
+        }
 
 @app.get("/ui/agreements", response_class=HTMLResponse)
 def agreements_page(request: Request):

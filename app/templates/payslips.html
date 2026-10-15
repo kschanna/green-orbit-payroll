@@ -61,12 +61,12 @@
                     </td>
 
                     <td>
-                        {{ payslip.period_start }}
+                        {{ payslip.period_start | date_au }}
                         to
-                        {{ payslip.period_end }}
+                        {{ payslip.period_end | date_au }}
                     </td>
 
-                    <td>{{ payslip.payment_date }}</td>
+                    <td>{{ payslip.payment_date | date_au }}</td>
 
                     <td>
                         ${{ "%.2f" | format(payslip.gross_pay) }}
@@ -148,9 +148,9 @@
             <small class="text-muted">Pay Period</small>
 
             <div>
-                {{ payslip.period_start }}
+                {{ payslip.period_start | date_au }}
                 to
-                {{ payslip.period_end }}
+                {{ payslip.period_end | date_au }}
             </div>
 
         </div>
@@ -162,7 +162,7 @@
 
             <small class="text-muted">Payment Date</small>
 
-            <div>{{ payslip.payment_date }}</div>
+            <div>{{ payslip.payment_date | date_au }}</div>
 
         </div>
 

@@ -39,12 +39,12 @@
                     <td><strong>#{{ run.id }}</strong></td>
 
                     <td>
-                        {{ run.period_start }}
+                        {{ run.period_start | date_au }}
                         to
-                        {{ run.period_end }}
+                        {{ run.period_end | date_au }}
                     </td>
 
-                    <td>{{ run.payment_date }}</td>
+                    <td>{{ run.payment_date | date_au }}</td>
 
                     <td>
                         {% if run.status == "completed" %}
@@ -104,15 +104,15 @@
         <div class="mb-3">
             <small class="text-muted">Pay Period</small>
             <div>
-                {{ run.period_start }}
+                {{ run.period_start | date_au }}
                 to
-                {{ run.period_end }}
+                {{ run.period_end | date_au }}
             </div>
         </div>
 
         <div class="mb-3">
             <small class="text-muted">Payment Date</small>
-            <div>{{ run.payment_date }}</div>
+            <div>{{ run.payment_date | date_au }}</div>
         </div>
 
         <a href="/ui/pay-runs/{{ run.id }}"

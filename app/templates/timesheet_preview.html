@@ -34,12 +34,12 @@
 
                 <div class="col-md-4">
                     <strong>Period Start</strong>
-                    <div>{{ period_start }}</div>
+                    <div>{{ period_start | date_au }}</div>
                 </div>
 
                 <div class="col-md-4">
                     <strong>Period End</strong>
-                    <div>{{ period_end }}</div>
+                    <div>{{ period_end | date_au }}</div>
                 </div>
 
                 <div class="col-md-4">
@@ -86,7 +86,7 @@
                         {% for entry in entries %}
 
                         <tr>
-                            <td>{{ entry.work_date }}</td>
+                            <td>{{ entry.work_date | date_au }}</td>
 
                             <td>
                                 {{ entry.work_date.strftime("%A") }}

@@ -178,7 +178,7 @@
                             {{ invoice.invoice_number }}
                         </a>
                     </td>
-                    <td>{{ invoice.issue_date }}</td>
+                    <td>{{ invoice.issue_date | date_au }}</td>
                     <td>{{ invoice.customer }}</td>
                     <td>{{ invoice.worker }}</td>
                     <td>${{ "%.2f" | format(invoice.subtotal) }}</td>

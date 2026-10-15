@@ -1,3 +1,4 @@
+from app.utils.dates import format_date_au
 from io import BytesIO
 from xml.sax.saxutils import escape
 
@@ -36,7 +37,7 @@ class InvoicePDFGenerator:
             ("Supplier ABN", supplier.abn),
             ("Customer", customer.name),
             ("Invoice number", invoice.invoice_number),
-            ("Invoice date", str(invoice.issue_date)),
+            ("Invoice date", format_date_au(invoice.issue_date)),
             ("Worker", f"{employee.first_name} {employee.last_name}"),
         ]
 

@@ -1,0 +1,443 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="container mt-4">
+
+    <!-- PAGE HEADER -->
+
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+
+        <div>
+            <h2>Edit Employment Agreement #{{ agreement.id }}</h2>
+
+            <p class="text-muted mb-0">
+                Update employment conditions and remuneration
+            </p>
+        </div>
+
+        <a href="/ui/agreements/{{ agreement.id }}"
+           class="btn btn-outline-secondary">
+            Cancel
+        </a>
+
+    </div>
+
+
+    <!-- AGREEMENT FORM -->
+
+    <div class="card">
+
+        <div class="card-body p-4">
+
+            <!-- EMPLOYEE DETAILS -->
+
+            <div class="mb-4">
+
+                <label class="form-label text-muted">
+                    Employee
+                </label>
+
+                <div class="fs-5 fw-semibold">
+                    {{ employee_name }}
+                </div>
+
+                <small class="text-muted">
+                    Employee assignment cannot be changed.
+                </small>
+
+            </div>
+
+            <hr class="mb-4">
+
+
+            <form id="agreementForm">
+
+                <div class="row g-4">
+
+                    <!-- EMPLOYMENT TYPE -->
+
+                    <div class="col-md-6">
+
+                        <label for="employment_type" class="form-label">
+                            Employment Type
+                        </label>
+
+                        <select
+                            id="employment_type"
+                            class="form-select"
+                            required>
+
+                            {% for value, label in [
+                                ("full_time", "Full Time"),
+                                ("part_time", "Part Time"),
+                                ("casual", "Casual"),
+                                ("fixed_term", "Fixed Term")
+                            ] %}
+
+                            <option
+                                value="{{ value }}"
+                                {% if agreement.employment_type == value %}
+                                    selected
+                                {% endif %}>
+                                {{ label }}
+                            </option>
+
+                            {% endfor %}
+
+                        </select>
+
+                    </div>
+
+
+                    <!-- PAY BASIS -->
+
+                    <div class="col-md-6">
+
+                        <label for="pay_basis" class="form-label">
+                            Pay Basis
+                        </label>
+
+                        <select
+                            id="pay_basis"
+                            class="form-select"
+                            required>
+
+                            {% for value, label in [
+                                ("hourly", "Hourly"),
+                                ("salary", "Salary")
+                            ] %}
+
+                            <option
+                                value="{{ value }}"
+                                {% if agreement.pay_basis == value %}
+                                    selected
+                                {% endif %}>
+                                {{ label }}
+                            </option>
+
+                            {% endfor %}
+
+                        </select>
+
+                    </div>
+
+
+                    <!-- HOURLY RATE -->
+
+                    <div class="col-md-6">
+
+                        <label for="hourly_rate" class="form-label">
+                            Hourly Rate (AUD)
+                        </label>
+
+                        <div class="input-group">
+
+                            <span class="input-group-text">$</span>
+
+                            <input
+                                type="number"
+                                id="hourly_rate"
+                                class="form-control"
+                                min="0.01"
+                                step="0.01"
+                                value="{{ agreement.hourly_rate }}"
+                                required>
+
+                        </div>
+
+                        <div class="form-text">
+                            Current agreement rate used by the payroll engine.
+                        </div>
+
+                    </div>
+
+
+                    <!-- ORDINARY HOURS -->
+
+                    <div class="col-md-6">
+
+                        <label for="ordinary_hours_per_week" class="form-label">
+                            Ordinary Hours per Week
+                        </label>
+
+                        <input
+                            type="number"
+                            id="ordinary_hours_per_week"
+                            class="form-control"
+                            min="0.01"
+                            max="168"
+                            step="0.01"
+                            value="{{ agreement.ordinary_hours_per_week }}"
+                            required>
+
+                    </div>
+
+
+                    <!-- PAY FREQUENCY -->
+
+                    <div class="col-md-6">
+
+                        <label for="pay_frequency" class="form-label">
+                            Pay Frequency
+                        </label>
+
+                        <select
+                            id="pay_frequency"
+                            class="form-select"
+                            required>
+
+                            {% for value, label in [
+                                ("weekly", "Weekly"),
+                                ("fortnightly", "Fortnightly"),
+                                ("monthly", "Monthly")
+                            ] %}
+
+                            <option
+                                value="{{ value }}"
+                                {% if agreement.pay_frequency == value %}
+                                    selected
+                                {% endif %}>
+                                {{ label }}
+                            </option>
+
+                            {% endfor %}
+
+                        </select>
+
+                    </div>
+
+
+                    <!-- START DATE -->
+
+                    <div class="col-md-6">
+
+                        <label for="start_date" class="form-label">
+                            Agreement Start Date
+                        </label>
+
+                        <input
+                            type="date"
+                            id="start_date"
+                            class="form-control"
+                            value="{{ agreement.start_date }}"
+                            required>
+
+                    </div>
+
+
+                    <!-- END DATE -->
+
+                    <div class="col-md-6">
+
+                        <label for="end_date" class="form-label">
+                            Agreement End Date
+                        </label>
+
+                        <input
+                            type="date"
+                            id="end_date"
+                            class="form-control"
+                            value="{{ agreement.end_date or '' }}">
+
+                        <div class="form-text">
+                            Leave blank for an ongoing agreement.
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- ERROR / SUCCESS MESSAGES -->
+
+                <div
+                    id="formMessage"
+                    class="alert mt-4 d-none"
+                    role="alert">
+                </div>
+
+
+                <!-- ACTION BUTTONS -->
+
+                <div class="d-flex flex-wrap gap-2 mt-4">
+
+                    <button
+                        type="submit"
+                        id="saveButton"
+                        class="btn btn-success">
+
+                        Save Changes
+
+                    </button>
+
+                    <a
+                        href="/ui/agreements/{{ agreement.id }}"
+                        class="btn btn-outline-secondary">
+
+                        Cancel
+
+                    </a>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- ====================================================== -->
+<!-- JAVASCRIPT                                             -->
+<!-- ====================================================== -->
+
+<script>
+
+const agreementForm = document.getElementById("agreementForm");
+const saveButton = document.getElementById("saveButton");
+const formMessage = document.getElementById("formMessage");
+
+
+// ----------------------------------------------------------
+// DISPLAY FORM MESSAGES
+// ----------------------------------------------------------
+
+function showMessage(message, type = "danger") {
+
+    formMessage.className = `alert alert-${type} mt-4`;
+    formMessage.textContent = message;
+
+}
+
+
+// ----------------------------------------------------------
+// SAVE EMPLOYMENT AGREEMENT
+// ----------------------------------------------------------
+
+agreementForm.addEventListener("submit", async function(event) {
+
+    event.preventDefault();
+
+    formMessage.classList.add("d-none");
+
+    const startDate = document.getElementById("start_date").value;
+    const endDate = document.getElementById("end_date").value;
+
+    // Validate agreement dates
+
+    if (endDate && endDate < startDate) {
+
+        showMessage(
+            "Agreement end date cannot be before the start date."
+        );
+
+        return;
+    }
+
+
+    // Build API payload
+
+    const payload = {
+
+        employment_type:
+            document.getElementById("employment_type").value,
+
+        pay_basis:
+            document.getElementById("pay_basis").value,
+
+        hourly_rate:
+            document.getElementById("hourly_rate").value,
+
+        ordinary_hours_per_week:
+            document.getElementById("ordinary_hours_per_week").value,
+
+        pay_frequency:
+            document.getElementById("pay_frequency").value,
+
+        start_date: startDate,
+
+        end_date: endDate || null
+
+    };
+
+
+    // Disable button while saving
+
+    saveButton.disabled = true;
+    saveButton.textContent = "Saving...";
+
+
+    try {
+
+        const response = await fetch(
+            "/api/agreements/{{ agreement.id }}",
+            {
+
+                method: "PATCH",
+
+                headers: {
+
+                    "Content-Type": "application/json",
+
+                    "X-CSRF-Token": "{{ csrf_token(request) }}"
+
+                },
+
+                body: JSON.stringify(payload)
+
+            }
+        );
+
+
+        if (response.ok) {
+
+            window.location.href =
+                "/ui/agreements/{{ agreement.id }}";
+
+            return;
+
+        }
+
+
+        // Handle API validation errors
+
+        const error = await response.json();
+
+        let errorMessage = "Unable to save employment agreement.";
+
+        if (typeof error.detail === "string") {
+
+            errorMessage = error.detail;
+
+        } else if (Array.isArray(error.detail)) {
+
+            errorMessage = error.detail
+                .map(item => item.msg)
+                .join("; ");
+
+        }
+
+        showMessage(errorMessage);
+
+
+    } catch (error) {
+
+        showMessage(
+            "Unable to connect to the server. Please try again."
+        );
+
+    } finally {
+
+        saveButton.disabled = false;
+        saveButton.textContent = "Save Changes";
+
+    }
+
+});
+
+</script>
+
+{% endblock %}

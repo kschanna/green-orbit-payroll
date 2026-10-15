@@ -13,7 +13,7 @@
     <div>
         <h2>Pay Run #{{ pay_run.id }}</h2>
         <p class="text-muted mb-0">
-            {{ pay_run.period_start }} to {{ pay_run.period_end }}
+            {{ pay_run.period_start | date_au }} to {{ pay_run.period_end | date_au }}
         </p>
     </div>
 
@@ -95,7 +95,7 @@
 
         <div class="col-12 col-md-4">
             <strong>Payment Date</strong>
-            <p class="mb-0">{{ pay_run.payment_date }}</p>
+            <p class="mb-0">{{ pay_run.payment_date | date_au }}</p>
         </div>
 
         <div class="col-12 col-md-4">
