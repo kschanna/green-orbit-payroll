@@ -1,0 +1,322 @@
+
+{% extends "base.html" %}
+
+{% block content %}
+
+<style>
+    .payslip-preview {
+        max-width: 950px;
+        margin: 0 auto;
+    }
+
+    .payslip-document {
+        position: relative;
+        overflow: hidden;
+    }
+
+    .draft-watermark {
+        position: absolute;
+        top: 45%;
+        left: 50%;
+        transform: translate(-50%, -50%) rotate(-30deg);
+        font-size: 7rem;
+        font-weight: 800;
+        color: rgba(180, 0, 0, 0.10);
+        pointer-events: none;
+        z-index: 1;
+    }
+
+    .payslip-content {
+        position: relative;
+        z-index: 2;
+    }
+
+    @media print {
+        nav,
+        .navbar,
+        footer,
+        .payslip-actions {
+            display: none !important;
+        }
+
+        body {
+            background: white !important;
+        }
+
+        .payslip-preview {
+            max-width: 100%;
+        }
+
+        .payslip-document {
+            border: none !important;
+            box-shadow: none !important;
+        }
+
+        .payslip-content {
+            padding: 0 !important;
+        }
+    }
+</style>
+
+
+<div class="payslip-preview mt-4">
+
+    <!-- ACTIONS -->
+
+    <div class="d-flex flex-wrap justify-content-between
+                align-items-center gap-2 mb-4 payslip-actions">
+
+        <a
+            href="/ui/workers/{{ worker.id }}/engagements/{{ engagement.id }}/work-patterns"
+            class="btn btn-outline-secondary">
+            ← Back to Work Patterns
+        </a>
+
+        <div>
+            <a
+                href="/payslips/{{ payslip.id }}/pdf"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn btn-outline-success me-2">
+                Download PDF
+            </a>
+
+            <button
+                type="button"
+                onclick="window.print()"
+                class="btn btn-primary">
+                Print Payslip
+            </button>
+        </div>
+
+    </div>
+
+
+    <!-- PAYSLIP DOCUMENT -->
+
+    <div class="card shadow-sm payslip-document">
+
+        {% if pay_run.status == "draft" %}
+        <div class="draft-watermark">DRAFT</div>
+        {% endif %}
+
+        <div class="card-body p-5 payslip-content">
+
+            <!-- HEADER -->
+
+            <div class="d-flex justify-content-between
+                        align-items-start mb-5">
+
+                <div>
+                    <h2 class="mb-3">PAYSLIP</h2>
+
+                    <h5>{{ organisation.name }}</h5>
+
+                    {% if organisation.abn %}
+                    <div class="text-muted">
+                        ABN: {{ organisation.abn }}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="text-end">
+
+                    <h5>Payslip #{{ payslip.id }}</h5>
+
+                    <div>
+                        Pay Run #{{ pay_run.id }}
+                    </div>
+
+                    <div class="mt-2">
+                        {% if pay_run.status == "approved" %}
+                            <span class="badge bg-success">
+                                Approved
+                            </span>
+                        {% elif pay_run.status == "draft" %}
+                            <span class="badge bg-warning text-dark">
+                                Draft
+                            </span>
+                        {% else %}
+                            <span class="badge bg-secondary">
+                                {{ pay_run.status | title }}
+                            </span>
+                        {% endif %}
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- EMPLOYEE AND PAY PERIOD -->
+
+            <div class="row g-4 mb-5">
+
+                <div class="col-md-6">
+
+                    <div class="text-muted small mb-2">
+                        EMPLOYEE
+                    </div>
+
+                    <h5>
+                        {{ worker.first_name }}
+                        {{ worker.last_name }}
+                    </h5>
+
+                    <div>
+                        Worker ID: {{ worker.id }}
+                    </div>
+
+                    <div>
+                        Engagement ID: {{ engagement.id }}
+                    </div>
+
+                </div>
+
+                <div class="col-md-6">
+
+                    <div class="text-muted small mb-2">
+                        PAY PERIOD
+                    </div>
+
+                    <div>
+                        <strong>From:</strong>
+                        {{ pay_run.period_start.strftime("%d/%m/%Y") }}
+                    </div>
+
+                    <div>
+                        <strong>To:</strong>
+                        {{ pay_run.period_end.strftime("%d/%m/%Y") }}
+                    </div>
+
+                    <div>
+                        <strong>Payment Date:</strong>
+                        {{ pay_run.payment_date.strftime("%d/%m/%Y") }}
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- PAYROLL COMPONENTS -->
+
+            <h5 class="mb-3">Payroll Components</h5>
+
+            <div class="table-responsive">
+
+                <table class="table table-hover align-middle">
+
+                    <thead class="table-light">
+                        <tr>
+                            <th>Description</th>
+                            <th class="text-end">Quantity</th>
+                            <th class="text-end">Rate</th>
+                            <th class="text-end">Amount</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                        {% for component in components %}
+
+                        <tr>
+                            <td>
+                                <strong>{{ component.name }}</strong>
+
+                                <div class="text-muted small">
+                                    {{ component.code }}
+                                </div>
+                            </td>
+
+                            <td class="text-end">
+                                {{ "%.2f"|format(component.quantity) }}
+                            </td>
+
+                            <td class="text-end">
+                                ${{ "%.2f"|format(component.rate) }}
+                            </td>
+
+                            <td class="text-end">
+                                ${{ "%.2f"|format(component.amount) }}
+                            </td>
+                        </tr>
+
+                        {% else %}
+
+                        <tr>
+                            <td colspan="4" class="text-muted text-center">
+                                No payroll components recorded.
+                            </td>
+                        </tr>
+
+                        {% endfor %}
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+
+            <!-- PAY SUMMARY -->
+
+            <h5 class="mt-5 mb-3">Pay Summary</h5>
+
+            <div class="row justify-content-end">
+
+                <div class="col-md-7">
+
+                    <table class="table">
+
+                        <tr>
+                            <td>Gross Earnings</td>
+                            <td class="text-end">
+                                ${{ "%.2f"|format(payslip.gross_pay) }}
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>PAYG Withholding</td>
+                            <td class="text-end">
+                                ${{ "%.2f"|format(payslip.payg_withholding) }}
+                            </td>
+                        </tr>
+
+                        <tr class="table-light fw-bold">
+                            <td>NET PAY</td>
+                            <td class="text-end">
+                                ${{ "%.2f"|format(payslip.net_pay) }}
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Employer Superannuation</td>
+                            <td class="text-end">
+                                ${{ "%.2f"|format(payslip.superannuation) }}
+                            </td>
+                        </tr>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+
+            <!-- FOOTER -->
+
+            <hr class="mt-5">
+
+            <p class="text-muted small mb-0">
+                Green Orbit demonstration payslip.
+                Not for commercial use.
+            </p>
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}

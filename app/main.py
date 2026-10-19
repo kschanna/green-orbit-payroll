@@ -1,3 +1,12 @@
+from typing import Literal
+from app.engagement_resolver import resolve_worker_id
+from app.workers_router import router as workers_router
+from app.employee_super_router import router as employee_super_router
+from app.employee_payment_router import router as employee_payment_router
+from app.assignment_components_router import router as assignment_components_router
+from app.employee_tax_router import router as employee_tax_router
+from app.employee_tfn_router import router as employee_tfn_router
+from app.components_router import router as components_router
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -12,7 +21,6 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from app.database import SessionLocal
 from app.models.organisation import Organisation
-from app.models.employee import Employee
 from app.models.pay_run import PayRun
 from app.models.payslip import Payslip
 from app.payroll.pay_run_processor import PayRunProcessor
@@ -30,6 +38,8 @@ from app.models.timesheet import Timesheet
 from app.models.payslip_timesheet import PayslipTimesheet
 from app.models.invoice import Invoice
 from app.models.assignment import Assignment
+from app.models.engagement import Engagement
+from app.models.worker import Worker
 from app.models.invoice_timesheet import InvoiceTimesheet
 from app.reports.invoice_pdf import InvoicePDFGenerator
 from app.invoicing.engine import generate_invoice
@@ -52,6 +62,14 @@ app = FastAPI(
     version="0.1.0"
 )
 
+app.router.include_router(components_router)
+app.router.include_router(workers_router)
+app.router.include_router(employee_tax_router)
+app.router.include_router(employee_super_router)
+app.router.include_router(employee_payment_router)
+app.router.include_router(assignment_components_router)
+app.router.include_router(employee_tfn_router)
+
 session_secret = os.environ.get("SESSION_SECRET")
 
 if not session_secret:
@@ -60,6 +78,66 @@ if not session_secret:
 # ============================================================
 # SECURITY
 # ============================================================
+
+from app.worker_service import WorkerService
+from app.workers_router import worker_data
+
+# Worker Engagement creation UI/API
+
+
+class NewEngagementInput(BaseModel):
+    organisation_id: int
+    engagement_type: Literal["payg_employee", "payg_contractor", "company_contractor"]
+    status: str = Field(default="active", min_length=1, max_length=20)
+    start_date: date = Field(default_factory=date.today)
+    end_date: date | None = None
+
+
+@app.get("/ui/workers/{worker_id}/engagements/new", response_class=HTMLResponse)
+def new_worker_engagement_page(request: Request, worker_id: int):
+    with SessionLocal() as db:
+        worker = WorkerService.get(db, worker_id)
+        if worker is None:
+            raise HTTPException(404, "Worker not found")
+        organisations = db.scalars(
+            select(Organisation).order_by(Organisation.name)
+        ).all()
+        return templates.TemplateResponse(
+            request=request,
+            name="worker_engagement_form.html",
+            context={
+                "worker": worker_data(worker),
+                "organisations": [
+                    {"id": o.id, "name": o.name} for o in organisations
+                ],
+                "today": date.today().isoformat(),
+            },
+        )
+
+
+@app.post("/api/workers/{worker_id}/engagements", status_code=201)
+def create_worker_engagement(worker_id: int, data: NewEngagementInput):
+    with SessionLocal() as db:
+        worker = WorkerService.get(db, worker_id)
+        if worker is None:
+            raise HTTPException(404, "Worker not found")
+        if db.get(Organisation, data.organisation_id) is None:
+            raise HTTPException(422, "Organisation not found")
+        if data.end_date and data.start_date and data.end_date < data.start_date:
+            raise HTTPException(422, "End date cannot precede start date")
+        engagement = Engagement(
+            worker_id=worker_id,
+            organisation_id=data.organisation_id,
+            engagement_type=data.engagement_type.strip(),
+            status=data.status.strip(),
+            start_date=data.start_date,
+            end_date=data.end_date,
+        )
+        db.add(engagement)
+        db.commit()
+        db.refresh(engagement)
+        return {"id": engagement.id, "worker_id": worker_id}
+
 
 @app.middleware("http")
 async def csrf_protection(request: Request, call_next):
@@ -225,8 +303,8 @@ def dashboard(request: Request):
 
     with SessionLocal() as session:
 
-        employee_count = session.scalar(
-            select(func.count(Employee.id))
+        worker_count = session.scalar(
+            select(func.count(Worker.id))
         )
 
         pay_run_count = session.scalar(
@@ -248,7 +326,7 @@ def dashboard(request: Request):
             request=request,
             name="dashboard.html",
             context={
-                "employee_count": employee_count,
+                "worker_count": worker_count,
                 "pay_run_count": pay_run_count,
                 "completed_count": completed_count,
                 "pay_runs": pay_runs
@@ -260,30 +338,7 @@ def dashboard(request: Request):
 # EMPLOYEE API
 # ============================================================
 
-@app.get("/employees")
-def get_employees():
 
-    with SessionLocal() as session:
-
-        employees = session.scalars(
-            select(Employee).order_by(Employee.id)
-        ).all()
-
-        return [
-            {
-                "id": employee.id,
-                "first_name": employee.first_name,
-                "last_name": employee.last_name,
-                "email": employee.email,
-                "organisation_id": employee.organisation_id
-            }
-            for employee in employees
-        ]
-
-
-# ============================================================
-# PAY RUN API
-# ============================================================
 
 @app.get("/pay-runs")
 def get_pay_runs():
@@ -321,28 +376,26 @@ def get_pay_run_payslips(pay_run_id: int):
             )
 
         rows = session.execute(
-            select(Payslip, Employee)
-            .join(
-                Employee,
-                Payslip.employee_id == Employee.id
-            )
+            select(Payslip, Engagement, Worker)
+            .join(Engagement, Payslip.engagement_id == Engagement.id)
+            .join(Worker, Engagement.worker_id == Worker.id)
             .where(Payslip.pay_run_id == pay_run_id)
-            .order_by(Employee.id)
+            .order_by(Worker.id)
         ).all()
 
         return [
             {
                 "payslip_id": payslip.id,
-                "employee_id": employee.id,
-                "employee_name": (
-                    f"{employee.first_name} {employee.last_name}"
+                "worker_id": worker.id,
+                "worker_name": (
+                    f"{worker.first_name} {worker.last_name}"
                 ),
                 "gross_pay": payslip.gross_pay,
                 "payg_withholding": payslip.payg_withholding,
                 "net_pay": payslip.net_pay,
                 "superannuation": payslip.superannuation
             }
-            for payslip, employee in rows
+            for payslip, engagement, worker in rows
         ]
 
 
@@ -360,27 +413,25 @@ def get_pay_run_summary(pay_run_id: int):
             )
 
         rows = session.execute(
-            select(Payslip, Employee)
-            .join(
-                Employee,
-                Payslip.employee_id == Employee.id
-            )
+            select(Payslip, Engagement, Worker)
+            .join(Engagement, Payslip.engagement_id == Engagement.id)
+            .join(Worker, Engagement.worker_id == Worker.id)
             .where(Payslip.pay_run_id == pay_run_id)
-            .order_by(Employee.id)
+            .order_by(Worker.id)
         ).all()
 
         payslips = [
             {
-                "employee_id": employee.id,
-                "employee_name": (
-                    f"{employee.first_name} {employee.last_name}"
+                "worker_id": worker.id,
+                "worker_name": (
+                    f"{worker.first_name} {worker.last_name}"
                 ),
                 "gross_pay": str(payslip.gross_pay),
                 "payg_withholding": str(payslip.payg_withholding),
                 "net_pay": str(payslip.net_pay),
                 "superannuation": str(payslip.superannuation)
             }
-            for payslip, employee in rows
+            for payslip, engagement, worker in rows
         ]
 
         totals = session.execute(
@@ -430,6 +481,7 @@ def get_pay_run_summary(pay_run_id: int):
 
 class WeeklyTimesheetEntry(BaseModel):
     work_date: date
+    assignment_id: int | None = None
     hours_worked: Decimal = Field(
         ge=0,
         le=24,
@@ -439,14 +491,15 @@ class WeeklyTimesheetEntry(BaseModel):
 
 
 class WeeklyTimesheetCreate(BaseModel):
-    employee_id: int
+    engagement_id: int
     week_start: date
     entries: list[WeeklyTimesheetEntry]
 
 
 class TimesheetCreate(BaseModel):
-    employee_id: int
+    engagement_id: int
     work_date: date
+    assignment_id: int | None = None
     hours_worked: Decimal = Field(
         ge=0,
         le=24,
@@ -531,6 +584,429 @@ def create_invoice_from_timesheet(data: TimesheetInvoiceInput):
         )
 
 
+def timesheet_worker_name(db, engagement_id):
+    """Resolve a timesheet's canonical Worker name without Employee."""
+    if engagement_id is None:
+        return "Unknown"
+    engagement = db.get(Engagement, engagement_id)
+    if engagement is None or engagement.worker is None:
+        return "Unknown"
+    return f"{engagement.worker.first_name} {engagement.worker.last_name}"
+
+
+
+
+# ============================================================
+# PAYG CONTRACTOR PAYROLL — WEEKLY TIMESHEET
+# ============================================================
+
+def _prepare_contractor_payroll(db, header_id):
+
+    from datetime import timedelta
+    from decimal import Decimal
+
+    from app.models.employee_tax_profile import EmployeeTaxProfile
+    from app.models.employee_super_profile import EmployeeSuperProfile
+    from app.models.payslip_timesheet import PayslipTimesheet
+
+    from app.payroll.assignment_earnings import AssignmentEarningsCalculator
+    from app.payroll.payg_withholding import PAYGWithholdingCalculator
+    from app.payroll.superannuation import SuperannuationCalculator
+
+    header = db.get(TimesheetHeader, header_id)
+
+    if header is None or header.period_type != "weekly":
+        raise HTTPException(404, "Weekly Timesheet not found")
+
+    if header.status != "approved":
+        raise HTTPException(409, "Timesheet must be approved")
+
+    engagement = db.get(Engagement, header.engagement_id)
+
+    if engagement is None:
+        raise HTTPException(409, "Timesheet Engagement missing")
+
+    if engagement.engagement_type != "payg_contractor":
+        raise HTTPException(
+            409,
+            "Timesheet payroll is available only for PAYG Contractors",
+        )
+
+    if engagement.status != "active" or not engagement.worker.active:
+        raise HTTPException(409, "Worker or Engagement inactive")
+
+    if header.period_start.weekday() != 0:
+        raise HTTPException(409, "Weekly period must begin on Monday")
+
+    if header.period_end != (
+        header.period_start + timedelta(days=6)
+    ):
+        raise HTTPException(409, "Weekly period must end on Sunday")
+
+    if (
+        engagement.start_date is not None
+        and engagement.start_date > header.period_start
+    ):
+        raise HTTPException(409, "Partial-period payroll not supported")
+
+    if (
+        engagement.end_date is not None
+        and engagement.end_date < header.period_end
+    ):
+        raise HTTPException(409, "Engagement ends during pay period")
+
+    entries = db.scalars(
+        select(Timesheet)
+        .where(Timesheet.timesheet_header_id == header.id)
+        .order_by(Timesheet.work_date)
+    ).all()
+
+    expected_dates = [
+        header.period_start + timedelta(days=i)
+        for i in range(7)
+    ]
+
+    if (
+        len(entries) != 7
+        or [entry.work_date for entry in entries] != expected_dates
+    ):
+        raise HTTPException(
+            409,
+            "Weekly Timesheet must contain exactly seven daily entries",
+        )
+
+    for entry in entries:
+        if entry.status != "approved":
+            raise HTTPException(409, "All daily entries must be approved")
+
+        if entry.engagement_id != engagement.id:
+            raise HTTPException(409, "Timesheet Engagement mismatch")
+
+        if entry.assignment_id is None:
+            raise HTTPException(409, "Timesheet Assignment missing")
+
+    # Prevent overlapping payment periods for the same Engagement.
+    overlapping = db.scalar(
+        select(Payslip.id)
+        .join(PayRun, Payslip.pay_run_id == PayRun.id)
+        .where(
+            Payslip.engagement_id == engagement.id,
+            PayRun.period_start <= header.period_end,
+            PayRun.period_end >= header.period_start,
+        )
+        .limit(1)
+    )
+
+    if overlapping is not None:
+        raise HTTPException(
+            409,
+            "An overlapping Payslip already exists for this Engagement",
+        )
+
+    # Prevent paying individual daily entries more than once.
+    already_paid = db.scalar(
+        select(PayslipTimesheet.timesheet_id)
+        .where(
+            PayslipTimesheet.timesheet_id.in_(
+                [entry.id for entry in entries]
+            )
+        )
+        .limit(1)
+    )
+
+    if already_paid is not None:
+        raise HTTPException(
+            409,
+            "One or more Timesheet entries are already linked to a Payslip",
+        )
+
+    try:
+        earnings = AssignmentEarningsCalculator().calculate(
+            session=db,
+            engagement=engagement,
+            timesheets=entries,
+        )
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+    gross = earnings["gross_pay"]
+
+    if gross <= 0:
+        raise HTTPException(409, "Gross earnings must be positive")
+
+    payment_date = header.period_end + timedelta(days=1)
+
+    tax_profiles = db.scalars(
+        select(EmployeeTaxProfile).where(
+            EmployeeTaxProfile.worker_id == engagement.worker_id,
+            EmployeeTaxProfile.effective_from <= payment_date,
+            (
+                EmployeeTaxProfile.effective_to.is_(None)
+                | (EmployeeTaxProfile.effective_to >= payment_date)
+            ),
+        )
+    ).all()
+
+    if len(tax_profiles) != 1:
+        raise HTTPException(409, "Expected one effective Tax Profile")
+
+    tax = tax_profiles[0]
+
+    if (
+        tax.residency_status != "resident"
+        or tax.has_study_loan
+        or not tax.tfn_declaration_received
+    ):
+        raise HTTPException(409, "Tax Profile incomplete or unsupported")
+
+    try:
+        payg = PAYGWithholdingCalculator().calculate(
+            session=db,
+            gross_pay=gross,
+            pay_frequency="weekly",
+            claims_tax_free_threshold=tax.claims_tax_free_threshold,
+            payment_date=payment_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+    super_profiles = db.scalars(
+        select(EmployeeSuperProfile).where(
+            EmployeeSuperProfile.worker_id == engagement.worker_id,
+            EmployeeSuperProfile.effective_from <= payment_date,
+            (
+                EmployeeSuperProfile.effective_to.is_(None)
+                | (EmployeeSuperProfile.effective_to >= payment_date)
+            ),
+        )
+    ).all()
+
+    if len(super_profiles) != 1:
+        raise HTTPException(409, "Expected one effective Super Profile")
+
+    additional_rate = (
+        super_profiles[0].additional_employer_rate
+        or Decimal("0")
+    )
+
+    if additional_rate < 0:
+        raise HTTPException(409, "Invalid additional super rate")
+
+    statutory_super = SuperannuationCalculator().calculate(
+        ordinary_time_earnings=gross
+    )
+
+    additional_super = SuperannuationCalculator().calculate(
+        ordinary_time_earnings=gross,
+        rate=additional_rate / Decimal("100"),
+    )
+
+    return {
+        "header_id": header.id,
+        "engagement_id": engagement.id,
+        "organisation_id": engagement.organisation_id,
+        "worker_name": (
+            f"{engagement.worker.first_name} "
+            f"{engagement.worker.last_name}"
+        ),
+        "period_start": header.period_start,
+        "period_end": header.period_end,
+        "payment_date": payment_date,
+        "hours": sum(
+            (entry.hours_worked for entry in entries),
+            Decimal("0"),
+        ),
+        "gross": gross,
+        "payg": payg,
+        "net": gross - payg,
+        "statutory_super": statutory_super,
+        "additional_super": additional_super,
+        "total_super": statutory_super + additional_super,
+        "earnings_lines": earnings["lines"],
+        "timesheet_ids": [entry.id for entry in entries],
+    }
+
+
+@app.get(
+    "/ui/timesheets/weekly/{header_id}/payroll/preview",
+    response_class=HTMLResponse,
+)
+def preview_contractor_payroll(request: Request, header_id: int):
+
+    with SessionLocal() as db:
+
+        payroll = _prepare_contractor_payroll(db, header_id)
+
+        return templates.TemplateResponse(
+            request=request,
+            name="contractor_payroll_preview.html",
+            context={"payroll": payroll},
+        )
+
+
+@app.post(
+    "/ui/timesheets/weekly/{header_id}/payroll/generate",
+)
+def generate_contractor_payroll(
+    request: Request,
+    header_id: int,
+    expected_period_start: str = Form(...),
+):
+
+    from sqlalchemy import text
+
+    from app.models.payroll_component import PayrollComponent
+    from app.models.component_definition import ComponentDefinition
+    from app.models.payslip_timesheet import PayslipTimesheet
+
+    with SessionLocal() as db:
+
+        try:
+            # Serialise payroll generation for this Engagement.
+            header = db.get(TimesheetHeader, header_id)
+
+            if header is None or header.engagement_id is None:
+                raise HTTPException(404, "Timesheet Engagement not found")
+
+            if db.bind.dialect.name != "postgresql":
+                raise HTTPException(
+                    409,
+                    "Contractor payroll generation requires PostgreSQL",
+                )
+
+            db.execute(
+                text("SELECT pg_advisory_xact_lock(:lock_id)"),
+                {"lock_id": 800000000 + header.engagement_id},
+            )
+
+            # Recalculate and revalidate immediately before committing.
+            payroll = _prepare_contractor_payroll(db, header_id)
+
+            if payroll["period_start"].isoformat() != expected_period_start:
+                raise HTTPException(
+                    409,
+                    "Timesheet period has changed; refresh preview",
+                )
+
+            required_codes = {
+                "ORDINARY_HOURS",
+                "PAYG_WITHHOLDING",
+                "SUPER_GUARANTEE",
+                "SUPER_EMPLOYER_EXTRA",
+            }
+
+            definitions = {
+                definition.code: definition
+                for definition in db.scalars(
+                    select(ComponentDefinition).where(
+                        ComponentDefinition.code.in_(required_codes)
+                    )
+                )
+            }
+
+            if required_codes - definitions.keys():
+                raise HTTPException(
+                    409,
+                    "Required payroll component definitions missing",
+                )
+
+            pay_run = PayRun(
+                organisation_id=payroll["organisation_id"],
+                period_start=payroll["period_start"],
+                period_end=payroll["period_end"],
+                payment_date=payroll["payment_date"],
+                status="draft",
+            )
+
+            db.add(pay_run)
+            db.flush()
+
+            payslip = Payslip(
+                pay_run_id=pay_run.id,
+                engagement_id=payroll["engagement_id"],
+                employee_id=None,
+                gross_pay=payroll["gross"],
+                payg_withholding=payroll["payg"],
+                net_pay=payroll["net"],
+                superannuation=payroll["total_super"],
+            )
+
+            db.add(payslip)
+            db.flush()
+
+            from decimal import Decimal
+
+            for line in payroll["earnings_lines"]:
+                db.add(
+                    PayrollComponent(
+                        payslip_id=payslip.id,
+                        component_definition_id=line[
+                            "component_definition_id"
+                        ],
+                        quantity=line["quantity"],
+                        rate=line["rate"],
+                        amount=line["amount"],
+                    )
+                )
+
+            statutory_components = (
+                (
+                    "PAYG_WITHHOLDING",
+                    Decimal("1"),
+                    payroll["payg"],
+                    payroll["payg"],
+                ),
+                (
+                    "SUPER_GUARANTEE",
+                    payroll["gross"],
+                    Decimal("0.12"),
+                    payroll["statutory_super"],
+                ),
+                (
+                    "SUPER_EMPLOYER_EXTRA",
+                    payroll["gross"],
+                    (
+                        payroll["additional_super"]
+                        / payroll["gross"]
+                        if payroll["gross"]
+                        else Decimal("0")
+                    ),
+                    payroll["additional_super"],
+                ),
+            )
+
+            for code, quantity, rate, amount in statutory_components:
+                db.add(
+                    PayrollComponent(
+                        payslip_id=payslip.id,
+                        component_definition_id=definitions[code].id,
+                        quantity=quantity,
+                        rate=rate,
+                        amount=amount,
+                    )
+                )
+
+            for timesheet_id in payroll["timesheet_ids"]:
+                db.add(
+                    PayslipTimesheet(
+                        payslip_id=payslip.id,
+                        timesheet_id=timesheet_id,
+                    )
+                )
+
+            db.flush()
+            db.commit()
+
+        except Exception:
+            db.rollback()
+            raise
+
+    return RedirectResponse(
+        url="/ui/timesheets",
+        status_code=303,
+    )
+
+
 @app.get("/ui/timesheets", response_class=HTMLResponse)
 def list_timesheets(request: Request):
 
@@ -540,7 +1016,7 @@ def list_timesheets(request: Request):
         weekly_headers = db.scalars(
             select(TimesheetHeader)
             .where(TimesheetHeader.period_type == "weekly")
-            .order_by(TimesheetHeader.period_start.desc())
+            .order_by(TimesheetHeader.id.desc())
         ).all()
 
         # Prepare weekly timesheet records
@@ -555,10 +1031,9 @@ def list_timesheets(request: Request):
 
             weekly_timesheets.append({
                 "id": header.id,
-                "employee_id": header.employee_id,
+                "engagement_id": header.engagement_id,
                 "employee_name": (
-                    f"{header.employee.first_name} "
-                    f"{header.employee.last_name}"
+                    (timesheet_worker_name(db, header.engagement_id))
                 ),
                 "period_start": header.period_start,
                 "period_end": header.period_end,
@@ -573,16 +1048,15 @@ def list_timesheets(request: Request):
         daily_timesheets = db.scalars(
             select(Timesheet)
             .where(Timesheet.timesheet_header_id.is_(None))
-            .order_by(Timesheet.work_date.desc())
+            .order_by(Timesheet.id.desc())
         ).all()
 
         daily_data = [
             {
                 "id": timesheet.id,
-                "employee_id": timesheet.employee_id,
+                "engagement_id": timesheet.engagement_id,
                 "employee_name": (
-                    f"{timesheet.employee.first_name} "
-                    f"{timesheet.employee.last_name}"
+                    (timesheet_worker_name(db, timesheet.engagement_id))
                 ),
                 "work_date": timesheet.work_date,
                 "hours": timesheet.hours_worked,
@@ -600,7 +1074,7 @@ def list_timesheets(request: Request):
                 "engagement_options": [
                     {
                         "id": engagement.id,
-                        "employee_id": engagement.employee_id,
+                        "engagement_id": engagement.engagement_id,
                         "customer_name": engagement.customer.name,
                         "billing_rate": str(engagement.billing_rate)
                     }
@@ -644,9 +1118,8 @@ def preview_weekly_timesheet(request: Request, header_id: int):
             name="timesheet_preview.html",
             context={
                 "timesheet_id": header.id,
-                "employee_name": (
-                    f"{header.employee.first_name} "
-                    f"{header.employee.last_name}"
+                "worker_name": (
+                    timesheet_worker_name(db, header.engagement_id)
                 ),
                 "period_type": header.period_type,
                 "period_start": header.period_start,
@@ -685,9 +1158,8 @@ def preview_daily_timesheet(request: Request, timesheet_id: int):
             name="timesheet_preview.html",
             context={
                 "timesheet_id": timesheet.id,
-                "employee_name": (
-                    f"{timesheet.employee.first_name} "
-                    f"{timesheet.employee.last_name}"
+                "worker_name": (
+                    timesheet_worker_name(db, timesheet.engagement_id)
                 ),
                 "period_type": "daily",
                 "period_start": timesheet.work_date,
@@ -727,16 +1199,19 @@ def edit_timesheet_page(request: Request, timesheet_id: int):
                 detail="Approved timesheets cannot be edited"
             )
 
-        employees = db.scalars(
-            select(Employee).order_by(Employee.first_name)
+        engagements = db.scalars(
+            select(Engagement).order_by(Engagement.id)
         ).all()
 
         return templates.TemplateResponse(
             request=request,
             name="timesheet_create.html",
             context={
-                "employees": employees,
-                "timesheet": timesheet
+                "engagements": engagements,
+                "timesheet": timesheet,
+                "assignments": db.scalars(
+                    select(Assignment).order_by(Assignment.id)
+                ).all()
             }
         )
 
@@ -776,49 +1251,91 @@ def edit_weekly_timesheet_page(request: Request, header_id: int):
                 detail="Weekly timesheet must contain seven daily entries"
             )
 
-        employees = db.scalars(
-            select(Employee).order_by(Employee.first_name)
+        engagements = db.scalars(
+            select(Engagement).order_by(Engagement.id)
         ).all()
 
         return templates.TemplateResponse(
             request=request,
             name="timesheet_weekly.html",
             context={
-                "employees": employees,
+                "engagements": engagements,
                 "header": header,
                 "entries": entries,
-                "edit_mode": True
+                "edit_mode": True,
+                "assignments": db.scalars(
+                    select(Assignment).order_by(Assignment.id)
+                ).all()
             }
         )
 
 @app.get("/ui/timesheets/weekly", response_class=HTMLResponse)
 def new_weekly_timesheet_page(request: Request):
     with SessionLocal() as db:
-        employees = db.scalars(
-            select(Employee).order_by(Employee.first_name)
+        engagements = db.scalars(
+            select(Engagement).order_by(Engagement.id)
         ).all()
 
         return templates.TemplateResponse(
             request=request,
             name="timesheet_weekly.html",
-            context={"employees": employees}
+            context={
+                "engagements": engagements,
+                "assignments": db.scalars(
+                    select(Assignment).order_by(Assignment.id)
+                ).all()
+            }
         )
 
 
 @app.get("/ui/timesheets/new", response_class=HTMLResponse)
 def new_timesheet_page(request: Request):
     with SessionLocal() as db:
-        employees = db.scalars(
-            select(Employee).order_by(Employee.first_name)
+        engagements = db.scalars(
+            select(Engagement).order_by(Engagement.id)
         ).all()
 
         return templates.TemplateResponse(
             request=request,
             name="timesheet_create.html",
             context={
-                "employees": employees,
-                "timesheet": None
+                "engagements": engagements,
+                "timesheet": None,
+                "assignments": db.scalars(
+                    select(Assignment).order_by(Assignment.id)
+                ).all()
             }
+        )
+
+
+def validate_timesheet_engagement(db, engagement_id):
+    engagement = db.get(Engagement, engagement_id)
+
+    if engagement is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Engagement not found"
+        )
+
+    return engagement
+
+
+def validate_timesheet_assignment(db, assignment_id, engagement_id):
+    if assignment_id is None:
+        return
+
+    assignment = db.get(Assignment, assignment_id)
+
+    if assignment is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Selected assignment does not exist"
+        )
+
+    if assignment.engagement_id != engagement_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Selected assignment does not belong to this Engagement"
         )
 
 
@@ -857,19 +1374,12 @@ def create_weekly_timesheet(data: WeeklyTimesheetCreate):
 
     with SessionLocal() as db:
 
-        # Verify employee exists
-        employee = db.get(Employee, data.employee_id)
-
-        if employee is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Employee not found"
-            )
+        validate_timesheet_engagement(db, data.engagement_id)
 
         # Prevent duplicate entries
         existing = db.scalars(
             select(Timesheet).where(
-                Timesheet.employee_id == data.employee_id,
+                Timesheet.engagement_id == data.engagement_id,
                 Timesheet.work_date.in_(expected_dates)
             )
         ).all()
@@ -882,7 +1392,8 @@ def create_weekly_timesheet(data: WeeklyTimesheetCreate):
 
         # Create one weekly timesheet header
         header = TimesheetHeader(
-            employee_id=data.employee_id,
+            engagement_id=data.engagement_id,
+            employee_id=None,
             period_type="weekly",
             period_start=data.week_start,
             period_end=expected_dates[-1],
@@ -892,11 +1403,18 @@ def create_weekly_timesheet(data: WeeklyTimesheetCreate):
         db.add(header)
         db.flush()
 
+        for entry in data.entries:
+            validate_timesheet_assignment(
+                db, entry.assignment_id, data.engagement_id
+            )
+
         # Create seven daily entries linked to the header
         timesheets = [
             Timesheet(
-                employee_id=data.employee_id,
+                engagement_id=data.engagement_id,
+                employee_id=None,
                 timesheet_header_id=header.id,
+                assignment_id=entry.assignment_id,
                 work_date=entry.work_date,
                 hours_worked=entry.hours_worked,
                 status="draft"
@@ -910,7 +1428,7 @@ def create_weekly_timesheet(data: WeeklyTimesheetCreate):
         return {
             "message": "Weekly timesheet saved successfully",
             "timesheet_header_id": header.id,
-            "employee_id": data.employee_id,
+            "engagement_id": data.engagement_id,
             "week_start": data.week_start,
             "days_created": len(timesheets),
             "total_hours": sum(
@@ -948,10 +1466,10 @@ def update_weekly_timesheet(
                 detail="Only draft weekly timesheets can be edited"
             )
 
-        if data.employee_id != header.employee_id:
+        if data.engagement_id != header.engagement_id:
             raise HTTPException(
                 status_code=422,
-                detail="Cannot change the employee"
+                detail="Cannot change the Engagement"
             )
 
         if data.week_start != header.period_start:
@@ -995,8 +1513,14 @@ def update_weekly_timesheet(
                 detail="Cannot edit approved daily entries"
             )
 
+        for submitted in data.entries:
+            validate_timesheet_assignment(
+                db, submitted.assignment_id, data.engagement_id
+            )
+
         for existing, submitted in zip(entries, data.entries):
             existing.hours_worked = submitted.hours_worked
+            existing.assignment_id = submitted.assignment_id
 
         db.commit()
 
@@ -1014,18 +1538,17 @@ def create_timesheet(data: TimesheetCreate):
 
     with SessionLocal() as db:
 
-        # Verify the employee exists
-        employee = db.get(Employee, data.employee_id)
+        validate_timesheet_engagement(db, data.engagement_id)
 
-        if employee is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Employee not found"
-            )
+        validate_timesheet_assignment(
+            db, data.assignment_id, data.engagement_id
+        )
 
         # Create the timesheet
         timesheet = Timesheet(
-            employee_id=data.employee_id,
+            engagement_id=data.engagement_id,
+            employee_id=None,
+            assignment_id=data.assignment_id,
             work_date=data.work_date,
             hours_worked=data.hours_worked,
             status="draft"
@@ -1037,7 +1560,7 @@ def create_timesheet(data: TimesheetCreate):
 
         return {
             "id": timesheet.id,
-            "employee_id": timesheet.employee_id,
+            "engagement_id": timesheet.engagement_id,
             "work_date": timesheet.work_date,
             "hours_worked": timesheet.hours_worked,
             "status": timesheet.status
@@ -1167,14 +1690,15 @@ def update_timesheet(timesheet_id: int, data: TimesheetCreate):
                 detail="Approved timesheets cannot be edited"
             )
 
-        employee = db.get(Employee, data.employee_id)
-        if employee is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Employee not found"
-            )
+        validate_timesheet_engagement(db, data.engagement_id)
 
-        timesheet.employee_id = data.employee_id
+        validate_timesheet_assignment(
+            db, data.assignment_id, data.engagement_id
+        )
+
+        timesheet.engagement_id = data.engagement_id
+        timesheet.employee_id = None
+        timesheet.assignment_id = data.assignment_id
         timesheet.work_date = data.work_date
         timesheet.hours_worked = data.hours_worked
 
@@ -1413,6 +1937,96 @@ def complete_pay_run_api(pay_run_id: int):
 # PDF PAYSLIP DOWNLOAD
 # ============================================================
 
+
+
+@app.get(
+    "/ui/payslips/{payslip_id}/preview",
+    response_class=HTMLResponse,
+)
+def preview_payslip_page(request: Request, payslip_id: int):
+
+    from app.models.payroll_component import PayrollComponent
+    from app.models.component_definition import ComponentDefinition
+
+    with SessionLocal() as db:
+
+        payslip = db.get(Payslip, payslip_id)
+
+        if payslip is None:
+            raise HTTPException(404, "Payslip not found")
+
+        engagement = db.get(
+            Engagement,
+            payslip.engagement_id,
+        )
+
+        if engagement is None or engagement.worker is None:
+            raise HTTPException(
+                409,
+                "Payslip has no valid Worker Engagement",
+            )
+
+        pay_run = db.get(PayRun, payslip.pay_run_id)
+
+        if pay_run is None:
+            raise HTTPException(
+                409,
+                "Payslip has no Pay Run",
+            )
+
+        organisation = db.get(
+            Organisation,
+            pay_run.organisation_id,
+        )
+
+        if organisation is None:
+            raise HTTPException(
+                409,
+                "Pay Run organisation not found",
+            )
+
+        worker = engagement.worker
+
+        # Read the actual saved payroll components.
+        # Do not recalculate historical earnings.
+        rows = db.execute(
+            select(PayrollComponent, ComponentDefinition)
+            .join(
+                ComponentDefinition,
+                PayrollComponent.component_definition_id
+                == ComponentDefinition.id,
+            )
+            .where(
+                PayrollComponent.payslip_id == payslip.id
+            )
+            .order_by(PayrollComponent.id)
+        ).all()
+
+        components = [
+            {
+                "code": definition.code,
+                "name": definition.name,
+                "quantity": component.quantity,
+                "rate": component.rate,
+                "amount": component.amount,
+            }
+            for component, definition in rows
+        ]
+
+        return templates.TemplateResponse(
+            request=request,
+            name="payslip_preview.html",
+            context={
+                "payslip": payslip,
+                "pay_run": pay_run,
+                "worker": worker,
+                "engagement": engagement,
+                "organisation": organisation,
+                "components": components,
+            },
+        )
+
+
 @app.get("/payslips/{payslip_id}/pdf")
 def download_payslip_pdf(payslip_id: int):
 
@@ -1426,10 +2040,10 @@ def download_payslip_pdf(payslip_id: int):
                 detail="Payslip not found"
             )
 
-        employee = session.get(
-            Employee,
-            payslip.employee_id
-        )
+        engagement = session.get(Engagement, payslip.engagement_id)
+        if engagement is None or engagement.worker is None:
+            raise HTTPException(status_code=500, detail="Payslip Worker link missing")
+        worker = engagement.worker
 
         pay_run = session.get(
             PayRun,
@@ -1441,11 +2055,121 @@ def download_payslip_pdf(payslip_id: int):
             pay_run.organisation_id
         )
 
+        from app.models.payroll_component import PayrollComponent
+        from app.models.component_definition import ComponentDefinition
+        from app.models.payslip_timesheet import PayslipTimesheet
+        from app.models.timesheet import Timesheet
+        from sqlalchemy import select
+
+        components = session.scalars(
+            select(PayrollComponent).where(
+                PayrollComponent.payslip_id == payslip.id
+            ).order_by(PayrollComponent.id)
+        ).all()
+
+        linked_timesheets = session.scalars(
+            select(Timesheet)
+            .join(
+                PayslipTimesheet,
+                PayslipTimesheet.timesheet_id == Timesheet.id
+            )
+            .where(PayslipTimesheet.payslip_id == payslip.id)
+        ).all()
+
+        assignment_ids = sorted({
+            ts.assignment_id
+            for ts in linked_timesheets
+            if ts.assignment_id is not None
+        })
+
+        # The current payroll component records do not store
+        # assignment_id directly. A single linked assignment
+        # can be identified unambiguously; multiple assignments
+        # cannot yet be attributed to individual component lines.
+        assignment_label = (
+            f"#{assignment_ids[0]}"
+            if len(assignment_ids) == 1
+            else "Multiple" if assignment_ids
+            else "—"
+        )
+
+        earnings_lines = []
+        withholding_lines = []
+        employer_super_lines = []
+
+        from app.models.component_family import ComponentFamily
+
+        earnings_families = {
+            "EARNINGS",
+            "ALLOWANCE",
+            "LEAVE",
+            "TERMINATION",
+            "REIMBURSEMENT",
+        }
+
+        for component in components:
+            definition = session.get(
+                ComponentDefinition,
+                component.component_definition_id
+            )
+
+            if definition is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Payroll component definition missing"
+                )
+
+            family = session.get(
+                ComponentFamily,
+                definition.family_id
+            )
+
+            if family is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Payroll component family missing"
+                )
+
+            line = {
+                "assignment": assignment_label,
+                "component": definition.name,
+                "quantity": component.quantity,
+                "rate": component.rate,
+                "amount": component.amount,
+            }
+
+            if family.code in earnings_families:
+                earnings_lines.append(line)
+
+            elif definition.code in {
+                "PAYG_WITHHOLDING",
+                "ETP_WITHHOLDING",
+            }:
+                withholding_lines.append(line)
+
+            elif definition.code in {
+                "SUPER_GUARANTEE",
+                "SUPER_EMPLOYER_EXTRA",
+            }:
+                employer_super_lines.append(line)
+
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail=(
+                        "Payslip PDF does not yet support "
+                        f"component {definition.code}"
+                    )
+                )
+
         pdf_buffer = PayslipPDFGenerator().generate(
             payslip=payslip,
-            employee=employee,
+            employee=worker,
             organisation=organisation,
-            pay_run=pay_run
+            pay_run=pay_run,
+            earnings_lines=earnings_lines,
+            withholding_lines=withholding_lines,
+            employer_super_lines=employer_super_lines
         )
 
         filename = f"payslip_{payslip.id}.pdf"
@@ -1460,213 +2184,16 @@ def download_payslip_pdf(payslip_id: int):
         )
 
 
-@app.get("/ui/employees", response_class=HTMLResponse)
-def employees_page(request: Request):
-
-    with SessionLocal() as session:
-
-        employees = session.scalars(
-            select(Employee)
-            .order_by(Employee.last_name, Employee.first_name)
-        ).all()
-
-        employee_data = [
-            {
-                "id": employee.id,
-                "first_name": employee.first_name,
-                "last_name": employee.last_name,
-                "email": employee.email,
-                "organisation": {
-                    "name": employee.organisation.name
-                }
-            }
-            for employee in employees
-        ]
-
-    return templates.TemplateResponse(
-        request=request,
-        name="employees.html",
-        context={"employees": employee_data}
-    )
 
 
 
-# ============================================================
-# EMPLOYEE CREATION AND EDITING
-# ============================================================
-
-class EmployeeFormInput(BaseModel):
-    first_name: str
-    last_name: str
-    email: str
-    organisation_id: int
 
 
-@app.get("/ui/employees/new", response_class=HTMLResponse)
-def new_employee_page(request: Request):
-    with SessionLocal() as db:
-        organisations = db.scalars(
-            select(Organisation).order_by(Organisation.name)
-        ).all()
-
-        organisation_data = [
-            {"id": org.id, "name": org.name}
-            for org in organisations
-        ]
-
-    return templates.TemplateResponse(
-        request=request,
-        name="employee_form.html",
-        context={
-            "employee": None,
-            "organisations": organisation_data,
-        },
-    )
 
 
-@app.get("/ui/employees/{employee_id}/edit", response_class=HTMLResponse)
-def edit_employee_page(request: Request, employee_id: int):
-    with SessionLocal() as db:
-        employee = db.get(Employee, employee_id)
-
-        if employee is None:
-            raise HTTPException(status_code=404, detail="Employee not found")
-
-        employee_data = {
-            "id": employee.id,
-            "first_name": employee.first_name,
-            "last_name": employee.last_name,
-            "email": employee.email,
-            "organisation_id": employee.organisation_id,
-        }
-
-        organisations = db.scalars(
-            select(Organisation).order_by(Organisation.name)
-        ).all()
-
-        organisation_data = [
-            {"id": org.id, "name": org.name}
-            for org in organisations
-        ]
-
-    return templates.TemplateResponse(
-        request=request,
-        name="employee_form.html",
-        context={
-            "employee": employee_data,
-            "organisations": organisation_data,
-        },
-    )
 
 
-@app.post("/api/employees")
-def create_employee(data: EmployeeFormInput):
-    first_name = data.first_name.strip()
-    last_name = data.last_name.strip()
-    email = data.email.strip()
 
-    if not first_name or not last_name or not email:
-        raise HTTPException(status_code=422, detail="All employee fields are required")
-
-    with SessionLocal() as db:
-        if db.get(Organisation, data.organisation_id) is None:
-            raise HTTPException(status_code=404, detail="Organisation not found")
-
-        employee = Employee(
-            organisation_id=data.organisation_id,
-            first_name=first_name,
-            last_name=last_name,
-            email=email,
-        )
-
-        db.add(employee)
-        db.commit()
-        db.refresh(employee)
-
-        return {"id": employee.id}
-
-
-@app.patch("/api/employees/{employee_id}")
-def update_employee(employee_id: int, data: EmployeeFormInput):
-    first_name = data.first_name.strip()
-    last_name = data.last_name.strip()
-    email = data.email.strip()
-
-    if not first_name or not last_name or not email:
-        raise HTTPException(status_code=422, detail="All employee fields are required")
-
-    with SessionLocal() as db:
-        employee = db.get(Employee, employee_id)
-
-        if employee is None:
-            raise HTTPException(status_code=404, detail="Employee not found")
-
-        if db.get(Organisation, data.organisation_id) is None:
-            raise HTTPException(status_code=404, detail="Organisation not found")
-
-        employee.first_name = first_name
-        employee.last_name = last_name
-        employee.email = email
-        employee.organisation_id = data.organisation_id
-
-        db.commit()
-
-        return {"id": employee.id}
-
-
-@app.get("/ui/employees/{employee_id}", response_class=HTMLResponse)
-def employee_detail_page(request: Request, employee_id: int):
-
-    with SessionLocal() as session:
-
-        employee = session.get(Employee, employee_id)
-
-        if employee is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Employee not found"
-            )
-
-        organisation = session.get(
-            Organisation,
-            employee.organisation_id
-        )
-
-        agreements = session.scalars(
-            select(WorkPattern)
-            .where(WorkPattern.employee_id == employee_id)
-            .order_by(WorkPattern.start_date.desc())
-        ).all()
-
-        employee_data = {
-            "id": employee.id,
-            "first_name": employee.first_name,
-            "last_name": employee.last_name,
-            "email": employee.email,
-            "organisation_name": organisation.name
-        }
-
-        agreement_data = [
-            {
-                "employment_type": agreement.employment_type,
-                "pay_basis": agreement.pay_basis,
-                "hourly_rate": float(agreement.hourly_rate),
-                "ordinary_hours_per_week": agreement.ordinary_hours_per_week,
-                "pay_frequency": agreement.pay_frequency,
-                "start_date": agreement.start_date,
-                "end_date": agreement.end_date
-            }
-            for agreement in agreements
-        ]
-
-    return templates.TemplateResponse(
-        request=request,
-        name="employee_detail.html",
-        context={
-            "employee": employee_data,
-            "agreements": agreement_data
-        }
-    )
 
 
 @app.get("/ui/pay-runs", response_class=HTMLResponse)
@@ -1676,7 +2203,7 @@ def pay_runs_page(request: Request):
 
         pay_runs = session.scalars(
             select(PayRun)
-            .order_by(PayRun.payment_date.desc())
+            .order_by(PayRun.id.desc())
         ).all()
 
         run_data = [
@@ -1740,25 +2267,26 @@ def pay_run_detail_page(request: Request, pay_run_id: int):
         )
 
         rows = session.execute(
-            select(Payslip, Employee)
-            .join(Employee, Payslip.employee_id == Employee.id)
+            select(Payslip, Engagement, Worker)
+            .join(Engagement, Payslip.engagement_id == Engagement.id)
+            .join(Worker, Engagement.worker_id == Worker.id)
             .where(Payslip.pay_run_id == pay_run_id)
-            .order_by(Employee.last_name, Employee.first_name)
+            .order_by(Worker.last_name, Worker.first_name)
         ).all()
 
         payslip_data = [
             {
                 "id": payslip.id,
-                "employee_id": employee.id,
-                "employee_name": (
-                    f"{employee.first_name} {employee.last_name}"
+                "worker_id": worker.id,
+                "worker_name": (
+                    f"{worker.first_name} {worker.last_name}"
                 ),
                 "gross_pay": payslip.gross_pay,
                 "payg_withholding": payslip.payg_withholding,
                 "net_pay": payslip.net_pay,
                 "superannuation": payslip.superannuation
             }
-            for payslip, employee in rows
+            for payslip, engagement, worker in rows
         ]
 
         totals = {
@@ -1809,11 +2337,11 @@ def organisations_page(request: Request):
         rows = session.execute(
             select(
                 Organisation,
-                func.count(Employee.id).label("employee_count")
+                func.count(func.distinct(Engagement.worker_id)).label("worker_count")
             )
             .outerjoin(
-                Employee,
-                Employee.organisation_id == Organisation.id
+                Engagement,
+                Engagement.organisation_id == Organisation.id
             )
             .group_by(Organisation.id)
             .order_by(Organisation.name)
@@ -1825,9 +2353,9 @@ def organisations_page(request: Request):
                 "name": org.name,
                 "abn": org.abn,
                 "country": org.country,
-                "employee_count": employee_count
+                "worker_count": worker_count
             }
-            for org, employee_count in rows
+            for org, worker_count in rows
         ]
 
     return templates.TemplateResponse(
@@ -1955,35 +2483,514 @@ class WorkPatternUpdate(BaseModel):
 
 
 
+
+
 @app.get(
-    "/ui/employees/{employee_id}/agreements/new",
-    response_class=HTMLResponse
+    "/ui/workers/{worker_id}/engagements/{engagement_id}/work-patterns",
+    response_class=HTMLResponse,
 )
-def new_work_pattern_page(request: Request, employee_id: int):
+def engagement_work_patterns_page(
+    request: Request,
+    worker_id: int,
+    engagement_id: int,
+):
     with SessionLocal() as db:
-        employee = db.get(Employee, employee_id)
 
-        if employee is None:
-            raise HTTPException(404, "Employee not found")
+        engagement = db.get(Engagement, engagement_id)
 
-        employee_data = {
-            "id": employee.id,
-            "first_name": employee.first_name,
-            "last_name": employee.last_name
+        if engagement is None or engagement.worker_id != worker_id:
+            raise HTTPException(
+                status_code=404,
+                detail="Worker Engagement not found",
+            )
+
+        if engagement.engagement_type not in (
+            "payg_employee",
+            "employee",
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Work Patterns are available only for PAYG Employees",
+            )
+
+        patterns = db.scalars(
+            select(WorkPattern)
+            .where(WorkPattern.engagement_id == engagement_id)
+            .order_by(WorkPattern.start_date.desc(), WorkPattern.id.desc())
+        ).all()
+
+
+        # Payslips for this Engagement, newest first.
+        payslip_rows = db.execute(
+            select(Payslip, PayRun)
+            .join(
+                PayRun,
+                Payslip.pay_run_id == PayRun.id
+            )
+            .where(
+                Payslip.engagement_id == engagement_id
+            )
+            .order_by(Payslip.id.desc())
+        ).all()
+
+        payslip_data = [
+            {
+                "id": payslip.id,
+                "period_start": pay_run.period_start,
+                "period_end": pay_run.period_end,
+                "payment_date": pay_run.payment_date,
+                "gross_pay": payslip.gross_pay,
+                "payg_withholding": payslip.payg_withholding,
+                "net_pay": payslip.net_pay,
+                "superannuation": payslip.superannuation,
+                "status": pay_run.status,
+            }
+            for payslip, pay_run in payslip_rows
+        ]
+
+        return templates.TemplateResponse(
+            request=request,
+            name="engagement_work_patterns.html",
+            context={
+                "worker_id": worker_id,
+                "worker_name": (
+                    f"{engagement.worker.first_name} "
+                    f"{engagement.worker.last_name}"
+                ),
+                "engagement_id": engagement.id,
+                "organisation_name": engagement.organisation.name,
+                "patterns": patterns,
+                "payslips": payslip_data,
+            },
+        )
+
+
+
+
+# ============================================================
+# WORK PATTERN PAYROLL SHORTCUT
+# ============================================================
+
+def _prepare_work_pattern_payroll(db, worker_id, engagement_id):
+    """
+    Prepare the next weekly PAYG Employee payroll.
+
+    This function performs no database writes.
+    """
+
+    from datetime import timedelta
+    from decimal import Decimal, ROUND_HALF_UP
+
+    from app.models.employee_tax_profile import EmployeeTaxProfile
+    from app.models.employee_super_profile import EmployeeSuperProfile
+    from app.payroll.payg_withholding import PAYGWithholdingCalculator
+    from app.payroll.superannuation import SuperannuationCalculator
+
+    engagement = db.get(Engagement, engagement_id)
+
+    if engagement is None or engagement.worker_id != worker_id:
+        raise HTTPException(404, "Worker Engagement not found")
+
+    if engagement.engagement_type != "payg_employee":
+        raise HTTPException(
+            409,
+            "Generate Payroll is available only for PAYG Employees",
+        )
+
+    if engagement.status != "active" or not engagement.worker.active:
+        raise HTTPException(409, "Worker or Engagement is inactive")
+
+    # Find the latest existing payslip by pay period.
+    latest = db.execute(
+        select(Payslip, PayRun)
+        .join(PayRun, Payslip.pay_run_id == PayRun.id)
+        .where(Payslip.engagement_id == engagement_id)
+        .order_by(
+            PayRun.period_end.desc(),
+            Payslip.id.desc(),
+        )
+    ).first()
+
+    patterns = db.scalars(
+        select(WorkPattern)
+        .where(WorkPattern.engagement_id == engagement_id)
+        .order_by(
+            WorkPattern.start_date.desc(),
+            WorkPattern.id.desc(),
+        )
+    ).all()
+
+    if not patterns:
+        raise HTTPException(409, "No Work Pattern configured")
+
+    # Current shortcut supports weekly Work Patterns.
+    weekly_patterns = [
+        pattern for pattern in patterns
+        if pattern.pay_frequency == "weekly"
+    ]
+
+    if not weekly_patterns:
+        raise HTTPException(
+            409,
+            "Weekly Work Pattern required for this payroll shortcut",
+        )
+
+    if latest:
+        period_start = latest[1].period_end + timedelta(days=1)
+
+        if period_start.weekday() != 0:
+            raise HTTPException(
+                409,
+                "Latest payslip does not end on Sunday. "
+                "Review payroll periods before proceeding.",
+            )
+
+    else:
+        # First payroll: start on the first Monday on or
+        # after the Engagement and Work Pattern commencement.
+        starts = [
+            value for value in (
+                engagement.start_date,
+                weekly_patterns[-1].start_date,
+            )
+            if value is not None
+        ]
+
+        first_day = max(starts)
+
+        # Do not silently skip an initial partial work week.
+        if first_day.weekday() not in (0, 6):
+            raise HTTPException(
+                409,
+                "Initial partial-week payroll requires manual review",
+            )
+
+        period_start = first_day + timedelta(
+            days=(7 - first_day.weekday()) % 7
+        )
+
+    period_end = period_start + timedelta(days=6)
+    payment_date = period_end + timedelta(days=1)
+
+    if (
+        engagement.start_date is not None
+        and engagement.start_date > period_start
+    ):
+        raise HTTPException(409, "Engagement starts after pay period")
+
+    if (
+        engagement.end_date is not None
+        and engagement.end_date < period_end
+    ):
+        raise HTTPException(
+            409,
+            "Partial final pay period requires manual review",
+        )
+
+    applicable = [
+        pattern for pattern in patterns
+        if pattern.start_date <= period_start
+        and (
+            pattern.end_date is None
+            or pattern.end_date >= period_end
+        )
+    ]
+
+    if len(applicable) != 1:
+        raise HTTPException(
+            409,
+            "Expected exactly one Work Pattern covering next pay period",
+        )
+
+    pattern = applicable[0]
+
+    if pattern.pay_frequency != "weekly":
+        raise HTTPException(409, "Work Pattern is not weekly")
+
+    if pattern.pay_basis != "hourly":
+        raise HTTPException(
+            409,
+            "This shortcut currently supports hourly Work Patterns",
+        )
+
+    hours = Decimal(pattern.ordinary_hours_per_week)
+    rate = Decimal(pattern.hourly_rate)
+
+    if hours <= 0 or rate <= 0:
+        raise HTTPException(409, "Invalid Work Pattern remuneration")
+
+    gross = (hours * rate).quantize(
+        Decimal("0.01"),
+        rounding=ROUND_HALF_UP,
+    )
+
+    # Check overlapping payroll history.
+    overlapping = db.scalar(
+        select(Payslip.id)
+        .join(PayRun, Payslip.pay_run_id == PayRun.id)
+        .where(
+            Payslip.engagement_id == engagement_id,
+            PayRun.period_start <= period_end,
+            PayRun.period_end >= period_start,
+        )
+        .limit(1)
+    )
+
+    if overlapping is not None:
+        raise HTTPException(
+            409,
+            "A payslip already exists for this pay period",
+        )
+
+    # Tax profile effective on payment date.
+    tax_profiles = db.scalars(
+        select(EmployeeTaxProfile).where(
+            EmployeeTaxProfile.worker_id == worker_id,
+            EmployeeTaxProfile.effective_from <= payment_date,
+            (
+                EmployeeTaxProfile.effective_to.is_(None)
+                | (
+                    EmployeeTaxProfile.effective_to >= payment_date
+                )
+            ),
+        )
+    ).all()
+
+    if len(tax_profiles) != 1:
+        raise HTTPException(
+            409,
+            "Expected exactly one effective Tax Profile",
+        )
+
+    tax = tax_profiles[0]
+
+    if (
+        tax.residency_status != "resident"
+        or tax.has_study_loan
+        or not tax.tfn_declaration_received
+    ):
+        raise HTTPException(
+            409,
+            "Tax Profile is not supported or incomplete",
+        )
+
+    payg = PAYGWithholdingCalculator().calculate(
+        session=db,
+        gross_pay=gross,
+        pay_frequency="weekly",
+        claims_tax_free_threshold=tax.claims_tax_free_threshold,
+        payment_date=payment_date,
+    )
+
+    # Super profile effective on payment date.
+    super_profiles = db.scalars(
+        select(EmployeeSuperProfile).where(
+            EmployeeSuperProfile.worker_id == worker_id,
+            EmployeeSuperProfile.effective_from <= payment_date,
+            (
+                EmployeeSuperProfile.effective_to.is_(None)
+                | (
+                    EmployeeSuperProfile.effective_to >= payment_date
+                )
+            ),
+        )
+    ).all()
+
+    if len(super_profiles) != 1:
+        raise HTTPException(
+            409,
+            "Expected exactly one effective Super Profile",
+        )
+
+    additional_rate = (
+        super_profiles[0].additional_employer_rate
+        or Decimal("0")
+    )
+
+    if additional_rate < 0:
+        raise HTTPException(409, "Invalid additional super rate")
+
+    statutory_super = SuperannuationCalculator().calculate(
+        ordinary_time_earnings=gross
+    )
+
+    additional_super = SuperannuationCalculator().calculate(
+        ordinary_time_earnings=gross,
+        rate=additional_rate / Decimal("100"),
+    )
+
+    return {
+        "worker_id": worker_id,
+        "worker_name": (
+            f"{engagement.worker.first_name} "
+            f"{engagement.worker.last_name}"
+        ),
+        "engagement_id": engagement_id,
+        "organisation_id": engagement.organisation_id,
+        "organisation_name": engagement.organisation.name,
+        "pattern_id": pattern.id,
+        "period_start": period_start,
+        "period_end": period_end,
+        "payment_date": payment_date,
+        "hours": hours,
+        "rate": rate,
+        "gross": gross,
+        "payg": payg,
+        "net": gross - payg,
+        "statutory_super": statutory_super,
+        "additional_super": additional_super,
+        "total_super": statutory_super + additional_super,
+    }
+
+
+@app.get(
+    "/ui/workers/{worker_id}/engagements/{engagement_id}/payroll/preview",
+    response_class=HTMLResponse,
+)
+def preview_work_pattern_payroll(
+    request: Request,
+    worker_id: int,
+    engagement_id: int,
+):
+    with SessionLocal() as db:
+        preview = _prepare_work_pattern_payroll(
+            db,
+            worker_id,
+            engagement_id,
+        )
+
+        return templates.TemplateResponse(
+            request=request,
+            name="work_pattern_payroll_preview.html",
+            context={"payroll": preview},
+        )
+
+
+@app.post(
+    "/ui/workers/{worker_id}/engagements/{engagement_id}/payroll/generate",
+)
+def generate_work_pattern_payroll(
+    request: Request,
+    worker_id: int,
+    engagement_id: int,
+    expected_period_start: str = Form(...),
+):
+    """
+    Generate a draft Pay Run for ONE PAYG Employee Engagement.
+
+    Never process every worker in the organisation here.
+    """
+
+    from sqlalchemy import text
+    from app.payroll.pay_run_processor import PayRunProcessor
+
+    with SessionLocal() as db:
+
+        try:
+            # Serialise payroll generation for this Engagement.
+            # This prevents concurrent requests generating duplicates.
+            db.execute(
+                text("SELECT pg_advisory_xact_lock(:lock_id)"),
+                {"lock_id": 700000000 + engagement_id},
+            )
+
+            # Recalculate everything immediately before generation.
+            preview = _prepare_work_pattern_payroll(
+                db,
+                worker_id,
+                engagement_id,
+            )
+
+            if preview["period_start"].isoformat() != expected_period_start:
+                raise HTTPException(
+                    409,
+                    "Payroll period has changed. Refresh the preview.",
+                )
+
+            pay_run = PayRun(
+                organisation_id=preview["organisation_id"],
+                period_start=preview["period_start"],
+                period_end=preview["period_end"],
+                payment_date=preview["payment_date"],
+                status="draft",
+            )
+
+            db.add(pay_run)
+            db.flush()
+
+            engagement = db.get(Engagement, engagement_id)
+
+            # IMPORTANT:
+            # Process only this Engagement, NOT the whole Organisation.
+            result = PayRunProcessor()._process_payg_employee_weekly(
+                session=db,
+                pay_run=pay_run,
+                engagement=engagement,
+            )
+
+            if result != 1:
+                raise HTTPException(
+                    409,
+                    "Selected Engagement was not processed",
+                )
+
+            payslip = db.scalar(
+                select(Payslip).where(
+                    Payslip.pay_run_id == pay_run.id,
+                    Payslip.engagement_id == engagement_id,
+                )
+            )
+
+            if payslip is None:
+                raise HTTPException(
+                    500,
+                    "Payroll processing did not create a Payslip",
+                )
+
+            db.commit()
+
+        except Exception:
+            db.rollback()
+            raise
+
+    return RedirectResponse(
+        url=(
+            f"/ui/workers/{worker_id}/engagements/"
+            f"{engagement_id}/work-patterns"
+        ),
+        status_code=303,
+    )
+
+
+@app.get(
+    "/ui/engagements/{engagement_id}/agreements/new",
+    response_class=HTMLResponse,
+)
+def new_work_pattern_page(request: Request, engagement_id: int):
+    with SessionLocal() as db:
+        engagement = db.get(Engagement, engagement_id)
+        if engagement is None or engagement.worker is None:
+            raise HTTPException(404, "Engagement not found")
+
+        form_data = {
+            "id": engagement.id,
+            "worker_name": (
+                f"{engagement.worker.first_name} "
+                f"{engagement.worker.last_name}"
+            ),
+            "organisation_name": engagement.organisation.name,
+            "worker_id": engagement.worker_id,
         }
 
     return templates.TemplateResponse(
         request=request,
         name="agreement_create.html",
-        context={"employee": employee_data}
+        context={"engagement": form_data},
     )
 
 
-@app.post("/api/employees/{employee_id}/agreements", status_code=201)
-def create_work_pattern(
-    employee_id: int,
-    data: WorkPatternUpdate
-):
+@app.post("/api/engagements/{engagement_id}/agreements", status_code=201)
+def create_work_pattern(engagement_id: int, data: WorkPatternUpdate):
     if data.employment_type not in {
         "full_time", "part_time", "casual", "fixed_term"
     }:
@@ -1992,36 +2999,36 @@ def create_work_pattern(
     if data.pay_basis not in {"hourly", "salary"}:
         raise HTTPException(422, "Invalid pay basis")
 
-    if data.pay_frequency not in {
-        "weekly", "fortnightly", "monthly"
-    }:
+    if data.pay_frequency not in {"weekly", "fortnightly", "monthly"}:
         raise HTTPException(422, "Invalid pay frequency")
 
     if data.end_date is not None and data.end_date < data.start_date:
         raise HTTPException(422, "End date cannot be before start date")
 
     with SessionLocal() as db:
-        employee = db.get(Employee, employee_id)
-
-        if employee is None:
-            raise HTTPException(404, "Employee not found")
+        engagement = db.get(Engagement, engagement_id)
+        if engagement is None or engagement.worker is None:
+            raise HTTPException(404, "Engagement not found")
 
         agreement = WorkPattern(
-            employee_id=employee_id,
+            engagement_id=engagement_id,
+            employee_id=None,
             employment_type=data.employment_type,
             pay_basis=data.pay_basis,
             hourly_rate=data.hourly_rate,
             ordinary_hours_per_week=data.ordinary_hours_per_week,
             pay_frequency=data.pay_frequency,
             start_date=data.start_date,
-            end_date=data.end_date
+            end_date=data.end_date,
         )
-
         db.add(agreement)
         db.commit()
         db.refresh(agreement)
-
         return {"id": agreement.id, "status": "created"}
+
+
+
+
 
 
 @app.get("/ui/agreements/{agreement_id}", response_class=HTMLResponse)
@@ -2037,22 +3044,22 @@ def view_work_pattern(request: Request, agreement_id: int):
                 detail="Employment agreement not found"
             )
 
-        employee = db.get(Employee, agreement.employee_id)
+        engagement = db.get(Engagement, agreement.engagement_id)
 
-        if employee is None:
+        if engagement is None or engagement.worker is None:
             raise HTTPException(
-                status_code=404,
-                detail="Employee not found"
+                status_code=409,
+                detail="Work pattern requires a valid Engagement and Worker"
             )
+
+        worker = engagement.worker
 
         return templates.TemplateResponse(
             request=request,
             name="agreement_detail.html",
             context={
                 "agreement": agreement,
-                "employee_name": (
-                    f"{employee.first_name} {employee.last_name}"
-                ),
+                "worker_name": f"{worker.first_name} {worker.last_name}",
                 "is_active": (
                     agreement.start_date <= date.today()
                     and (
@@ -2077,22 +3084,22 @@ def edit_work_pattern(request: Request, agreement_id: int):
                 detail="Employment agreement not found"
             )
 
-        employee = db.get(Employee, agreement.employee_id)
+        engagement = db.get(Engagement, agreement.engagement_id)
 
-        if employee is None:
+        if engagement is None or engagement.worker is None:
             raise HTTPException(
-                status_code=404,
-                detail="Employee not found"
+                status_code=409,
+                detail="Work pattern requires a valid Engagement and Worker"
             )
+
+        worker = engagement.worker
 
         return templates.TemplateResponse(
             request=request,
             name="agreement_edit.html",
             context={
                 "agreement": agreement,
-                "employee_name": (
-                    f"{employee.first_name} {employee.last_name}"
-                )
+                "worker_name": f"{worker.first_name} {worker.last_name}"
             }
         )
 
@@ -2162,12 +3169,10 @@ def agreements_page(request: Request):
     with SessionLocal() as session:
 
         rows = session.execute(
-            select(WorkPattern, Employee)
-            .join(
-                Employee,
-                WorkPattern.employee_id == Employee.id
-            )
-            .order_by(Employee.last_name, Employee.first_name)
+            select(WorkPattern, Engagement, Worker)
+            .join(Engagement, WorkPattern.engagement_id == Engagement.id)
+            .join(Worker, Engagement.worker_id == Worker.id)
+            .order_by(Worker.last_name, Worker.first_name)
         ).all()
 
         today = date.today()
@@ -2175,10 +3180,8 @@ def agreements_page(request: Request):
         agreement_data = [
             {
                 "id": agreement.id,
-                "employee_id": employee.id,
-                "employee_name": (
-                    f"{employee.first_name} {employee.last_name}"
-                ),
+                "worker_id": worker.id,
+                "worker_name": f"{worker.first_name} {worker.last_name}",
                 "employment_type": agreement.employment_type,
                 "pay_basis": agreement.pay_basis,
                 "hourly_rate": agreement.hourly_rate,
@@ -2194,7 +3197,7 @@ def agreements_page(request: Request):
                     )
                 )
             }
-            for agreement, employee in rows
+            for agreement, engagement, worker in rows
         ]
 
     return templates.TemplateResponse(
@@ -2210,28 +3213,23 @@ def payslips_page(request: Request):
     with SessionLocal() as session:
 
         rows = session.execute(
-            select(Payslip, Employee, PayRun)
-            .join(
-                Employee,
-                Payslip.employee_id == Employee.id
-            )
-            .join(
-                PayRun,
-                Payslip.pay_run_id == PayRun.id
-            )
+            select(Payslip, Engagement, Worker, PayRun)
+            .join(Engagement, Payslip.engagement_id == Engagement.id)
+            .join(Worker, Engagement.worker_id == Worker.id)
+            .join(PayRun, Payslip.pay_run_id == PayRun.id)
             .order_by(
                 PayRun.payment_date.desc(),
-                Employee.last_name,
-                Employee.first_name
+                Worker.last_name,
+                Worker.first_name
             )
         ).all()
 
         payslip_data = [
             {
                 "id": payslip.id,
-                "employee_id": employee.id,
-                "employee_name": (
-                    f"{employee.first_name} {employee.last_name}"
+                "worker_id": worker.id,
+                "worker_name": (
+                    f"{worker.first_name} {worker.last_name}"
                 ),
                 "pay_run_id": pay_run.id,
                 "period_start": pay_run.period_start,
@@ -2242,7 +3240,7 @@ def payslips_page(request: Request):
                 "net_pay": payslip.net_pay,
                 "superannuation": payslip.superannuation
             }
-            for payslip, employee, pay_run in rows
+            for payslip, engagement, worker, pay_run in rows
         ]
 
     return templates.TemplateResponse(
@@ -2262,178 +3260,407 @@ def payslips_page(request: Request):
 # ============================================================
 
 class AssignmentInput(BaseModel):
-    employee_id: int
+    engagement_id: int
     customer_id: int
     billing_rate: Decimal
+
+
+
+
+@app.get(
+    "/ui/workers/{worker_id}/engagements/{engagement_id}/assignments",
+    response_class=HTMLResponse,
+)
+def worker_engagement_assignments_page(
+    request: Request,
+    worker_id: int,
+    engagement_id: int,
+):
+    with SessionLocal() as db:
+
+        engagement = db.get(Engagement, engagement_id)
+
+        if engagement is None or engagement.worker_id != worker_id:
+            raise HTTPException(
+                status_code=404,
+                detail="Worker Engagement not found",
+            )
+
+        assignments = db.scalars(
+            select(Assignment)
+            .where(Assignment.engagement_id == engagement_id)
+            .order_by(Assignment.id)
+        ).all()
+
+        return templates.TemplateResponse(
+            request=request,
+            name="engagement_assignments.html",
+            context={
+                "worker_id": worker_id,
+                "worker_name": (
+                    f"{engagement.worker.first_name} "
+                    f"{engagement.worker.last_name}"
+                ),
+                "engagement_id": engagement.id,
+                "engagement_type": engagement.engagement_type,
+                "organisation_name": engagement.organisation.name,
+                "assignments": [
+                    {
+                        "id": assignment.id,
+                        "customer": assignment.customer.name,
+                        "billing_rate": assignment.billing_rate,
+                    }
+                    for assignment in assignments
+                ],
+            },
+        )
+
+
+
+
+# ============================================================
+# ASSIGNMENT PREVIEW
+# ============================================================
+
+@app.get(
+    "/ui/workers/{worker_id}/engagements/{engagement_id}/assignments/{assignment_id}/preview",
+    response_class=HTMLResponse,
+)
+def assignment_preview_page(
+    request: Request,
+    worker_id: int,
+    engagement_id: int,
+    assignment_id: int,
+):
+    from decimal import Decimal
+
+    from app.models.invoice_timesheet import InvoiceTimesheet
+    from app.models.payslip_timesheet import PayslipTimesheet
+
+    with SessionLocal() as db:
+
+        # --------------------------------------------------
+        # Validate Worker -> Engagement -> Assignment.
+        # --------------------------------------------------
+
+        engagement = db.get(Engagement, engagement_id)
+
+        if engagement is None or engagement.worker_id != worker_id:
+            raise HTTPException(
+                status_code=404,
+                detail="Worker Engagement not found",
+            )
+
+        assignment = db.get(Assignment, assignment_id)
+
+        if assignment is None or assignment.engagement_id != engagement_id:
+            raise HTTPException(
+                status_code=404,
+                detail="Assignment not found for this Engagement",
+            )
+
+        worker = engagement.worker
+        organisation = engagement.organisation
+        customer = assignment.customer
+
+        # --------------------------------------------------
+        # TIMESHEETS
+        #
+        # Retrieve only daily entries linked to this
+        # Assignment, then group weekly entries by header.
+        # This ensures hours are Assignment-specific.
+        # --------------------------------------------------
+
+        entries = db.scalars(
+            select(Timesheet)
+            .where(Timesheet.assignment_id == assignment_id)
+            .order_by(Timesheet.id.desc())
+        ).all()
+
+        timesheet_groups = {}
+
+        for entry in entries:
+
+            if entry.timesheet_header_id is not None:
+
+                header = db.get(
+                    TimesheetHeader,
+                    entry.timesheet_header_id,
+                )
+
+                if header is None:
+                    raise HTTPException(
+                        409,
+                        "Timesheet references a missing weekly header",
+                    )
+
+                key = ("weekly", header.id)
+
+                if key not in timesheet_groups:
+                    timesheet_groups[key] = {
+                        "id": header.id,
+                        "sort_id": header.id,
+                        "type": "Weekly",
+                        "period_start": header.period_start,
+                        "period_end": header.period_end,
+                        "hours": Decimal("0.00"),
+                        "status": header.status,
+                        "url": (
+                            f"/ui/timesheets/weekly/"
+                            f"{header.id}/preview"
+                        ),
+                    }
+
+            else:
+
+                key = ("daily", entry.id)
+
+                timesheet_groups[key] = {
+                    "id": entry.id,
+                    "sort_id": entry.id,
+                    "type": "Daily",
+                    "period_start": entry.work_date,
+                    "period_end": entry.work_date,
+                    "hours": Decimal("0.00"),
+                    "status": entry.status,
+                    "url": (
+                        f"/ui/timesheets/daily/"
+                        f"{entry.id}/preview"
+                    ),
+                }
+
+            timesheet_groups[key]["hours"] += entry.hours_worked
+
+        timesheet_data = sorted(
+            timesheet_groups.values(),
+            key=lambda row: row["sort_id"],
+            reverse=True,
+        )
+
+        # --------------------------------------------------
+        # CUSTOMER INVOICES
+        #
+        # IMPORTANT:
+        # Invoice.engagement_id is the historical column
+        # name and references assignments.id.
+        #
+        # Do not confuse this with a canonical Engagement ID.
+        # --------------------------------------------------
+
+        invoices = db.scalars(
+            select(Invoice)
+            .where(Invoice.engagement_id == assignment_id)
+            .order_by(Invoice.id.desc())
+        ).all()
+
+        invoice_data = [
+            {
+                "id": invoice.id,
+                "invoice_number": invoice.invoice_number,
+                "issue_date": invoice.issue_date,
+                "subtotal": invoice.subtotal,
+                "gst": invoice.gst,
+                "total": invoice.total,
+                "status": invoice.status,
+            }
+            for invoice in invoices
+        ]
+
+        # --------------------------------------------------
+        # PAYSLIPS
+        #
+        # Use PayslipTimesheet -> Timesheet -> Assignment.
+        # A Payslip may cover multiple Assignments.
+        #
+        # Do not attribute the full Payslip amount as
+        # revenue/cost solely for this Assignment.
+        # --------------------------------------------------
+
+        payslip_rows = db.execute(
+            select(Payslip, PayRun)
+            .join(
+                PayslipTimesheet,
+                PayslipTimesheet.payslip_id == Payslip.id,
+            )
+            .join(
+                Timesheet,
+                Timesheet.id == PayslipTimesheet.timesheet_id,
+            )
+            .join(
+                PayRun,
+                PayRun.id == Payslip.pay_run_id,
+            )
+            .where(
+                Timesheet.assignment_id == assignment_id,
+                Payslip.engagement_id == engagement_id,
+            )
+            .distinct()
+            .order_by(Payslip.id.desc())
+        ).all()
+
+        payslip_data = [
+            {
+                "id": payslip.id,
+                "period_start": pay_run.period_start,
+                "period_end": pay_run.period_end,
+                "payment_date": pay_run.payment_date,
+                "gross_pay": payslip.gross_pay,
+                "payg_withholding": payslip.payg_withholding,
+                "net_pay": payslip.net_pay,
+                "superannuation": payslip.superannuation,
+                "status": pay_run.status,
+            }
+            for payslip, pay_run in payslip_rows
+        ]
+
+        return templates.TemplateResponse(
+            request=request,
+            name="assignment_preview.html",
+            context={
+                "worker_id": worker_id,
+                "engagement_id": engagement_id,
+                "assignment_id": assignment_id,
+                "worker_name": (
+                    f"{worker.first_name} {worker.last_name}"
+                ),
+                "organisation_name": organisation.name,
+                "customer_name": customer.name,
+                "engagement_type": engagement.engagement_type,
+                "billing_rate": assignment.billing_rate,
+                "timesheets": timesheet_data,
+                "invoices": invoice_data,
+                "payslips": payslip_data,
+            },
+        )
 
 
 @app.get("/ui/engagements", response_class=HTMLResponse)
 def assignments_page(request: Request):
     with SessionLocal() as db:
-        engagements = db.scalars(
+        assignments = db.scalars(
             select(Assignment).order_by(Assignment.id)
         ).all()
-
-        engagement_data = [
+        assignment_data = [
+            {
+                "id": assignment.id,
+                "engagement_id": assignment.engagement_id,
+                "worker_id": (
+                    assignment.engagement.worker_id
+                    if assignment.engagement is not None
+                    else None
+                ),
+                "customer_id": assignment.customer_id,
+                "employee_name": (
+                    f"{assignment.engagement.worker.first_name} "
+                    f"{assignment.engagement.worker.last_name}"
+                    if assignment.engagement is not None
+                    else "Historical assignment (Engagement link missing)"
+                ),
+                "customer_name": assignment.customer.name,
+                "billing_rate": str(assignment.billing_rate),
+            }
+            for assignment in assignments
+        ]
+        engagements = db.scalars(
+            select(Engagement).order_by(Engagement.id)
+        ).all()
+        engagement_options = [
             {
                 "id": engagement.id,
-                "employee_id": engagement.employee_id,
-                "customer_id": engagement.customer_id,
-                "employee_name": (
-                    f"{engagement.employee.first_name} "
-                    f"{engagement.employee.last_name}"
+                "name": (
+                    f"{engagement.worker.first_name} "
+                    f"{engagement.worker.last_name} — "
+                    f"{engagement.organisation.name}"
                 ),
-                "customer_name": engagement.customer.name,
-                "billing_rate": str(engagement.billing_rate),
             }
             for engagement in engagements
         ]
-
-        employees = db.scalars(
-            select(Employee).order_by(Employee.last_name, Employee.first_name)
-        ).all()
-
-        employee_data = [
-            {
-                "id": employee.id,
-                "name": f"{employee.first_name} {employee.last_name}",
-            }
-            for employee in employees
-        ]
-
         customers = db.scalars(
             select(Organisation).order_by(Organisation.name)
         ).all()
-
-        customer_data = [
-            {"id": customer.id, "name": customer.name}
-            for customer in customers
-        ]
 
     return templates.TemplateResponse(
         request=request,
         name="engagements.html",
         context={
-            "engagements": engagement_data,
-            "employees": employee_data,
-            "customers": customer_data,
+            "engagements": assignment_data,
+            "engagement_options": engagement_options,
+            "customers": [
+                {"id": customer.id, "name": customer.name}
+                for customer in customers
+            ],
         },
     )
 
 
 def validate_engagement_input(db, data):
     if not data.billing_rate.is_finite() or data.billing_rate <= 0:
-        raise HTTPException(
-            status_code=422,
-            detail="Billing rate must be greater than zero",
-        )
-
+        raise HTTPException(422, "Billing rate must be greater than zero")
     if data.billing_rate.as_tuple().exponent < -2:
-        raise HTTPException(
-            status_code=422,
-            detail="Billing rate cannot have more than two decimal places",
-        )
-
+        raise HTTPException(422, "Billing rate cannot have more than two decimal places")
     if data.billing_rate > Decimal("99999999.99"):
-        raise HTTPException(
-            status_code=422,
-            detail="Billing rate exceeds the maximum allowed",
-        )
-
-    if db.get(Employee, data.employee_id) is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Employee not found",
-        )
-
+        raise HTTPException(422, "Billing rate exceeds the maximum allowed")
+    if db.get(Engagement, data.engagement_id) is None:
+        raise HTTPException(404, "Engagement not found")
     if db.get(Organisation, data.customer_id) is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Customer organisation not found",
-        )
+        raise HTTPException(404, "Customer organisation not found")
 
 
 @app.post("/api/engagements")
 def create_engagement(data: AssignmentInput):
+    # Compatibility URL: this endpoint actually creates an Assignment.
     with SessionLocal() as db:
         validate_engagement_input(db, data)
-
-        engagement = Assignment(
-            employee_id=data.employee_id,
+        assignment = Assignment(
+            engagement_id=data.engagement_id,
+            employee_id=None,
             customer_id=data.customer_id,
             billing_rate=data.billing_rate,
         )
-
-        db.add(engagement)
+        db.add(assignment)
         db.commit()
-        db.refresh(engagement)
-
-        return {"id": engagement.id}
+        db.refresh(assignment)
+        return {"id": assignment.id}
 
 
 @app.patch("/api/engagements/{engagement_id}")
 def update_engagement(engagement_id: int, data: AssignmentInput):
+    # Compatibility URL: engagement_id path value is an Assignment ID.
     with SessionLocal() as db:
-        engagement = db.get(Assignment, engagement_id)
-
-        if engagement is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Worker engagement not found",
-            )
-
+        assignment = db.get(Assignment, engagement_id)
+        if assignment is None:
+            raise HTTPException(404, "Assignment not found")
         validate_engagement_input(db, data)
-
-        engagement.employee_id = data.employee_id
-        engagement.customer_id = data.customer_id
-        engagement.billing_rate = data.billing_rate
-
+        assignment.engagement_id = data.engagement_id
+        assignment.employee_id = None
+        assignment.customer_id = data.customer_id
+        assignment.billing_rate = data.billing_rate
         db.commit()
-
-        return {"id": engagement.id}
+        return {"id": assignment.id}
 
 
 @app.post("/ui/engagements/create")
 def create_assignment(
-    employee_id: int = Form(...),
+    engagement_id: int = Form(...),
     customer_id: int = Form(...),
-    billing_rate: Decimal = Form(...)
+    billing_rate: Decimal = Form(...),
 ):
-    if billing_rate <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Billing rate must be greater than zero"
-        )
-
-    with SessionLocal() as session:
-        employee = session.get(Employee, employee_id)
-        customer = session.get(Organisation, customer_id)
-
-        if employee is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Employee not found"
-            )
-
-        if customer is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Customer organisation not found"
-            )
-
-        engagement = Assignment(
-            employee_id=employee_id,
-            customer_id=customer_id,
-            billing_rate=billing_rate
-        )
-
-        session.add(engagement)
-        session.commit()
-
-    return RedirectResponse(
-        url="/ui/invoices",
-        status_code=303
+    data = AssignmentInput(
+        engagement_id=engagement_id,
+        customer_id=customer_id,
+        billing_rate=billing_rate,
     )
+    with SessionLocal() as db:
+        validate_engagement_input(db, data)
+        assignment = Assignment(
+            engagement_id=data.engagement_id,
+            employee_id=None,
+            customer_id=data.customer_id,
+            billing_rate=data.billing_rate,
+        )
+        db.add(assignment)
+        db.commit()
+    return RedirectResponse(url="/ui/invoices", status_code=303)
 
 
 @app.post("/ui/invoices/generate")
@@ -2499,97 +3726,65 @@ def update_invoice_status(
 
 @app.get("/ui/invoices", response_class=HTMLResponse)
 def invoices_page(request: Request):
-
     with SessionLocal() as session:
-        employees = session.scalars(
-            select(Employee).order_by(Employee.last_name, Employee.first_name)
+        assignments = session.scalars(
+            select(Assignment).order_by(Assignment.id)
         ).all()
-
-        organisations = session.scalars(
-            select(Organisation).order_by(Organisation.name)
-        ).all()
-
-        employee_options = [
-            {
-                "id": employee.id,
-                "name": f"{employee.first_name} {employee.last_name}"
-            }
-            for employee in employees
-        ]
-
-        customer_options = [
-            {
-                "id": organisation.id,
-                "name": organisation.name
-            }
-            for organisation in organisations
-        ]
-
-        engagements = session.execute(
-            select(Assignment, Employee, Organisation)
-            .join(Employee, Assignment.employee_id == Employee.id)
-            .join(Organisation, Assignment.customer_id == Organisation.id)
-            .order_by(Employee.last_name)
-        ).all()
-
         engagement_data = [
             {
-                "id": engagement.id,
+                "id": assignment.id,
                 "label": (
-                    f"{employee.first_name} {employee.last_name} "
-                    f"— {customer.name} "
-                    f"(${engagement.billing_rate:.2f}/hr)"
-                )
+                    f"{assignment.engagement.worker.first_name} "
+                    f"{assignment.engagement.worker.last_name} — "
+                    f"{assignment.customer.name} "
+                    f"(${assignment.billing_rate:.2f}/hr)"
+                ) if assignment.engagement is not None
+                  else f"Historical assignment #{assignment.id}",
             }
-            for engagement, employee, customer in engagements
+            for assignment in assignments
         ]
-
-        rows = session.execute(
-            select(Invoice, Assignment, Employee, Organisation)
-            .join(
-                Assignment,
-                Invoice.engagement_id == Assignment.id
-            )
-            .join(
-                Employee,
-                Assignment.employee_id == Employee.id
-            )
-            .join(
-                Organisation,
-                Assignment.customer_id == Organisation.id
-            )
-            .order_by(Invoice.issue_date.desc(), Invoice.id.desc())
+        invoices = session.scalars(
+            select(Invoice).order_by(Invoice.id.desc())
         ).all()
-
-        invoice_data = [
-            {
+        invoice_data = []
+        for invoice in invoices:
+            # Invoice.engagement_id is a historical name for Assignment ID.
+            assignment = session.get(Assignment, invoice.engagement_id)
+            if assignment is None:
+                raise HTTPException(409, f"Invoice {invoice.id} has no Assignment")
+            worker = (
+                assignment.engagement.worker
+                if assignment.engagement is not None else None
+            )
+            invoice_data.append({
                 "id": invoice.id,
                 "invoice_number": invoice.invoice_number,
                 "issue_date": invoice.issue_date,
-                "customer": customer.name,
-                "worker": f"{employee.first_name} {employee.last_name}",
+                "customer": assignment.customer.name,
+                "worker": (
+                    f"{worker.first_name} {worker.last_name}"
+                    if worker is not None else "Historical worker"
+                ),
                 "subtotal": invoice.subtotal,
                 "gst": invoice.gst,
                 "total": invoice.total,
                 "status": invoice.status,
-            }
-            for invoice, engagement, employee, customer in rows
-        ]
+            })
 
     return templates.TemplateResponse(
         request=request,
         name="invoices.html",
-        context={
-            "invoices": invoice_data,
-            "engagements": engagement_data,
-            "employees": employee_options,
-            "customers": customer_options
-        }
+        context={"invoices": invoice_data, "engagements": engagement_data},
     )
 
 
-@app.get("/invoices/{invoice_id}/pdf")
-def download_invoice_pdf(invoice_id: int):
+
+
+@app.get(
+    "/ui/invoices/{invoice_id}/preview",
+    response_class=HTMLResponse,
+)
+def preview_invoice_page(request: Request, invoice_id: int):
 
     with SessionLocal() as session:
 
@@ -2598,41 +3793,647 @@ def download_invoice_pdf(invoice_id: int):
         if invoice is None:
             raise HTTPException(
                 status_code=404,
-                detail="Invoice not found"
+                detail="Invoice not found",
             )
 
-        engagement = session.get(Assignment, invoice.engagement_id)
-        employee = session.get(Employee, engagement.employee_id)
-        supplier = session.get(Organisation, employee.organisation_id)
-        customer = session.get(Organisation, engagement.customer_id)
+        # Historical database field name:
+        # Invoice.engagement_id references assignments.id.
+        assignment = session.get(
+            Assignment,
+            invoice.engagement_id,
+        )
+
+        if assignment is None or assignment.engagement is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Invoice Assignment has no canonical Engagement",
+            )
+
+        worker = assignment.engagement.worker
+        supplier = assignment.engagement.organisation
+        customer = assignment.customer
 
         timesheets = session.scalars(
             select(Timesheet)
             .join(
                 InvoiceTimesheet,
-                InvoiceTimesheet.timesheet_id == Timesheet.id
+                InvoiceTimesheet.timesheet_id == Timesheet.id,
+            )
+            .where(InvoiceTimesheet.invoice_id == invoice.id)
+            .order_by(Timesheet.work_date)
+        ).all()
+
+        hours = sum(
+            (entry.hours_worked for entry in timesheets),
+            Decimal("0.00"),
+        )
+
+        return templates.TemplateResponse(
+            request=request,
+            name="invoice_preview.html",
+            context={
+                "invoice": invoice,
+                "assignment": assignment,
+                "worker": worker,
+                "supplier": supplier,
+                "customer": customer,
+                "hours": hours,
+                "timesheets": timesheets,
+            },
+        )
+
+
+
+
+# ============================================================
+# PROTOTYPE: PAYG CONTRACTOR PAYROLL FROM CUSTOMER INVOICE
+#
+# The customer invoice is used ONLY to identify approved work.
+# Payroll uses Assignment payroll rates, NOT customer billing.
+#
+# Production contractor-issued invoices require a separate
+# supplier invoice/payment obligation workflow.
+# ============================================================
+
+def _prepare_invoice_contractor_payroll(db, invoice_id):
+
+    from datetime import timedelta
+    from decimal import Decimal
+
+    from app.models.invoice_timesheet import InvoiceTimesheet
+    from app.models.payslip_timesheet import PayslipTimesheet
+
+    from app.models.employee_tax_profile import EmployeeTaxProfile
+    from app.models.employee_super_profile import EmployeeSuperProfile
+
+    from app.payroll.assignment_earnings import AssignmentEarningsCalculator
+    from app.payroll.payg_withholding import PAYGWithholdingCalculator
+    from app.payroll.superannuation import SuperannuationCalculator
+
+    invoice = db.get(Invoice, invoice_id)
+
+    if invoice is None:
+        raise HTTPException(404, "Invoice not found")
+
+    if invoice.status not in ("issued", "paid"):
+        raise HTTPException(
+            409,
+            "Customer invoice must be issued before payroll generation",
+        )
+
+    # Historical field name: Invoice.engagement_id
+    # actually contains an Assignment ID.
+    assignment = db.get(
+        Assignment,
+        invoice.engagement_id,
+    )
+
+    if assignment is None or assignment.engagement is None:
+        raise HTTPException(
+            409,
+            "Invoice has no valid Assignment and Engagement",
+        )
+
+    engagement = assignment.engagement
+
+    if engagement.engagement_type != "payg_contractor":
+        raise HTTPException(
+            409,
+            "Invoice-linked payroll is available only for PAYG Contractors",
+        )
+
+    if engagement.status != "active" or not engagement.worker.active:
+        raise HTTPException(
+            409,
+            "Worker or Engagement is inactive",
+        )
+
+    entries = db.scalars(
+        select(Timesheet)
+        .join(
+            InvoiceTimesheet,
+            InvoiceTimesheet.timesheet_id == Timesheet.id,
+        )
+        .where(InvoiceTimesheet.invoice_id == invoice.id)
+        .order_by(Timesheet.work_date, Timesheet.id)
+    ).all()
+
+    if not entries:
+        raise HTTPException(
+            409,
+            "Invoice has no linked Timesheets",
+        )
+
+    # This prototype supports exactly one approved weekly
+    # Timesheet, with seven daily entries.
+    header_ids = {
+        entry.timesheet_header_id
+        for entry in entries
+    }
+
+    if len(header_ids) != 1 or None in header_ids:
+        raise HTTPException(
+            409,
+            "Invoice must reference one weekly Timesheet",
+        )
+
+    header_id = next(iter(header_ids))
+
+    header = db.get(TimesheetHeader, header_id)
+
+    if header is None or header.period_type != "weekly":
+        raise HTTPException(
+            409,
+            "Linked weekly Timesheet header is invalid",
+        )
+
+    if header.status != "approved":
+        raise HTTPException(
+            409,
+            "Linked weekly Timesheet must be approved",
+        )
+
+    if header.engagement_id != engagement.id:
+        raise HTTPException(
+            409,
+            "Weekly Timesheet Engagement mismatch",
+        )
+
+    from datetime import timedelta
+
+    expected_dates = [
+        header.period_start + timedelta(days=i)
+        for i in range(7)
+    ]
+
+    if (
+        header.period_start.weekday() != 0
+        or header.period_end != header.period_start + timedelta(days=6)
+        or len(entries) != 7
+        or [entry.work_date for entry in entries] != expected_dates
+    ):
+        raise HTTPException(
+            409,
+            "Invoice must reference a complete Monday–Sunday Timesheet",
+        )
+
+    for entry in entries:
+
+        if entry.status != "approved":
+            raise HTTPException(
+                409,
+                f"Timesheet entry {entry.id} is not approved",
+            )
+
+        if entry.assignment_id != assignment.id:
+            raise HTTPException(
+                409,
+                "Invoice contains work for a different Assignment",
+            )
+
+        if entry.engagement_id != engagement.id:
+            raise HTTPException(
+                409,
+                "Timesheet Engagement mismatch",
+            )
+
+    if (
+        engagement.start_date is not None
+        and engagement.start_date > header.period_start
+    ):
+        raise HTTPException(
+            409,
+            "Partial commencement-period payroll is not supported",
+        )
+
+    if (
+        engagement.end_date is not None
+        and engagement.end_date < header.period_end
+    ):
+        raise HTTPException(
+            409,
+            "Partial final-period payroll is not supported",
+        )
+
+    # Prevent an overlapping payslip, including one created
+    # by the separate weekly Timesheet payroll workflow.
+    overlapping = db.scalar(
+        select(Payslip.id)
+        .join(PayRun, Payslip.pay_run_id == PayRun.id)
+        .where(
+            Payslip.engagement_id == engagement.id,
+            PayRun.period_start <= header.period_end,
+            PayRun.period_end >= header.period_start,
+        )
+        .limit(1)
+    )
+
+    if overlapping is not None:
+        raise HTTPException(
+            409,
+            "An overlapping Payslip already exists",
+        )
+
+    # Also prevent paying any underlying daily entry twice.
+    already_paid = db.scalar(
+        select(PayslipTimesheet.timesheet_id)
+        .where(
+            PayslipTimesheet.timesheet_id.in_(
+                [entry.id for entry in entries]
+            )
+        )
+        .limit(1)
+    )
+
+    if already_paid is not None:
+        raise HTTPException(
+            409,
+            "One or more Timesheet entries have already been paid",
+        )
+
+    try:
+        earnings = AssignmentEarningsCalculator().calculate(
+            session=db,
+            engagement=engagement,
+            timesheets=entries,
+        )
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+    gross = earnings["gross_pay"]
+
+    if gross <= 0:
+        raise HTTPException(
+            409,
+            "Calculated gross earnings must be positive",
+        )
+
+    payment_date = header.period_end + timedelta(days=1)
+
+    # Tax profile
+    tax_profiles = db.scalars(
+        select(EmployeeTaxProfile).where(
+            EmployeeTaxProfile.worker_id == engagement.worker_id,
+            EmployeeTaxProfile.effective_from <= payment_date,
+            (
+                EmployeeTaxProfile.effective_to.is_(None)
+                | (
+                    EmployeeTaxProfile.effective_to >= payment_date
+                )
+            ),
+        )
+    ).all()
+
+    if len(tax_profiles) != 1:
+        raise HTTPException(
+            409,
+            "Expected exactly one effective Tax Profile",
+        )
+
+    tax = tax_profiles[0]
+
+    if (
+        tax.residency_status != "resident"
+        or tax.has_study_loan
+        or not tax.tfn_declaration_received
+    ):
+        raise HTTPException(
+            409,
+            "Tax Profile is incomplete or unsupported",
+        )
+
+    try:
+        payg = PAYGWithholdingCalculator().calculate(
+            session=db,
+            gross_pay=gross,
+            pay_frequency="weekly",
+            claims_tax_free_threshold=tax.claims_tax_free_threshold,
+            payment_date=payment_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+    # Superannuation profile
+    super_profiles = db.scalars(
+        select(EmployeeSuperProfile).where(
+            EmployeeSuperProfile.worker_id == engagement.worker_id,
+            EmployeeSuperProfile.effective_from <= payment_date,
+            (
+                EmployeeSuperProfile.effective_to.is_(None)
+                | (
+                    EmployeeSuperProfile.effective_to >= payment_date
+                )
+            ),
+        )
+    ).all()
+
+    if len(super_profiles) != 1:
+        raise HTTPException(
+            409,
+            "Expected exactly one effective Superannuation Profile",
+        )
+
+    additional_rate = (
+        super_profiles[0].additional_employer_rate
+        or Decimal("0")
+    )
+
+    if additional_rate < 0:
+        raise HTTPException(
+            409,
+            "Invalid additional employer super rate",
+        )
+
+    statutory_super = SuperannuationCalculator().calculate(
+        ordinary_time_earnings=gross
+    )
+
+    additional_super = SuperannuationCalculator().calculate(
+        ordinary_time_earnings=gross,
+        rate=additional_rate / Decimal("100"),
+    )
+
+    total_super = statutory_super + additional_super
+
+    hours = sum(
+        (entry.hours_worked for entry in entries),
+        Decimal("0"),
+    )
+
+    return {
+        "invoice_id": invoice.id,
+        "invoice_number": invoice.invoice_number,
+        "invoice_total": invoice.total,
+        "worker_id": engagement.worker_id,
+        "worker_name": (
+            f"{engagement.worker.first_name} "
+            f"{engagement.worker.last_name}"
+        ),
+        "engagement_id": engagement.id,
+        "assignment_id": assignment.id,
+        "organisation_id": engagement.organisation_id,
+        "header_id": header.id,
+        "period_start": header.period_start,
+        "period_end": header.period_end,
+        "payment_date": payment_date,
+        "hours": hours,
+        "gross": gross,
+        "payg": payg,
+        "net": gross - payg,
+        "statutory_super": statutory_super,
+        "additional_super": additional_super,
+        "total_super": total_super,
+        "earnings_lines": earnings["lines"],
+        "timesheet_ids": [entry.id for entry in entries],
+    }
+
+
+@app.get(
+    "/ui/invoices/{invoice_id}/payroll/preview",
+    response_class=HTMLResponse,
+)
+def preview_invoice_contractor_payroll(
+    request: Request,
+    invoice_id: int,
+):
+
+    with SessionLocal() as db:
+
+        payroll = _prepare_invoice_contractor_payroll(
+            db,
+            invoice_id,
+        )
+
+        return templates.TemplateResponse(
+            request=request,
+            name="invoice_payroll_preview.html",
+            context={"payroll": payroll},
+        )
+
+
+@app.post(
+    "/ui/invoices/{invoice_id}/payroll/generate",
+)
+def generate_invoice_contractor_payroll(
+    request: Request,
+    invoice_id: int,
+    expected_period_start: str = Form(...),
+):
+
+    from sqlalchemy import text
+
+    from app.models.payroll_component import PayrollComponent
+    from app.models.component_definition import ComponentDefinition
+    from app.models.payslip_timesheet import PayslipTimesheet
+
+    from decimal import Decimal
+
+    with SessionLocal() as db:
+
+        try:
+            invoice = db.get(Invoice, invoice_id)
+
+            if invoice is None:
+                raise HTTPException(404, "Invoice not found")
+
+            assignment = db.get(
+                Assignment,
+                invoice.engagement_id,
+            )
+
+            if assignment is None or assignment.engagement_id is None:
+                raise HTTPException(
+                    409,
+                    "Invoice Assignment has no Engagement",
+                )
+
+            if db.bind.dialect.name != "postgresql":
+                raise HTTPException(
+                    409,
+                    "Invoice-linked payroll requires PostgreSQL",
+                )
+
+            # Same advisory-lock namespace as weekly
+            # Timesheet contractor payroll.
+            db.execute(
+                text("SELECT pg_advisory_xact_lock(:lock_id)"),
+                {"lock_id": 800000000 + assignment.engagement_id},
+            )
+
+            # Revalidate everything while holding the lock.
+            payroll = _prepare_invoice_contractor_payroll(
+                db,
+                invoice_id,
+            )
+
+            if payroll["period_start"].isoformat() != expected_period_start:
+                raise HTTPException(
+                    409,
+                    "Payroll period changed. Refresh the preview.",
+                )
+
+            required_codes = {
+                "ORDINARY_HOURS",
+                "PAYG_WITHHOLDING",
+                "SUPER_GUARANTEE",
+                "SUPER_EMPLOYER_EXTRA",
+            }
+
+            definitions = {
+                definition.code: definition
+                for definition in db.scalars(
+                    select(ComponentDefinition).where(
+                        ComponentDefinition.code.in_(required_codes)
+                    )
+                )
+            }
+
+            missing = required_codes - definitions.keys()
+
+            if missing:
+                raise HTTPException(
+                    409,
+                    f"Missing payroll component definitions: {sorted(missing)}",
+                )
+
+            # Create a draft Pay Run for this Engagement's payroll.
+            # Do NOT process the whole organisation.
+            pay_run = PayRun(
+                organisation_id=payroll["organisation_id"],
+                period_start=payroll["period_start"],
+                period_end=payroll["period_end"],
+                payment_date=payroll["payment_date"],
+                status="draft",
+            )
+
+            db.add(pay_run)
+            db.flush()
+
+            payslip = Payslip(
+                pay_run_id=pay_run.id,
+                engagement_id=payroll["engagement_id"],
+                employee_id=None,
+                gross_pay=payroll["gross"],
+                payg_withholding=payroll["payg"],
+                net_pay=payroll["net"],
+                superannuation=payroll["total_super"],
+            )
+
+            db.add(payslip)
+            db.flush()
+
+            # Realised earning components
+            for line in payroll["earnings_lines"]:
+                db.add(
+                    PayrollComponent(
+                        payslip_id=payslip.id,
+                        component_definition_id=line[
+                            "component_definition_id"
+                        ],
+                        quantity=line["quantity"],
+                        rate=line["rate"],
+                        amount=line["amount"],
+                    )
+                )
+
+            # Statutory payroll components
+            statutory_components = (
+                (
+                    "PAYG_WITHHOLDING",
+                    Decimal("1"),
+                    payroll["payg"],
+                    payroll["payg"],
+                ),
+                (
+                    "SUPER_GUARANTEE",
+                    payroll["gross"],
+                    Decimal("0.12"),
+                    payroll["statutory_super"],
+                ),
+                (
+                    "SUPER_EMPLOYER_EXTRA",
+                    payroll["gross"],
+                    (
+                        payroll["additional_super"] / payroll["gross"]
+                        if payroll["gross"]
+                        else Decimal("0")
+                    ),
+                    payroll["additional_super"],
+                ),
+            )
+
+            for code, quantity, rate, amount in statutory_components:
+                db.add(
+                    PayrollComponent(
+                        payslip_id=payslip.id,
+                        component_definition_id=definitions[code].id,
+                        quantity=quantity,
+                        rate=rate,
+                        amount=amount,
+                    )
+                )
+
+            for timesheet_id in payroll["timesheet_ids"]:
+                db.add(
+                    PayslipTimesheet(
+                        payslip_id=payslip.id,
+                        timesheet_id=timesheet_id,
+                    )
+                )
+
+            db.flush()
+            db.commit()
+
+            created_payslip_id = payslip.id
+
+        except Exception:
+            db.rollback()
+            raise
+
+    return RedirectResponse(
+        url=f"/ui/payslips/{created_payslip_id}/preview",
+        status_code=303,
+    )
+
+
+@app.get("/invoices/{invoice_id}/pdf")
+def download_invoice_pdf(invoice_id: int):
+    with SessionLocal() as session:
+        invoice = session.get(Invoice, invoice_id)
+        if invoice is None:
+            raise HTTPException(404, "Invoice not found")
+
+        # The legacy Invoice.engagement_id column references assignments.id.
+        assignment = session.get(Assignment, invoice.engagement_id)
+        if assignment is None or assignment.engagement is None:
+            raise HTTPException(409, "Invoice Assignment has no canonical Engagement")
+        worker = assignment.engagement.worker
+        supplier = assignment.engagement.organisation
+        customer = assignment.customer
+        timesheets = session.scalars(
+            select(Timesheet)
+            .join(
+                InvoiceTimesheet,
+                InvoiceTimesheet.timesheet_id == Timesheet.id,
             )
             .where(InvoiceTimesheet.invoice_id == invoice.id)
         ).all()
-
         hours = sum(t.hours_worked for t in timesheets)
-
         pdf = InvoicePDFGenerator().generate(
             invoice=invoice,
-            engagement=engagement,
-            employee=employee,
+            engagement=assignment,
+            worker=worker,
             supplier=supplier,
             customer=customer,
             hours=hours,
         )
-
         return StreamingResponse(
             pdf,
             media_type="application/pdf",
             headers={
                 "Content-Disposition":
                     f'inline; filename="{invoice.invoice_number}.pdf"'
-            }
+            },
         )
 
 
@@ -2682,3 +4483,5 @@ def login(request: Request, email: str = Form(...), password: str = Form(...)):
 def logout(request: Request):
     request.session.clear()
     return RedirectResponse("/login", status_code=303)
+
+

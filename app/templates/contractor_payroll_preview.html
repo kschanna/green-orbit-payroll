@@ -1,0 +1,124 @@
+
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="container mt-4" style="max-width: 900px;">
+
+    <a href="/ui/timesheets"
+       class="btn btn-link mb-3">
+        ← Back to Timesheets
+    </a>
+
+    <h2>Generate Contractor Payroll</h2>
+
+    <p class="text-muted">
+        Review the calculation before creating a draft payslip.
+    </p>
+
+    <div class="card p-4">
+
+        <h5>{{ payroll.worker_name }}</h5>
+
+        <p class="text-muted">
+            Engagement #{{ payroll.engagement_id }}
+            — Weekly Timesheet #{{ payroll.header_id }}
+        </p>
+
+        <div class="row g-3 mb-4">
+
+            <div class="col-md-4">
+                <strong>Period Start</strong>
+                <div>{{ payroll.period_start.strftime("%d/%m/%Y") }}</div>
+            </div>
+
+            <div class="col-md-4">
+                <strong>Period End</strong>
+                <div>{{ payroll.period_end.strftime("%d/%m/%Y") }}</div>
+            </div>
+
+            <div class="col-md-4">
+                <strong>Payment Date</strong>
+                <div>{{ payroll.payment_date.strftime("%d/%m/%Y") }}</div>
+            </div>
+
+        </div>
+
+        <table class="table">
+
+            <tr>
+                <td>Approved Hours</td>
+                <td class="text-end">
+                    {{ "%.2f"|format(payroll.hours) }}
+                </td>
+            </tr>
+
+            <tr>
+                <td>Gross Earnings</td>
+                <td class="text-end">
+                    ${{ "%.2f"|format(payroll.gross) }}
+                </td>
+            </tr>
+
+            <tr>
+                <td>PAYG Withholding</td>
+                <td class="text-end">
+                    ${{ "%.2f"|format(payroll.payg) }}
+                </td>
+            </tr>
+
+            <tr class="table-light fw-bold">
+                <td>Net Pay</td>
+                <td class="text-end">
+                    ${{ "%.2f"|format(payroll.net) }}
+                </td>
+            </tr>
+
+            <tr>
+                <td>Employer Superannuation</td>
+                <td class="text-end">
+                    ${{ "%.2f"|format(payroll.total_super) }}
+                </td>
+            </tr>
+
+        </table>
+
+        <div class="alert alert-info">
+            This creates a draft Pay Run and Payslip.
+            No bank payment will be initiated.
+        </div>
+
+        <form
+            method="post"
+            action="/ui/timesheets/weekly/{{ payroll.header_id }}/payroll/generate">
+
+            <input
+                type="hidden"
+                name="csrf_token"
+                value="{{ csrf_token(request) }}">
+
+            <input
+                type="hidden"
+                name="expected_period_start"
+                value="{{ payroll.period_start.isoformat() }}">
+
+            <div class="d-flex justify-content-end gap-2">
+
+                <a href="/ui/timesheets"
+                   class="btn btn-outline-secondary">
+                    Cancel
+                </a>
+
+                <button type="submit" class="btn btn-success">
+                    Generate Draft Payslip
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+{% endblock %}

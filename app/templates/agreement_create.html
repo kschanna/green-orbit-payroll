@@ -6,11 +6,11 @@
     <div>
         <h2>New Work Pattern</h2>
         <p class="text-muted mb-0">
-            {{ employee.first_name }} {{ employee.last_name }}
+            {{ engagement.worker_name }} — {{ engagement.organisation_name }}
         </p>
     </div>
 
-    <a href="/ui/employees/{{ employee.id }}"
+    <a href="/ui/workers/{{ engagement.worker_id }}"
        class="btn btn-outline-secondary">
         Cancel
     </a>
@@ -101,10 +101,10 @@
                 <button type="submit"
                         id="saveButton"
                         class="btn btn-success">
-                    Create Agreement
+                    Create Work Pattern
                 </button>
 
-                <a href="/ui/employees/{{ employee.id }}"
+                <a href="/ui/workers/{{ engagement.worker_id }}"
                    class="btn btn-outline-secondary">
                     Cancel
                 </a>
@@ -150,7 +150,7 @@ document.getElementById("agreementForm").addEventListener(
 
         try {
             const response = await fetch(
-                "/api/employees/{{ employee.id }}/agreements",
+                "/api/engagements/{{ engagement.id }}/agreements",
                 {
                     method: "POST",
                     headers: {

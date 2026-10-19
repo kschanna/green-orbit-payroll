@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <h2 class="mb-4">
+        {{ "Edit Component" if component else "New Component" }}
+    </h2>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <form method="post" action="/ui/components/save">
+                <input type="hidden"
+                       name="csrf_token"
+                       value="{{ csrf_token(request) }}">
+
+                {% if component %}
+                <input type="hidden"
+                       name="component_id"
+                       value="{{ component.id }}">
+                {% endif %}
+
+                <div class="mb-3">
+                    <label class="form-label">Code</label>
+                    <input class="form-control" name="code"
+                           maxlength="50" required
+                           value="{{ component.code if component else '' }}">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Name</label>
+                    <input class="form-control" name="name"
+                           maxlength="150" required
+                           value="{{ component.name if component else '' }}">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Family</label>
+                    <select class="form-select" name="family_id" required>
+                        {% for family in families %}
+                        <option value="{{ family.id }}"
+                            {% if component and component.family_id == family.id %}
+                            selected
+                            {% endif %}>
+                            {{ family.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-control"
+                              name="description"
+                              maxlength="500">{{ component.description if component else '' }}</textarea>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Calculation Type</label>
+                    <select class="form-select" name="calculation_type">
+                        {% for value in ["fixed", "hourly", "percentage", "quantity"] %}
+                        <option value="{{ value }}"
+                            {% if component and component.calculation_type == value %}
+                            selected
+                            {% endif %}>
+                            {{ value | title }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-check mb-4">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           name="active"
+                           value="true"
+                           id="active"
+                           {% if not component or component.active %}checked{% endif %}>
+                    <label class="form-check-label" for="active">
+                        Active
+                    </label>
+                </div>
+
+                <button class="btn btn-success" type="submit">
+                    Save Component
+                </button>
+
+                <a href="/ui/components" class="btn btn-secondary">
+                    Cancel
+                </a>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

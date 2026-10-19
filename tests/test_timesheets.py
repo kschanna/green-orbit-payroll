@@ -6,7 +6,8 @@ from sqlalchemy import select
 
 from test_authentication import client, login
 from app.database import SessionLocal
-from app.models.employee import Employee
+from app.models.worker import Worker
+from app.models.engagement import Engagement
 from app.models.timesheet import Timesheet
 from app.models.organisation import Organisation
 import uuid
@@ -23,16 +24,25 @@ def test_create_timesheet(client):
         db.add(organisation)
         db.flush()
 
-        employee = Employee(
-            organisation_id=organisation.id,
+        worker = Worker(
             first_name="Test",
             last_name="Employee",
             email="timesheet-test@example.com"
         )
-        db.add(employee)
+        db.add(worker)
+        db.flush()
+
+        engagement = Engagement(
+            worker_id=worker.id,
+            organisation_id=organisation.id,
+            engagement_type="employee",
+            status="active",
+        )
+        db.add(engagement)
         db.commit()
 
-        employee_id = employee.id
+        engagement_id = engagement.id
+        worker_id = worker.id
         organisation_id = organisation.id
 
     response = client.get("/ui/timesheets/new")
@@ -49,7 +59,7 @@ def test_create_timesheet(client):
         "/api/timesheets",
         headers={"X-CSRF-Token": csrf_token},
         json={
-            "employee_id": employee_id,
+            "engagement_id": engagement_id,
             "work_date": "2026-10-14",
             "hours_worked": 7.5,
         },
@@ -68,7 +78,9 @@ def test_create_timesheet(client):
         db.delete(timesheet)
         db.commit()
 
-        db.delete(db.get(Employee, employee_id))
+        db.delete(db.get(Engagement, engagement_id))
+        db.flush()
+        db.delete(db.get(Worker, worker_id))
         db.delete(db.get(Organisation, organisation_id))
         db.commit()
 
@@ -83,17 +95,26 @@ def test_edit_timesheet(client):
         db.add(organisation)
         db.flush()
 
-        employee = Employee(
-            organisation_id=organisation.id,
+        worker = Worker(
             first_name="Edit",
             last_name="Tester",
             email="edit-test@example.com"
         )
-        db.add(employee)
+        db.add(worker)
+        db.flush()
+
+        engagement = Engagement(
+            worker_id=worker.id,
+            organisation_id=organisation.id,
+            engagement_type="employee",
+            status="active",
+        )
+        db.add(engagement)
         db.flush()
 
         timesheet = Timesheet(
-            employee_id=employee.id,
+            engagement_id=engagement.id,
+            employee_id=None,
             work_date=date(2026, 10, 14),
             hours_worked=Decimal("7.50"),
             status="draft"
@@ -102,7 +123,8 @@ def test_edit_timesheet(client):
         db.commit()
 
         timesheet_id = timesheet.id
-        employee_id = employee.id
+        engagement_id = engagement.id
+        worker_id = worker.id
         organisation_id = organisation.id
 
     # Retrieve CSRF token from the edit page.
@@ -121,7 +143,7 @@ def test_edit_timesheet(client):
         f"/api/timesheets/{timesheet_id}",
         headers={"X-CSRF-Token": csrf_token},
         json={
-            "employee_id": employee_id,
+            "engagement_id": engagement_id,
             "work_date": "2026-10-14",
             "hours_worked": 8
         }
@@ -135,7 +157,9 @@ def test_edit_timesheet(client):
 
         db.delete(timesheet)
         db.flush()
-        db.delete(db.get(Employee, employee_id))
+        db.delete(db.get(Engagement, engagement_id))
+        db.flush()
+        db.delete(db.get(Worker, worker_id))
         db.flush()
         db.delete(db.get(Organisation, organisation_id))
         db.commit()
@@ -151,17 +175,26 @@ def test_approve_timesheet(client):
         db.add(organisation)
         db.flush()
 
-        employee = Employee(
-            organisation_id=organisation.id,
+        worker = Worker(
             first_name="Approval",
             last_name="Tester",
             email="approval-test@example.com"
         )
-        db.add(employee)
+        db.add(worker)
+        db.flush()
+
+        engagement = Engagement(
+            worker_id=worker.id,
+            organisation_id=organisation.id,
+            engagement_type="employee",
+            status="active",
+        )
+        db.add(engagement)
         db.flush()
 
         timesheet = Timesheet(
-            employee_id=employee.id,
+            engagement_id=engagement.id,
+            employee_id=None,
             work_date=date(2026, 10, 14),
             hours_worked=Decimal("7.50"),
             status="draft"
@@ -170,7 +203,8 @@ def test_approve_timesheet(client):
         db.commit()
 
         timesheet_id = timesheet.id
-        employee_id = employee.id
+        engagement_id = engagement.id
+        worker_id = worker.id
         organisation_id = organisation.id
 
     # Retrieve CSRF token from the timesheet list.
@@ -198,7 +232,7 @@ def test_approve_timesheet(client):
         f"/api/timesheets/{timesheet_id}",
         headers={"X-CSRF-Token": csrf_token},
         json={
-            "employee_id": employee_id,
+            "engagement_id": engagement_id,
             "work_date": "2026-10-14",
             "hours_worked": 8
         }
@@ -210,7 +244,9 @@ def test_approve_timesheet(client):
     with SessionLocal() as db:
         db.delete(db.get(Timesheet, timesheet_id))
         db.flush()
-        db.delete(db.get(Employee, employee_id))
+        db.delete(db.get(Engagement, engagement_id))
+        db.flush()
+        db.delete(db.get(Worker, worker_id))
         db.flush()
         db.delete(db.get(Organisation, organisation_id))
         db.commit()

@@ -10,11 +10,17 @@ class TimesheetHeader(Base):
 
     __tablename__ = "timesheet_headers"
 
+    engagement_id: Mapped[int | None] = mapped_column(
+        ForeignKey("engagements.id"),
+        index=True, nullable=True
+    )
+
+
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    employee_id: Mapped[int] = mapped_column(
-        ForeignKey("employees.id"),
-        nullable=False
+    employee_id: Mapped[int | None] = mapped_column(
+        
+        nullable=True
     )
 
     period_type: Mapped[str] = mapped_column(
@@ -38,7 +44,6 @@ class TimesheetHeader(Base):
         nullable=False
     )
 
-    employee = relationship("Employee")
 
     timesheets = relationship(
         "Timesheet",

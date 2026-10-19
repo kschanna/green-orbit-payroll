@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if worker_mode %}
+<a href="/ui/workers/{{ employee.id }}"
+   class="btn btn-link mb-3">← Back to Worker</a>
+{% else %}
+<a href="/ui/employees/{{ employee.id }}"
+   class="btn btn-link mb-3">← Back to Employee</a>
+{% endif %}
+
+<h2>Superannuation Details</h2>
+<p class="text-muted">{{ employee.name }}</p>
+
+<div class="card p-4 mb-4">
+    <h5>New Superannuation Profile</h5>
+    <hr>
+
+    <form method="post">
+        <input type="hidden" name="csrf_token"
+               value="{{ csrf_token(request) }}">
+
+        <div class="row g-3">
+
+            <div class="col-md-6">
+                <label class="form-label">Superannuation Fund</label>
+                <input name="fund_name"
+                       class="form-control" required>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Fund USI</label>
+                <input name="fund_usi"
+                       class="form-control" required>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Member Number</label>
+                <input name="member_number"
+                       class="form-control" required>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">
+                    Additional Employer Contribution (%)
+                </label>
+                <input type="number"
+                       name="additional_employer_rate"
+                       class="form-control"
+                       min="0" max="100" step="0.01">
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Effective From</label>
+                <input type="date"
+                       name="effective_from"
+                       class="form-control" required>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">
+                    Effective To (optional)
+                </label>
+                <input type="date"
+                       name="effective_to"
+                       class="form-control">
+            </div>
+
+        </div>
+
+        <button type="submit" class="btn btn-success mt-4">
+            Save Superannuation Profile
+        </button>
+    </form>
+</div>
+
+<div class="card p-4">
+    <h5>Superannuation Profile History</h5>
+
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>From</th>
+                    <th>To</th>
+                    <th>Fund</th>
+                    <th>USI</th>
+                    <th>Member</th>
+                    <th>Additional Rate</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for p in profiles %}
+                <tr>
+                    <td>{{ p.effective_from }}</td>
+                    <td>{{ p.effective_to or "Ongoing" }}</td>
+                    <td>{{ p.fund_name }}</td>
+                    <td>{{ p.fund_usi }}</td>
+                    <td>{{ p.member_number }}</td>
+                    <td>
+                        {{ p.additional_employer_rate
+                           if p.additional_employer_rate is not none
+                           else "—" }}%
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6"
+                        class="text-muted text-center">
+                        No superannuation profiles recorded.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const now = new Date();
+
+    const today = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Australia/Melbourne",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+    }).format(now);
+
+    document.querySelectorAll(
+        'input[type="date"][name="effective_from"]'
+    ).forEach(function (field) {
+        if (!field.value) {
+            field.value = today;
+        }
+    });
+});
+</script>
+
+{% endblock %}

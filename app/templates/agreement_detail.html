@@ -19,12 +19,12 @@
 
             <a href="/ui/agreements"
                class="btn btn-outline-secondary">
-                Back to Agreements
+                Back to Work Patterns
             </a>
 
             <a href="/ui/agreements/{{ agreement.id }}/edit"
                class="btn btn-primary">
-                Edit Agreement
+                Edit Work Pattern
             </a>
 
         </div>
@@ -40,12 +40,12 @@
 
             <div class="row g-4">
 
-                <!-- EMPLOYEE -->
+                <!-- WORKER -->
 
                 <div class="col-md-6">
-                    <label class="text-muted">Employee</label>
+                    <label class="text-muted">Worker</label>
                     <div class="fs-5 fw-semibold">
-                        {{ employee_name }}
+                        {{ worker_name }}
                     </div>
                 </div>
 
@@ -53,7 +53,7 @@
                 <!-- STATUS -->
 
                 <div class="col-md-6">
-                    <label class="text-muted">Agreement Status</label>
+                    <label class="text-muted">Work Pattern Status</label>
 
                     <div>
                         {% if is_active %}
@@ -123,7 +123,7 @@
                 <!-- START DATE -->
 
                 <div class="col-md-6">
-                    <label class="text-muted">Agreement Start Date</label>
+                    <label class="text-muted">Work Pattern Start Date</label>
 
                     <div class="fw-semibold">
                         {{ agreement.start_date | date_au }}
@@ -134,7 +134,7 @@
                 <!-- END DATE -->
 
                 <div class="col-md-6">
-                    <label class="text-muted">Agreement End Date</label>
+                    <label class="text-muted">Work Pattern End Date</label>
 
                     <div class="fw-semibold">
                         {{ agreement.end_date | date_au if agreement.end_date else "Ongoing" }}
@@ -154,12 +154,12 @@
 
         <a href="/ui/agreements/{{ agreement.id }}/edit"
            class="btn btn-primary">
-            Edit Agreement
+            Edit Work Pattern
         </a>
 
         <a href="/ui/agreements"
            class="btn btn-outline-secondary">
-            Back to Agreements
+            Back to Work Patterns
         </a>
 
     </div>

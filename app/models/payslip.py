@@ -10,11 +10,18 @@ from app.models.organisation import Base
 class Payslip(Base):
 
     __tablename__ = "payslips"
+
+    engagement_id: Mapped[int] = mapped_column(
+        ForeignKey("engagements.id"),
+        index=True,
+        nullable=False,
+    )
+
     __table_args__ = (
         UniqueConstraint(
             "pay_run_id",
-            "employee_id",
-            name="uq_payslip_pay_run_employee"
+            "engagement_id",
+            name="uq_payslip_pay_run_engagement"
         ),
     )
 
@@ -25,9 +32,9 @@ class Payslip(Base):
         nullable=False
     )
 
-    employee_id: Mapped[int] = mapped_column(
-        ForeignKey("employees.id"),
-        nullable=False
+    employee_id: Mapped[int | None] = mapped_column(
+        
+        nullable=True
     )
 
     gross_pay: Mapped[Decimal] = mapped_column(
@@ -51,4 +58,4 @@ class Payslip(Base):
     )
 
     pay_run = relationship("PayRun")
-    employee = relationship("Employee")
+    engagement = relationship("Engagement")

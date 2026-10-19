@@ -5,18 +5,26 @@ from sqlalchemy import Date, ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.organisation import Base
-from app.models.employee import Employee
 
 
 class WorkPattern(Base):
 
     __tablename__ = "work_patterns"
 
+    engagement_id: Mapped[int] = mapped_column(
+        ForeignKey("engagements.id"),
+        nullable=False,
+        index=True,
+    )
+
+    engagement = relationship("Engagement")
+
+
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    employee_id: Mapped[int] = mapped_column(
-        ForeignKey("employees.id"),
-        nullable=False
+    employee_id: Mapped[int | None] = mapped_column(
+        
+        nullable=True
     )
 
     employment_type: Mapped[str] = mapped_column(
@@ -54,4 +62,3 @@ class WorkPattern(Base):
         nullable=True
     )
 
-    employee: Mapped["Employee"] = relationship()

@@ -14,22 +14,33 @@
     <form id="timesheetForm" class="mt-4">
 
         <div class="mb-3">
-            <label for="employee_id" class="form-label">Employee</label>
-
-            <select id="employee_id" class="form-select" required>
-                <option value="">Select employee</option>
-
-                {% for employee in employees %}
-                <!--<option value="{{ employee.id }}">
-                    {{ employee.first_name }} {{ employee.last_name }}
-                </option>-->
-                <option value="{{ employee.id }}"
-                    {% if timesheet and timesheet.employee_id == employee.id %}selected{% endif %}>
-                    {{ employee.first_name }} {{ employee.last_name }}
+            <label for="engagement_id" class="form-label">Worker / Engagement</label>
+            <select id="engagement_id" class="form-select" required>
+                <option value="">Select worker</option>
+                {% for engagement in engagements %}
+                <option value="{{ engagement.id }}"
+                    {% if timesheet and timesheet.engagement_id == engagement.id %}selected{% endif %}>
+                    {{ engagement.worker.first_name }}
+                    {{ engagement.worker.last_name }}
+                    — {{ engagement.organisation.name }}
                 </option>
                 {% endfor %}
-
             </select>
+        </div>
+
+        <div class="mb-3">
+            <label for="assignment_id" class="form-label">Assignment</label>
+            <select id="assignment_id" class="form-select">
+                <option value="">Select assignment</option>
+                {% for assignment in assignments %}
+                <option value="{{ assignment.id }}"
+                        data-engagement-id="{{ assignment.engagement_id }}"
+                        {% if timesheet and timesheet.assignment_id == assignment.id %}selected{% endif %}>
+                    {{ assignment.customer.name }}
+                </option>
+                {% endfor %}
+            </select>
+            <div class="form-text">Select the customer assignment for these hours.</div>
         </div>
 
         <div class="mb-3">
@@ -78,6 +89,35 @@
 </div>
 
 <script>
+function filterDailyAssignments() {
+    const engagementId = document.getElementById("engagement_id").value;
+    const select = document.getElementById("assignment_id");
+
+    for (const option of select.options) {
+        if (!option.value) continue;
+
+        option.hidden = option.dataset.engagementId !== engagementId;
+        option.disabled = option.hidden;
+    }
+
+    if (select.selectedOptions[0]?.disabled) {
+        select.value = "";
+    }
+
+    const available = [...select.options].filter(
+        option => option.value && !option.disabled
+    );
+
+    if (!select.value && available.length === 1) {
+        select.value = available[0].value;
+    }
+}
+
+document.getElementById("engagement_id")
+    .addEventListener("change", filterDailyAssignments);
+
+filterDailyAssignments();
+
 document.getElementById("timesheetForm").addEventListener("submit", async function(event) {
 
     event.preventDefault();
@@ -97,8 +137,9 @@ document.getElementById("timesheetForm").addEventListener("submit", async functi
                 "X-CSRF-Token": "{{ csrf_token(request) }}"
             },
             body: JSON.stringify({
-                employee_id: Number(document.getElementById("employee_id").value),
+                engagement_id: Number(document.getElementById("engagement_id").value),
                 work_date: document.getElementById("work_date").value,
+                assignment_id: Number(document.getElementById("assignment_id").value) || null,
                 hours_worked: Number(document.getElementById("hours_worked").value)
             })
         });

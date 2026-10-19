@@ -61,6 +61,60 @@
 </div>
 
 
+<!-- WORKER PAYROLL PROFILE -->
+
+<div class="mb-4">
+    <h5>Worker Payroll Profile</h5>
+    <p class="text-muted">
+        Tax, superannuation and payment arrangements
+    </p>
+</div>
+
+<div class="row g-3 mb-4">
+
+    <div class="col-12 col-lg-4">
+        <div class="card h-100 p-3">
+            <h6>Tax Details</h6>
+            <p class="text-muted small">
+                Tax residency, tax-free threshold,
+                study loans and TFN declaration.
+            </p>
+            <a href="/ui/employees/{{ employee.id }}/tax"
+               class="btn btn-outline-success mt-auto">
+                Manage Tax Details
+            </a>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-4">
+        <div class="card h-100 p-3">
+            <h6>Superannuation</h6>
+            <p class="text-muted small">
+                Superannuation fund, membership
+                and contribution arrangements.
+            </p>
+            <a href="/ui/employees/{{ employee.id }}/super"
+               class="btn btn-outline-success mt-auto">
+                Manage Superannuation
+            </a>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-4">
+        <div class="card h-100 p-3">
+            <h6>Payment Details</h6>
+            <p class="text-muted small">
+                Employee payment arrangements.
+            </p>
+            <a href="/ui/employees/{{ employee.id }}/payment"
+               class="btn btn-outline-success mt-auto">
+                Manage Payment Details
+            </a>
+        </div>
+    </div>
+
+</div>
+
 <!-- WORK PATTERNS -->
 
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">

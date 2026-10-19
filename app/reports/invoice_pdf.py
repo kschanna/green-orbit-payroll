@@ -16,7 +16,7 @@ from reportlab.platypus import (
 
 class InvoicePDFGenerator:
 
-    def generate(self, invoice, engagement, employee, supplier, customer, hours):
+    def generate(self, invoice, engagement, worker, supplier, customer, hours):
 
         buffer = BytesIO()
         document = SimpleDocTemplate(buffer, pagesize=A4)
@@ -38,7 +38,7 @@ class InvoicePDFGenerator:
             ("Customer", customer.name),
             ("Invoice number", invoice.invoice_number),
             ("Invoice date", format_date_au(invoice.issue_date)),
-            ("Worker", f"{employee.first_name} {employee.last_name}"),
+            ("Worker", f"{worker.first_name} {worker.last_name}"),
         ]
 
         for label, value in details:

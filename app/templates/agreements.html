@@ -9,7 +9,7 @@
     <div>
         <h2>Work Patterns</h2>
         <p class="text-muted mb-0">
-            Employee remuneration and employment conditions
+            Worker remuneration and employment conditions
         </p>
     </div>
 
@@ -30,7 +30,7 @@
 
             <thead>
                 <tr>
-                    <th>Employee</th>
+                    <th>Worker</th>
                     <th>Employment Type</th>
                     <th>Pay Basis</th>
                     <th>Hourly Rate</th>
@@ -49,8 +49,8 @@
                 <tr>
 
                     <td>
-                        <a href="/ui/employees/{{ agreement.employee_id }}">
-                            {{ agreement.employee_name }}
+                        <a href="/ui/workers/{{ agreement.worker_id }}">
+                            {{ agreement.worker_name }}
                         </a>
                     </td>
 
@@ -127,14 +127,14 @@
 
     <div class="card p-3 mb-3">
 
-        <!-- Employee and status -->
+        <!-- Worker and status -->
 
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
 
             <h5 class="mb-0">
-                <a href="/ui/employees/{{ agreement.employee_id }}"
+                <a href="/ui/workers/{{ agreement.worker_id }}"
                    class="text-success text-decoration-none">
-                    {{ agreement.employee_name }}
+                    {{ agreement.worker_name }}
                 </a>
             </h5>
 
@@ -220,9 +220,9 @@
 
         </div>
 
-        <a href="/ui/employees/{{ agreement.employee_id }}"
+        <a href="/ui/workers/{{ agreement.worker_id }}"
            class="btn btn-outline-success w-100 mt-2">
-            View Employee
+            View Worker
         </a>
 
     </div>

@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if worker_mode %}
+<a href="/ui/workers/{{ employee.id }}"
+   class="btn btn-link mb-3">← Back to Worker</a>
+{% else %}
+<a href="/ui/employees/{{ employee.id }}"
+   class="btn btn-link mb-3">← Back to Employee</a>
+{% endif %}
+
+<h2>Payment Details</h2>
+<p class="text-muted">{{ employee.name }}</p>
+
+<div class="card p-4 mb-4">
+    <h5>New Payment Profile</h5>
+    <hr>
+
+    <form method="post" autocomplete="off">
+        <input type="hidden" name="csrf_token"
+               value="{{ csrf_token(request) }}">
+
+        <div class="row g-3">
+
+            <div class="col-md-6">
+                <label class="form-label">Payment Method</label>
+                <select name="payment_method" class="form-select" required>
+                    <option value="bank_transfer">Bank Transfer</option>
+                    <option value="cash">Cash</option>
+                    <option value="cheque">Cheque</option>
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Account Name</label>
+                <input name="account_name" class="form-control">
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">BSB</label>
+                <input name="bsb" class="form-control"
+                       placeholder="123456" maxlength="7">
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Account Number</label>
+                <input name="account_number" class="form-control"
+                       autocomplete="off">
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Effective From</label>
+                <input type="date" name="effective_from"
+                       class="form-control" required>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Effective To (optional)</label>
+                <input type="date" name="effective_to"
+                       class="form-control">
+            </div>
+
+        </div>
+
+        <p class="text-muted small mt-3">
+            Prototype only. Use fictional banking details.
+        </p>
+
+        <button type="submit" class="btn btn-success mt-2">
+            Save Payment Profile
+        </button>
+    </form>
+</div>
+
+<div class="card p-4">
+    <h5>Payment Profile History</h5>
+
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>From</th>
+                    <th>To</th>
+                    <th>Method</th>
+                    <th>Account Name</th>
+                    <th>BSB</th>
+                    <th>Account Number</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in profiles %}
+                <tr>
+                    <td>{{ p.effective_from }}</td>
+                    <td>{{ p.effective_to or "Ongoing" }}</td>
+                    <td>{{ p.payment_method }}</td>
+                    <td>{{ p.account_name or "—" }}</td>
+                    <td>{{ p.bsb or "—" }}</td>
+                    <td>{{ p.account_number or "—" }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-muted text-center">
+                        No payment profiles recorded.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const now = new Date();
+
+    const today = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Australia/Melbourne",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+    }).format(now);
+
+    document.querySelectorAll(
+        'input[type="date"][name="effective_from"]'
+    ).forEach(function (field) {
+        if (!field.value) {
+            field.value = today;
+        }
+    });
+});
+</script>
+
+{% endblock %}

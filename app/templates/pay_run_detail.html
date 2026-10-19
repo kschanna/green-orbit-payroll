@@ -155,7 +155,7 @@
 
 <!-- EMPLOYEE PAYSLIPS -->
 
-<h5 class="mb-3">Employee Payslips</h5>
+<h5 class="mb-3">Worker Payslips</h5>
 
 
 <!-- DESKTOP TABLE -->
@@ -168,7 +168,7 @@
 
             <thead>
                 <tr>
-                    <th>Employee</th>
+                    <th>Worker</th>
                     <th>Gross Pay</th>
                     <th>PAYG</th>
                     <th>Net Pay</th>
@@ -184,8 +184,8 @@
                 <tr>
 
                     <td>
-                        <a href="/ui/employees/{{ payslip.employee_id }}">
-                            {{ payslip.employee_name }}
+                        <a href="/ui/workers/{{ payslip.worker_id }}">
+                            {{ payslip.worker_name }}
                         </a>
                     </td>
 
@@ -244,9 +244,9 @@
     <div class="card p-3 mb-3">
 
         <h5 class="mb-3">
-            <a href="/ui/employees/{{ payslip.employee_id }}"
+            <a href="/ui/workers/{{ payslip.worker_id }}"
                class="text-success text-decoration-none">
-                {{ payslip.employee_name }}
+                {{ payslip.worker_name }}
             </a>
         </h5>
 

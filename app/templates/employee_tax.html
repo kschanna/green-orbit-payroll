@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if worker_mode %}
+<a href="/ui/workers/{{ employee.id }}"
+   class="btn btn-link mb-3">← Back to Worker</a>
+{% else %}
+<a href="/ui/employees/{{ employee.id }}"
+   class="btn btn-link mb-3">← Back to Employee</a>
+{% endif %}
+
+<h2>Tax Details</h2>
+<p class="text-muted">{{ employee.name }}</p>
+
+
+<div class="card p-4 mb-4">
+    <h5>Tax File Number</h5>
+
+    <p class="text-muted small">
+        TFNs are encrypted before storage.
+        Only the final three digits are displayed.
+    </p>
+
+    <div class="mb-3">
+        <strong>Recorded TFN:</strong>
+        {{ masked_tfn or "Not supplied" }}
+    </div>
+
+    <form
+        method="post"
+        action="{% if worker_mode %}/ui/workers/{{ employee.id }}/tfn{% else %}/ui/employees/{{ employee.id }}/tfn{% endif %}"
+        autocomplete="off"
+    >
+        <input
+            type="hidden"
+            name="csrf_token"
+            value="{{ csrf_token(request) }}"
+        >
+
+        <div class="mb-3">
+            <label for="employee_tfn" class="form-label">
+                {{ "Replace TFN" if masked_tfn else "Enter TFN" }}
+            </label>
+
+            <input
+                id="employee_tfn"
+                name="tfn"
+                type="password"
+                class="form-control"
+                inputmode="numeric"
+                autocomplete="off"
+                maxlength="11"
+                required
+            >
+        </div>
+
+        <button type="submit" class="btn btn-success">
+            Save Encrypted TFN
+        </button>
+    </form>
+</div>
+
+<div class="card p-4 mb-4">
+    <h5>New Tax Profile</h5>
+    <hr>
+
+    <form method="post">
+        <input type="hidden" name="csrf_token"
+               value="{{ csrf_token(request) }}">
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Tax Residency</label>
+                <select name="residency_status" class="form-select" required>
+                    <option value="resident">Australian Resident</option>
+                    <option value="foreign_resident">Foreign Resident</option>
+                    <option value="working_holiday_maker">Working Holiday Maker</option>
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Effective From</label>
+                <input type="date" name="effective_from"
+                       class="form-control" required>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Effective To (optional)</label>
+                <input type="date" name="effective_to"
+                       class="form-control">
+            </div>
+        </div>
+
+        <div class="form-check mt-4">
+            <input class="form-check-input" type="checkbox"
+                   name="claims_tax_free_threshold" value="true"
+                   id="tax_free">
+            <label class="form-check-label" for="tax_free">
+                Claims Tax-Free Threshold
+            </label>
+        </div>
+
+        <div class="form-check mt-3">
+            <input class="form-check-input" type="checkbox"
+                   name="has_study_loan" value="true"
+                   id="study_loan">
+            <label class="form-check-label" for="study_loan">
+                Has HELP / Study Loan Obligation
+            </label>
+        </div>
+
+        <div class="form-check mt-3">
+            <input class="form-check-input" type="checkbox"
+                   name="tfn_declaration_received" value="true"
+                   id="tfn">
+            <label class="form-check-label" for="tfn">
+                TFN Declaration Received
+            </label>
+        </div>
+
+        <button type="submit" class="btn btn-success mt-4">
+            Save Tax Profile
+        </button>
+    </form>
+</div>
+
+<div class="card p-4">
+    <h5>Tax Profile History</h5>
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>From</th>
+                    <th>To</th>
+                    <th>Residency</th>
+                    <th>Tax-Free Threshold</th>
+                    <th>Study Loan</th>
+                    <th>TFN Declaration</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in profiles %}
+                <tr>
+                    <td>{{ p.effective_from }}</td>
+                    <td>{{ p.effective_to or "Ongoing" }}</td>
+                    <td>{{ p.residency_status }}</td>
+                    <td>{{ "Yes" if p.claims_tax_free_threshold else "No" }}</td>
+                    <td>{{ "Yes" if p.has_study_loan else "No" }}</td>
+                    <td>{{ "Yes" if p.tfn_declaration_received else "No" }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-muted text-center">
+                        No tax profiles recorded.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const now = new Date();
+
+    const today = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Australia/Melbourne",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+    }).format(now);
+
+    document.querySelectorAll(
+        'input[type="date"][name="effective_from"]'
+    ).forEach(function (field) {
+        if (!field.value) {
+            field.value = today;
+        }
+    });
+});
+</script>
+
+{% endblock %}

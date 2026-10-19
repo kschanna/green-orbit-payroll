@@ -26,7 +26,7 @@ def test_preview_template_exists():
     source = PREVIEW_TEMPLATE.read_text()
 
     assert "Timesheet Preview" in source
-    assert "employee_name" in source
+    assert "worker_name" in source
     assert "total_hours" in source
     assert "entries" in source
 

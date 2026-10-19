@@ -12,6 +12,12 @@ class Timesheet(Base):
 
     __tablename__ = "timesheets"
 
+    engagement_id: Mapped[int | None] = mapped_column(
+        ForeignKey("engagements.id"),
+        index=True, nullable=True
+    )
+
+
     __table_args__ = (
         CheckConstraint(
             "hours_worked >= 0 AND hours_worked <= 24",
@@ -21,9 +27,14 @@ class Timesheet(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    employee_id: Mapped[int] = mapped_column(
-        ForeignKey("employees.id"),
-        nullable=False
+    employee_id: Mapped[int | None] = mapped_column(
+        
+        nullable=True
+    )
+
+    assignment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("assignments.id"),
+        nullable=True
     )
 
     # Links daily entries to a timesheet header.
@@ -49,7 +60,6 @@ class Timesheet(Base):
         nullable=False
     )
 
-    employee: Mapped["Employee"] = relationship()
 
     header: Mapped["TimesheetHeader | None"] = relationship(
         "TimesheetHeader",

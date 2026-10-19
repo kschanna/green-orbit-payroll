@@ -30,20 +30,20 @@
 
         <div class="card-body p-4">
 
-            <!-- EMPLOYEE DETAILS -->
+            <!-- WORKER DETAILS -->
 
             <div class="mb-4">
 
                 <label class="form-label text-muted">
-                    Employee
+                    Worker
                 </label>
 
                 <div class="fs-5 fw-semibold">
-                    {{ employee_name }}
+                    {{ worker_name }}
                 </div>
 
                 <small class="text-muted">
-                    Employee assignment cannot be changed.
+                    Worker engagement cannot be changed.
                 </small>
 
             </div>
@@ -147,7 +147,7 @@
                         </div>
 
                         <div class="form-text">
-                            Current agreement rate used by the payroll engine.
+                            Current work pattern rate used by the payroll engine.
                         </div>
 
                     </div>
@@ -213,7 +213,7 @@
                     <div class="col-md-6">
 
                         <label for="start_date" class="form-label">
-                            Agreement Start Date
+                            Work Pattern Start Date
                         </label>
 
                         <input
@@ -231,7 +231,7 @@
                     <div class="col-md-6">
 
                         <label for="end_date" class="form-label">
-                            Agreement End Date
+                            Work Pattern End Date
                         </label>
 
                         <input
@@ -241,7 +241,7 @@
                             value="{{ agreement.end_date or '' }}">
 
                         <div class="form-text">
-                            Leave blank for an ongoing agreement.
+                            Leave blank for an ongoing work pattern.
                         </div>
 
                     </div>
@@ -326,7 +326,7 @@ agreementForm.addEventListener("submit", async function(event) {
     const startDate = document.getElementById("start_date").value;
     const endDate = document.getElementById("end_date").value;
 
-    // Validate agreement dates
+    // Validate work pattern dates
 
     if (endDate && endDate < startDate) {
 

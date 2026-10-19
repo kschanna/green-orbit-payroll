@@ -73,7 +73,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 from app.models.payslip_timesheet import PayslipTimesheet
 from app.models.organisation import Base, Organisation
-from app.models.employee import Employee
+from app.models.worker import Worker
+from app.models.engagement import Engagement
 from app.models.work_pattern import WorkPattern
 from app.models.payslip import Payslip
 
@@ -98,17 +99,25 @@ def test_draft_payslip_is_recalculated():
         session.add(organisation)
         session.flush()
 
-        employee = Employee(
-            organisation_id=organisation.id,
+        worker = Worker(
             first_name="Ahmed",
             last_name="Khan",
-            email="ahmed@test.com"
+            email="ahmed@test.com",
         )
-        session.add(employee)
+        session.add(worker)
+        session.flush()
+        engagement = Engagement(
+            worker_id=worker.id,
+            organisation_id=organisation.id,
+            engagement_type="employee",
+            status="active",
+        )
+        session.add(engagement)
         session.flush()
 
         agreement = WorkPattern(
-            employee_id=employee.id,
+            employee_id=None,
+            engagement_id=engagement.id,
             employment_type="full_time",
             pay_basis="hourly",
             hourly_rate=Decimal("45.00"),
@@ -123,7 +132,8 @@ def test_draft_payslip_is_recalculated():
         for day, hours in enumerate(["7.50"] * 4, start=1):
             session.add(
                 Timesheet(
-                    employee_id=employee.id,
+                    employee_id=None,
+                    engagement_id=engagement.id,
                     work_date=date(2026, 10, day),
                     hours_worked=Decimal(hours),
                     status="approved"
@@ -160,10 +170,12 @@ def test_draft_payslip_is_recalculated():
             )
 
             assert first_payslip.gross_pay == Decimal("1350.00")
+            assert first_payslip.engagement_id == engagement.id
 
             # Approve an additional 8 hours
             additional_timesheet = Timesheet(
-                employee_id=employee.id,
+                employee_id=None,
+                engagement_id=engagement.id,
                 work_date=date(2026, 10, 5),
                 hours_worked=Decimal("8.00"),
                 status="approved"
@@ -188,6 +200,7 @@ def test_draft_payslip_is_recalculated():
         # Still only one payslip, recalculated for 38 hours
         assert len(payslips) == 1
         assert payslips[0].gross_pay == Decimal("1710.00")
+        assert payslips[0].engagement_id == engagement.id
 
         # Both approved timesheets are linked
         links = session.scalars(
@@ -230,18 +243,25 @@ def test_process_multiple_employees():
 
         for first_name, last_name, email, hourly_rate in employees:
 
-            employee = Employee(
-                organisation_id=organisation.id,
+            worker = Worker(
                 first_name=first_name,
                 last_name=last_name,
-                email=email
+                email=email,
             )
-
-            session.add(employee)
+            session.add(worker)
+            session.flush()
+            engagement = Engagement(
+                worker_id=worker.id,
+                organisation_id=organisation.id,
+                engagement_type="employee",
+                status="active",
+            )
+            session.add(engagement)
             session.flush()
 
             agreement = WorkPattern(
-                employee_id=employee.id,
+                employee_id=None,
+                engagement_id=engagement.id,
                 employment_type="full_time",
                 pay_basis="hourly",
                 hourly_rate=Decimal(hourly_rate),
@@ -256,7 +276,8 @@ def test_process_multiple_employees():
             # Create 10 approved timesheets for each employee
             for day in range(1, 11):
                 timesheet = Timesheet(
-                    employee_id=employee.id,
+                    employee_id=None,
+                    engagement_id=engagement.id,
                     work_date=date(2026, 10, day),
                     hours_worked=Decimal("7.60"),
                     status="approved"
@@ -292,6 +313,10 @@ def test_process_multiple_employees():
         payslips = session.query(Payslip).all()
 
         assert len(payslips) == 2
+        assert all(
+            p.engagement_id is not None
+            for p in payslips
+        )
 
         gross_amounts = sorted(
             payslip.gross_pay for payslip in payslips

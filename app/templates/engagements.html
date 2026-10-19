@@ -6,13 +6,13 @@
     <div>
         <h2>Assignments</h2>
         <p class="text-muted mb-0">
-            Manage employee assignments and client billing rates
+            Manage worker assignments and client billing rates
         </p>
     </div>
 
     <button type="button" class="btn btn-success"
             onclick="newEngagement()">
-        + New Engagement
+        + New Assignment
     </button>
 </div>
 
@@ -22,7 +22,7 @@
             <thead>
                 <tr>
                     <th>ID</th>
-                    <th>Employee</th>
+                    <th>Worker</th>
                     <th>Customer</th>
                     <th>Billing Rate</th>
                     <th>Actions</th>
@@ -31,7 +31,17 @@
             <tbody>
                 {% for engagement in engagements %}
                 <tr>
-                    <td>{{ engagement.id }}</td>
+                    <td>
+                        {% if engagement.worker_id and engagement.engagement_id %}
+                        <a
+                            href="/ui/workers/{{ engagement.worker_id }}/engagements/{{ engagement.engagement_id }}/assignments/{{ engagement.id }}/preview"
+                            class="text-decoration-none fw-semibold">
+                            #{{ engagement.id }}
+                        </a>
+                        {% else %}
+                            #{{ engagement.id }}
+                        {% endif %}
+                    </td>
                     <td>{{ engagement.employee_name }}</td>
                     <td>{{ engagement.customer_name }}</td>
                     <td>${{ engagement.billing_rate }}/hr</td>
@@ -41,6 +51,10 @@
                                 onclick='editEngagement({{ engagement | tojson }})'>
                             Edit
                         </button>
+                        <a href="/ui/assignments/{{ engagement.id }}/components"
+                           class="btn btn-sm btn-outline-success">
+                            Manage Components
+                        </a>
                     </td>
                 </tr>
                 {% else %}
@@ -57,19 +71,19 @@
 
 <div id="engagementEditor" class="card d-none">
     <div class="card-body p-4">
-        <h5 id="formTitle" class="mb-4">New Engagement</h5>
+        <h5 id="formTitle" class="mb-4">New Assignment</h5>
 
         <form id="engagementForm">
-            <input type="hidden" id="engagementId">
+            <input type="hidden" id="assignmentId">
 
             <div class="row g-3">
                 <div class="col-md-4">
-                    <label for="employeeId" class="form-label">Employee</label>
-                    <select id="employeeId" class="form-select" required>
-                        <option value="">Select employee</option>
-                        {% for employee in employees %}
-                        <option value="{{ employee.id }}">
-                            {{ employee.name }}
+                    <label for="engagementId" class="form-label">Worker / Engagement</label>
+                    <select id="engagementId" class="form-select" required>
+                        <option value="">Select worker engagement</option>
+                        {% for engagement_option in engagement_options %}
+                        <option value="{{ engagement_option.id }}">
+                            {{ engagement_option.name }}
                         </option>
                         {% endfor %}
                     </select>
@@ -105,7 +119,7 @@
             <div class="d-flex gap-2 mt-4">
                 <button type="submit" id="saveButton"
                         class="btn btn-success">
-                    Save Engagement
+                    Save Assignment
                 </button>
 
                 <button type="button"
@@ -132,19 +146,19 @@ function showEditor() {
 
 function newEngagement() {
     form.reset();
-    document.getElementById("engagementId").value = "";
-    document.getElementById("formTitle").textContent = "New Engagement";
+    document.getElementById("assignmentId").value = "";
+    document.getElementById("formTitle").textContent = "New Assignment";
     showEditor();
 }
 
 function editEngagement(engagement) {
     form.reset();
-    document.getElementById("engagementId").value = engagement.id;
-    document.getElementById("employeeId").value = engagement.employee_id;
+    document.getElementById("assignmentId").value = engagement.id;
+    document.getElementById("engagementId").value = engagement.engagement_id;
     document.getElementById("customerId").value = engagement.customer_id;
     document.getElementById("billingRate").value = engagement.billing_rate;
     document.getElementById("formTitle").textContent =
-        "Edit Engagement #" + engagement.id;
+        "Edit Assignment #" + engagement.id;
     showEditor();
 }
 
@@ -156,9 +170,9 @@ function cancelEngagement() {
 form.addEventListener("submit", async event => {
     event.preventDefault();
 
-    const id = document.getElementById("engagementId").value;
+    const id = document.getElementById("assignmentId").value;
     const payload = {
-        employee_id: Number(document.getElementById("employeeId").value),
+        engagement_id: Number(document.getElementById("engagementId").value),
         customer_id: Number(document.getElementById("customerId").value),
         billing_rate: document.getElementById("billingRate").value
     };

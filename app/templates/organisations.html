@@ -25,7 +25,7 @@
                     <th>Organisation</th>
                     <th>ABN</th>
                     <th>Country</th>
-                    <th>Employees</th>
+                    <th>Workers</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -39,7 +39,7 @@
                     <td>{{ org.country }}</td>
                     <td>
                         <span class="badge bg-success">
-                            {{ org.employee_count }}
+                            {{ org.worker_count }}
                         </span>
                     </td>
                     <td>
@@ -68,7 +68,7 @@
         <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
             <h5 class="mb-0">{{ org.name }}</h5>
             <span class="badge bg-success">
-                {{ org.employee_count }} Employees
+                {{ org.worker_count }} Workers
             </span>
         </div>
 

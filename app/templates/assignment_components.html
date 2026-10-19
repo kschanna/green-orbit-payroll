@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<a href="/ui/engagements" class="btn btn-link mb-3">
+    ← Back to Assignments
+</a>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+    <div>
+        <h2>Assignment Components</h2>
+        <p class="text-muted mb-0">
+            Assignment #{{ assignment.id }} —
+            {{ assignment.employee }} —
+            {{ assignment.customer }}
+        </p>
+    </div>
+</div>
+
+<div class="card p-4 mb-4">
+    <h5>Add Component</h5>
+    <hr>
+
+    <form method="post">
+        <input type="hidden" name="csrf_token"
+               value="{{ request.session.get('csrf_token', '') }}">
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Component</label>
+                <select name="component_definition_id"
+                        class="form-select" required>
+                    <option value="">Select component</option>
+                    {% for family, components in component_groups.items() %}
+                    <optgroup label="{{ family }}">
+                        {% for component in components %}
+                        <option value="{{ component.id }}">
+                            {{ component.name }}
+                        </option>
+                        {% endfor %}
+                    </optgroup>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Applies To</label>
+                <select name="applies_to" id="applies_to"
+                        class="form-select" required>
+                    <option value="both">Payroll and Invoice</option>
+                    <option value="payroll">Payroll Only</option>
+                    <option value="invoice">Invoice Only</option>
+                </select>
+            </div>
+
+            <div class="col-md-6" id="pay_rate_group">
+                <label class="form-label">Pay Rate ($ or %)</label>
+                <input type="number" name="pay_rate" id="pay_rate"
+                       class="form-control"
+                       min="0" max="99999999" step="0.0001">
+            </div>
+
+            <div class="col-md-6" id="bill_rate_group">
+                <label class="form-label">Bill Rate ($ or %)</label>
+                <input type="number" name="bill_rate" id="bill_rate"
+                       class="form-control"
+                       min="0" max="99999999" step="0.0001">
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Effective From</label>
+                <input type="date" name="effective_from"
+                       class="form-control" required>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Effective To (optional)</label>
+                <input type="date" name="effective_to"
+                       class="form-control">
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-success mt-4">
+            Save Component
+        </button>
+    </form>
+</div>
+
+<div class="card p-4" style="min-width: 0;">
+    <h5>Configured Components</h5>
+
+    <div class="table-responsive"
+         style="max-width: 100%; overflow-x: auto;">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>Component</th>
+                    <th>Type</th>
+                    <th>Applies To</th>
+                    <th>Pay Rate</th>
+                    <th>Bill Rate</th>
+                    <th>Effective From</th>
+                    <th>Effective To</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in history %}
+                <tr>
+                    <td>
+                        <strong>{{ item.name }}</strong>
+                    </td>
+                    <td>{{ item.calculation_type | title }}</td>
+                    <td>
+                        {{ {"payroll": "Payroll Only",
+                            "invoice": "Invoice Only",
+                            "both": "Payroll & Invoice"
+                           }.get(item.applies_to, item.applies_to) }}
+                    </td>
+                    <td>
+                        {{ item.pay_rate if item.pay_rate is not none else "—" }}
+                    </td>
+                    <td>
+                        {{ item.bill_rate if item.bill_rate is not none else "—" }}
+                    </td>
+                    <td>{{ item.effective_from | date_au }}</td>
+                    <td>{{ (item.effective_to | date_au) if item.effective_to else "Ongoing" }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="text-center text-muted">
+                        No components configured for this assignment.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const appliesTo = document.getElementById("applies_to");
+    const payGroup = document.getElementById("pay_rate_group");
+    const billGroup = document.getElementById("bill_rate_group");
+    const payRate = document.getElementById("pay_rate");
+    const billRate = document.getElementById("bill_rate");
+
+    function updateRateFields() {
+        const usePay = appliesTo.value !== "invoice";
+        const useBill = appliesTo.value !== "payroll";
+
+        payGroup.style.display = usePay ? "" : "none";
+        billGroup.style.display = useBill ? "" : "none";
+
+        payRate.required = usePay;
+        billRate.required = useBill;
+
+        if (!usePay) payRate.value = "";
+        if (!useBill) billRate.value = "";
+    }
+
+    appliesTo.addEventListener("change", updateRateFields);
+    updateRateFields();
+});
+</script>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const now = new Date();
+
+    const today = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Australia/Melbourne",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+    }).format(now);
+
+    document.querySelectorAll(
+        'input[type="date"][name="effective_from"]'
+    ).forEach(function (field) {
+        if (!field.value) {
+            field.value = today;
+        }
+    });
+});
+</script>
+
+{% endblock %}

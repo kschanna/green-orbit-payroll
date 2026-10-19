@@ -1,0 +1,91 @@
+
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div>
+        <h2>Workers</h2>
+        <p class="text-muted mb-0">Manage your workforce</p>
+    </div>
+
+    <a href="/ui/workers/new" class="btn btn-success">
+        + New Worker
+    </a>
+</div>
+
+<div class="card p-3 p-md-4">
+
+    <form method="get" action="/ui/workers" class="row g-2 mb-4">
+        <div class="col-md-9">
+            <input name="search"
+                   class="form-control"
+                   placeholder="Search by name or email"
+                   value="{{ search }}">
+        </div>
+
+        <div class="col-md-3">
+            <button class="btn btn-outline-success w-100">
+                Search
+            </button>
+        </div>
+    </form>
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Worker</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for worker in workers %}
+                <tr>
+                    <td>{{ worker.id }}</td>
+
+                    <td>
+                        <a href="/ui/workers/{{ worker.id }}"
+                           class="text-decoration-none fw-semibold">
+                            {{ worker.first_name }}
+                            {{ worker.last_name }}
+                        </a>
+                    </td>
+
+                    <td>{{ worker.email }}</td>
+                    <td>{{ worker.phone or "—" }}</td>
+
+                    <td>
+                        {{ "Active" if worker.active else "Inactive" }}
+                    </td>
+
+                    <td>
+                        <a href="/ui/workers/{{ worker.id }}"
+                           class="btn btn-sm btn-outline-success">
+                            View
+                        </a>
+
+                        <a href="/ui/workers/{{ worker.id }}/edit"
+                           class="btn btn-sm btn-outline-secondary">
+                            Edit
+                        </a>
+                    </td>
+                </tr>
+
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-center text-muted">
+                        No workers found.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}

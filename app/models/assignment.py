@@ -9,11 +9,20 @@ from app.models.organisation import Base
 class Assignment(Base):
     __tablename__ = "assignments"
 
+    engagement_id: Mapped[int] = mapped_column(
+        ForeignKey("engagements.id"),
+        nullable=False,
+        index=True,
+    )
+
+    engagement = relationship("Engagement")
+
+
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    employee_id: Mapped[int] = mapped_column(
-        ForeignKey("employees.id"),
-        nullable=False
+    employee_id: Mapped[int | None] = mapped_column(
+        
+        nullable=True
     )
 
     customer_id: Mapped[int] = mapped_column(
@@ -26,5 +35,5 @@ class Assignment(Base):
         nullable=False
     )
 
-    employee = relationship("Employee")
+
     customer = relationship("Organisation")

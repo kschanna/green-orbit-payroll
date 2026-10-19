@@ -1,0 +1,155 @@
+
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="container mt-4" style="max-width: 900px;">
+
+    <a
+        href="/ui/workers/{{ payroll.worker_id }}/engagements/{{ payroll.engagement_id }}/work-patterns"
+        class="btn btn-link mb-3">
+        ← Back to Work Patterns
+    </a>
+
+    <h2>Generate Payroll</h2>
+
+    <p class="text-muted">
+        Review the proposed payroll before generating a draft payslip.
+    </p>
+
+    <div class="card p-4 mb-4">
+
+        <h5>{{ payroll.worker_name }}</h5>
+
+        <p class="text-muted mb-4">
+            {{ payroll.organisation_name }}
+            — Engagement #{{ payroll.engagement_id }}
+        </p>
+
+        <div class="row g-3 mb-4">
+
+            <div class="col-md-4">
+                <strong>Pay Period Start</strong>
+                <div>
+                    {{ payroll.period_start.strftime("%d/%m/%Y") }}
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <strong>Pay Period End</strong>
+                <div>
+                    {{ payroll.period_end.strftime("%d/%m/%Y") }}
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <strong>Payment Date</strong>
+                <div>
+                    {{ payroll.payment_date.strftime("%d/%m/%Y") }}
+                </div>
+            </div>
+
+        </div>
+
+        <h5 class="mb-3">Payroll Calculation</h5>
+
+        <table class="table align-middle">
+
+            <tbody>
+
+                <tr>
+                    <td>Work Pattern</td>
+                    <td class="text-end">
+                        #{{ payroll.pattern_id }}
+                    </td>
+                </tr>
+
+                <tr>
+                    <td>Ordinary Hours</td>
+                    <td class="text-end">
+                        {{ "%.2f"|format(payroll.hours) }}
+                    </td>
+                </tr>
+
+                <tr>
+                    <td>Hourly Rate</td>
+                    <td class="text-end">
+                        ${{ "%.2f"|format(payroll.rate) }}
+                    </td>
+                </tr>
+
+                <tr class="table-light fw-semibold">
+                    <td>Gross Pay</td>
+                    <td class="text-end">
+                        ${{ "%.2f"|format(payroll.gross) }}
+                    </td>
+                </tr>
+
+                <tr>
+                    <td>PAYG Withholding</td>
+                    <td class="text-end">
+                        ${{ "%.2f"|format(payroll.payg) }}
+                    </td>
+                </tr>
+
+                <tr class="table-light fw-bold">
+                    <td>Net Pay</td>
+                    <td class="text-end">
+                        ${{ "%.2f"|format(payroll.net) }}
+                    </td>
+                </tr>
+
+                <tr>
+                    <td>Employer Superannuation</td>
+                    <td class="text-end">
+                        ${{ "%.2f"|format(payroll.total_super) }}
+                    </td>
+                </tr>
+
+            </tbody>
+
+        </table>
+
+        <div class="alert alert-info mt-3">
+            This generates a <strong>draft</strong> Payslip.
+            No bank payment will be initiated.
+        </div>
+
+        <form
+            method="post"
+            action="/ui/workers/{{ payroll.worker_id }}/engagements/{{ payroll.engagement_id }}/payroll/generate">
+
+            <input
+                type="hidden"
+                name="csrf_token"
+                value="{{ csrf_token(request) }}">
+
+            <input
+                type="hidden"
+                name="expected_period_start"
+                value="{{ payroll.period_start.isoformat() }}">
+
+            <div class="d-flex justify-content-end gap-2">
+
+                <a
+                    href="/ui/workers/{{ payroll.worker_id }}/engagements/{{ payroll.engagement_id }}/work-patterns"
+                    class="btn btn-outline-secondary">
+                    Cancel
+                </a>
+
+                <button
+                    type="submit"
+                    class="btn btn-success"
+                    onclick="this.disabled=true; this.form.requestSubmit();">
+                    Generate Draft Payslip
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+{% endblock %}

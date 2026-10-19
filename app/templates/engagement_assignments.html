@@ -1,0 +1,94 @@
+
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="container mt-4">
+
+    <a href="/ui/workers/{{ worker_id }}"
+       class="btn btn-link mb-3">
+        ← Back to Worker
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+
+        <div>
+            <h2>Assignments</h2>
+
+            <p class="text-muted mb-0">
+                {{ worker_name }} — {{ organisation_name }}
+            </p>
+
+            <span class="badge bg-secondary mt-2">
+                {{ engagement_type | replace("_", " ") | title }}
+            </span>
+        </div>
+
+
+
+    </div>
+
+    <div class="card p-4">
+
+        <div class="table-responsive">
+
+            <table class="table table-hover align-middle">
+
+                <thead>
+                    <tr>
+                        <th>Assignment ID</th>
+                        <th>Customer</th>
+                        <th>Billing Rate</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    {% for assignment in assignments %}
+
+                    <tr>
+                        <td>
+                            <a
+                                href="/ui/workers/{{ worker_id }}/engagements/{{ engagement_id }}/assignments/{{ assignment.id }}/preview"
+                                class="text-decoration-none fw-semibold">
+                                #{{ assignment.id }}
+                            </a>
+                        </td>
+
+                        <td>{{ assignment.customer }}</td>
+
+                        <td>
+                            ${{ "%.2f"|format(assignment.billing_rate) }}/hour
+                        </td>
+
+                        <td>
+                            <a
+                                href="/ui/assignments/{{ assignment.id }}/components"
+                                class="btn btn-sm btn-outline-primary">
+                                Manage Components
+                            </a>
+                        </td>
+                    </tr>
+
+                    {% else %}
+
+                    <tr>
+                        <td colspan="4" class="text-center text-muted py-4">
+                            No Assignments found for this Engagement.
+                        </td>
+                    </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}

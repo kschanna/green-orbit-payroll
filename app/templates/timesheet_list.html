@@ -7,10 +7,7 @@
     <h2>Timesheets</h2>
 
     <div class="mb-3">
-        <a href="/ui/timesheets/new"
-           class="btn btn-outline-primary me-2">
-            + New Daily Timesheet
-        </a>
+        
 
         <a href="/ui/timesheets/weekly"
            class="btn btn-primary">
@@ -18,264 +15,290 @@
         </a>
     </div>
 
-    <!-- ================================================== -->
-    <!-- WEEKLY TIMESHEETS                                  -->
-    <!-- ================================================== -->
+    <!-- WEEKLY TIMESHEETS -->
 
     <h4 class="mt-4">Weekly Timesheets</h4>
 
-    <div class="table-responsive">
+    <div class="card p-4">
+        <div class="table-responsive">
 
-        <table class="table table-striped align-middle">
+            <table class="table table-hover align-middle">
 
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Employee</th>
-                    <th>Week Commencing</th>
-                    <th>Week Ending</th>
-                    <th>Total Hours</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Worker</th>
+                        <th>Week Commencing</th>
+                        <th>Week Ending</th>
+                        <th>Total Hours</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
 
-            <tbody>
+                <tbody>
 
-                {% for timesheet in weekly_timesheets %}
+                    {% for timesheet in weekly_timesheets %}
 
-                <tr>
+                    <tr>
 
-                    <td>{{ timesheet.id }}</td>
+                        <td>{{ timesheet.id }}</td>
 
-                    <td>{{ timesheet.employee_name }}</td>
+                        <td>{{ timesheet.employee_name }}</td>
 
-                    <td>{{ timesheet.period_start | date_au }}</td>
+                        <td>{{ timesheet.period_start | date_au }}</td>
 
-                    <td>{{ timesheet.period_end | date_au }}</td>
+                        <td>{{ timesheet.period_end | date_au }}</td>
 
-                    <td>
-                        {{ "%.2f"|format(timesheet.total_hours) }}
-                    </td>
+                        <td>
+                            {{ "%.2f"|format(timesheet.total_hours) }}
+                        </td>
 
-                    <td>
-                        {% if timesheet.status == "approved" %}
-
-                            <span class="badge bg-success">
-                                Approved
-                            </span>
-
-                        {% elif timesheet.status == "draft" %}
-
-                            <span class="badge bg-warning text-dark">
-                                Draft
-                            </span>
-
-                        {% else %}
-
-                            <span class="badge bg-secondary">
-                                {{ timesheet.status | title }}
-                            </span>
-
-                        {% endif %}
-                    </td>
-
-                    <td>
-
-                        <!-- Preview is always available -->
-
-                        <a
-                            href="/ui/timesheets/weekly/{{ timesheet.id }}/preview"
-                            class="btn btn-sm btn-outline-secondary me-2">
-                            Preview
-                        </a>
-
-
-                        {% if timesheet.status == "approved" %}
-                            {% if timesheet.is_invoiced %}
-                                <span class="badge bg-secondary">Invoiced</span>
+                        <td>
+                            {% if timesheet.status == "approved" %}
+                                <span class="badge bg-success">
+                                    Approved
+                                </span>
+                            {% elif timesheet.status == "draft" %}
+                                <span class="badge bg-warning text-dark">
+                                    Draft
+                                </span>
                             {% else %}
-                                <button type="button"
-                                        class="btn btn-sm btn-outline-success"
-                                        onclick="openInvoiceDialog('weekly', {{ timesheet.id }}, {{ timesheet.employee_id }})">
-                                    Generate Invoice
-                                </button>
+                                <span class="badge bg-secondary">
+                                    {{ timesheet.status | title }}
+                                </span>
                             {% endif %}
-                        {% endif %}
+                        </td>
 
-                        <!-- Edit and Approve only available for Draft -->
-
-                        {% if timesheet.status == "draft" %}
+                        <td>
 
                             <a
-                                href="/ui/timesheets/weekly/{{ timesheet.id }}/edit"
-                                class="btn btn-sm btn-outline-primary me-2">
-                                Edit
+                                href="/ui/timesheets/weekly/{{ timesheet.id }}/preview"
+                                class="btn btn-sm btn-outline-secondary me-2">
+                                Preview
                             </a>
 
-                            <button
-                                type="button"
-                                class="btn btn-sm btn-success"
-                                onclick="approveWeeklyTimesheet({{ timesheet.id }})">
-                                Approve
-                            </button>
+                            {% if timesheet.status == "approved"
+                                  and timesheet.engagement_id %}
+                            <a
+                                href="/ui/timesheets/weekly/{{ timesheet.id }}/payroll/preview"
+                                class="btn btn-sm btn-outline-primary me-2">
+                                Generate Payroll
+                            </a>
+                            {% endif %}
 
-                        {% endif %}
 
-                    </td>
+                            {% if timesheet.status == "approved" %}
 
-                </tr>
+                                {% if timesheet.is_invoiced %}
 
-                {% else %}
+                                    <span class="badge bg-secondary">
+                                        Invoiced
+                                    </span>
 
-                <tr>
-                    <td colspan="7" class="text-muted">
-                        No weekly timesheets found.
-                    </td>
-                </tr>
+                                {% elif timesheet.engagement_id %}
 
-                {% endfor %}
+                                    <button
+                                        type="button"
+                                        class="btn btn-sm btn-outline-success"
+                                        onclick="openInvoiceDialog(
+                                            'weekly',
+                                            {{ timesheet.id }},
+                                            {{ timesheet.engagement_id }}
+                                        )">
+                                        Generate Invoice
+                                    </button>
 
-            </tbody>
+                                {% else %}
 
-        </table>
+                                    <span class="badge bg-secondary"
+                                          title="Historical timesheet requires an Engagement link">
+                                        Engagement Required
+                                    </span>
 
+                                {% endif %}
+
+                            {% endif %}
+
+                            {% if timesheet.status == "draft" %}
+
+                                <a
+                                    href="/ui/timesheets/weekly/{{ timesheet.id }}/edit"
+                                    class="btn btn-sm btn-outline-primary me-2">
+                                    Edit
+                                </a>
+
+                                <button
+                                    type="button"
+                                    class="btn btn-sm btn-success"
+                                    onclick="approveWeeklyTimesheet({{ timesheet.id }})">
+                                    Approve
+                                </button>
+
+                            {% endif %}
+
+                        </td>
+
+                    </tr>
+
+                    {% else %}
+
+                    <tr>
+                        <td colspan="7" class="text-muted">
+                            No weekly timesheets found.
+                        </td>
+                    </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
     </div>
 
 
-    <!-- ================================================== -->
-    <!-- DAILY TIMESHEETS                                   -->
-    <!-- ================================================== -->
+    <!-- DAILY TIMESHEETS -->
 
-    <h4 class="mt-5">Daily Timesheets</h4>
+    
+{% if false %}
+<h4 class="mt-5">Daily Timesheets</h4>
 
-    <div class="table-responsive">
+    <div class="card p-4">
+        <div class="table-responsive">
 
-        <table class="table table-striped align-middle">
+            <table class="table table-hover align-middle">
 
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Employee</th>
-                    <th>Work Date</th>
-                    <th>Hours</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Worker</th>
+                        <th>Work Date</th>
+                        <th>Hours</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
 
-            <tbody>
+                <tbody>
 
-                {% for timesheet in daily_timesheets %}
+                    {% for timesheet in daily_timesheets %}
 
-                <tr>
+                    <tr>
 
-                    <td>{{ timesheet.id }}</td>
+                        <td>{{ timesheet.id }}</td>
 
-                    <td>{{ timesheet.employee_name }}</td>
+                        <td>{{ timesheet.employee_name }}</td>
 
-                    <td>{{ timesheet.work_date | date_au }}</td>
+                        <td>{{ timesheet.work_date | date_au }}</td>
 
-                    <td>
-                        {{ "%.2f"|format(timesheet.hours) }}
-                    </td>
+                        <td>
+                            {{ "%.2f"|format(timesheet.hours) }}
+                        </td>
 
-                    <td>
-                        {% if timesheet.status == "approved" %}
-
-                            <span class="badge bg-success">
-                                Approved
-                            </span>
-
-                        {% elif timesheet.status == "draft" %}
-
-                            <span class="badge bg-warning text-dark">
-                                Draft
-                            </span>
-
-                        {% else %}
-
-                            <span class="badge bg-secondary">
-                                {{ timesheet.status | title }}
-                            </span>
-
-                        {% endif %}
-                    </td>
-
-                    <td>
-
-                        <!-- Preview is always available -->
-
-                        <a
-                            href="/ui/timesheets/daily/{{ timesheet.id }}/preview"
-                            class="btn btn-sm btn-outline-secondary me-2">
-                            Preview
-                        </a>
-
-
-                        {% if timesheet.status == "approved" %}
-                            {% if timesheet.is_invoiced %}
-                                <span class="badge bg-secondary">Invoiced</span>
+                        <td>
+                            {% if timesheet.status == "approved" %}
+                                <span class="badge bg-success">
+                                    Approved
+                                </span>
+                            {% elif timesheet.status == "draft" %}
+                                <span class="badge bg-warning text-dark">
+                                    Draft
+                                </span>
                             {% else %}
-                                <button type="button"
-                                        class="btn btn-sm btn-outline-success"
-                                        onclick="openInvoiceDialog('daily', {{ timesheet.id }}, {{ timesheet.employee_id }})">
-                                    Generate Invoice
-                                </button>
+                                <span class="badge bg-secondary">
+                                    {{ timesheet.status | title }}
+                                </span>
                             {% endif %}
-                        {% endif %}
+                        </td>
 
-                        <!-- Edit and Approve only available for Draft -->
-
-                        {% if timesheet.status == "draft" %}
+                        <td>
 
                             <a
-                                href="/ui/timesheets/{{ timesheet.id }}/edit"
-                                class="btn btn-sm btn-outline-primary me-2">
-                                Edit
+                                href="/ui/timesheets/daily/{{ timesheet.id }}/preview"
+                                class="btn btn-sm btn-outline-secondary me-2">
+                                Preview
                             </a>
 
-                            <button
-                                type="button"
-                                class="btn btn-sm btn-success"
-                                onclick="approveTimesheet({{ timesheet.id }})">
-                                Approve
-                            </button>
+                            {% if timesheet.status == "approved" %}
 
-                        {% endif %}
+                                {% if timesheet.is_invoiced %}
 
-                    </td>
+                                    <span class="badge bg-secondary">
+                                        Invoiced
+                                    </span>
 
-                </tr>
+                                {% elif timesheet.engagement_id %}
 
-                {% else %}
+                                    <button
+                                        type="button"
+                                        class="btn btn-sm btn-outline-success"
+                                        onclick="openInvoiceDialog(
+                                            'daily',
+                                            {{ timesheet.id }},
+                                            {{ timesheet.engagement_id }}
+                                        )">
+                                        Generate Invoice
+                                    </button>
 
-                <tr>
-                    <td colspan="6" class="text-muted">
-                        No daily timesheets found.
-                    </td>
-                </tr>
+                                {% else %}
 
-                {% endfor %}
+                                    <span class="badge bg-secondary"
+                                          title="Historical timesheet requires an Engagement link">
+                                        Engagement Required
+                                    </span>
 
-            </tbody>
+                                {% endif %}
 
-        </table>
+                            {% endif %}
 
+                            {% if timesheet.status == "draft" %}
+
+                                <a
+                                    href="/ui/timesheets/{{ timesheet.id }}/edit"
+                                    class="btn btn-sm btn-outline-primary me-2">
+                                    Edit
+                                </a>
+
+                                <button
+                                    type="button"
+                                    class="btn btn-sm btn-success"
+                                    onclick="approveTimesheet({{ timesheet.id }})">
+                                    Approve
+                                </button>
+
+                            {% endif %}
+
+                        </td>
+
+                    </tr>
+
+                    {% else %}
+
+                    <tr>
+                        <td colspan="6" class="text-muted">
+                            No daily timesheets found.
+                        </td>
+                    </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
     </div>
 
+
+{% endif %}
 </div>
 
 
-<!-- ====================================================== -->
-<!-- JAVASCRIPT                                             -->
-<!-- ====================================================== -->
+<!-- APPROVAL JAVASCRIPT -->
 
 <script>
-
-// ==========================================================
-// APPROVE DAILY TIMESHEET
-// ==========================================================
 
 async function approveTimesheet(id) {
 
@@ -287,10 +310,6 @@ async function approveTimesheet(id) {
 }
 
 
-// ==========================================================
-// APPROVE WEEKLY TIMESHEET
-// ==========================================================
-
 async function approveWeeklyTimesheet(id) {
 
     if (!confirm("Approve all seven days of this weekly timesheet?")) {
@@ -301,10 +320,6 @@ async function approveWeeklyTimesheet(id) {
 }
 
 
-// ==========================================================
-// SHARED APPROVAL HANDLER
-// ==========================================================
-
 async function submitApproval(endpoint) {
 
     try {
@@ -314,7 +329,7 @@ async function submitApproval(endpoint) {
             method: "POST",
 
             headers: {
-                "X-CSRF-Token": "{{ csrf_token(request) }}"
+                "X-CSRF-Token": {{ csrf_token(request) | tojson }}
             }
 
         });
@@ -345,78 +360,141 @@ async function submitApproval(endpoint) {
 </script>
 
 
-<!-- Timesheet invoice dialog -->
-<div class="modal fade" id="timesheetInvoiceModal" tabindex="-1"
-     aria-labelledby="timesheetInvoiceModalLabel" aria-hidden="true">
+<!-- INVOICE DIALOG -->
+
+<div class="modal fade"
+     id="timesheetInvoiceModal"
+     tabindex="-1"
+     aria-labelledby="timesheetInvoiceModalLabel"
+     aria-hidden="true">
+
     <div class="modal-dialog">
+
         <div class="modal-content">
+
             <div class="modal-header">
-                <h5 class="modal-title" id="timesheetInvoiceModalLabel">
+
+                <h5 class="modal-title"
+                    id="timesheetInvoiceModalLabel">
                     Generate Invoice
                 </h5>
-                <button type="button" class="btn-close"
-                        data-bs-dismiss="modal" aria-label="Close"></button>
+
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+
             </div>
 
             <div class="modal-body">
-                <label for="invoiceEngagement" class="form-label">
+
+                <label for="invoiceAssignment"
+                       class="form-label">
                     Assignment
                 </label>
 
-                <select id="invoiceEngagement" class="form-select"></select>
+                <select
+                    id="invoiceAssignment"
+                    class="form-select">
+                </select>
 
-                <div id="invoiceEngagementInfo"
-                     class="form-text mt-2"></div>
+                <div id="invoiceAssignmentInfo"
+                     class="form-text mt-2">
+                </div>
 
                 <div id="invoiceError"
-                     class="alert alert-danger mt-3 d-none"></div>
+                     class="alert alert-danger mt-3 d-none">
+                </div>
+
             </div>
 
             <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary"
-                        data-bs-dismiss="modal">Cancel</button>
 
-                <button type="button" class="btn btn-success"
-                        id="confirmInvoiceButton"
-                        onclick="confirmTimesheetInvoice()">
+                <button
+                    type="button"
+                    class="btn btn-outline-secondary"
+                    data-bs-dismiss="modal">
+                    Cancel
+                </button>
+
+                <button
+                    type="button"
+                    class="btn btn-success"
+                    id="confirmInvoiceButton"
+                    onclick="confirmTimesheetInvoice()">
                     Generate Invoice
                 </button>
+
             </div>
+
         </div>
+
     </div>
+
 </div>
 
+
+<!-- INVOICE JAVASCRIPT -->
+
 <script>
-const invoiceEngagements = {{ engagement_options | tojson }};
+
+// The backend supplies Assignments.
+// Each Assignment belongs to an Engagement.
+
+const invoiceAssignments = {{ engagement_options | tojson }};
+
 let selectedInvoiceTimesheet = null;
 
-function openInvoiceDialog(periodType, timesheetId, employeeId) {
-    selectedInvoiceTimesheet = { periodType, timesheetId };
 
-    const select = document.getElementById("invoiceEngagement");
-    const info = document.getElementById("invoiceEngagementInfo");
+function openInvoiceDialog(periodType, timesheetId, engagementId) {
+
+    selectedInvoiceTimesheet = {
+        periodType,
+        timesheetId,
+        engagementId
+    };
+
+    const select = document.getElementById("invoiceAssignment");
+    const info = document.getElementById("invoiceAssignmentInfo");
     const error = document.getElementById("invoiceError");
 
     error.classList.add("d-none");
+    error.textContent = "";
+
     select.innerHTML = "";
 
-    const available = invoiceEngagements.filter(
-        engagement => engagement.employee_id === employeeId
+    // Show only Assignments belonging to this Engagement.
+
+    const available = invoiceAssignments.filter(
+        assignment =>
+            assignment.engagement_id === engagementId
     );
 
     if (!available.length) {
-        select.innerHTML = '<option value="">No engagement available</option>';
-        info.textContent = "Create a Assignment for this employee first.";
+
+        select.innerHTML =
+            '<option value="">No assignment available</option>';
+
+        info.textContent =
+            "Create an Assignment for this Engagement first.";
+
     } else {
-        for (const engagement of available) {
+
+        for (const assignment of available) {
+
             const option = document.createElement("option");
-            option.value = engagement.id;
+
+            option.value = assignment.id;
+
             option.textContent =
-                engagement.customer_name +
-                " — $" + engagement.billing_rate + "/hr";
+                assignment.customer_name +
+                " — $" + assignment.billing_rate + "/hr";
+
             select.appendChild(option);
         }
-        info.textContent = "Invoice will use the selected engagement billing rate.";
+
+        info.textContent =
+            "Invoice will use the selected Assignment billing rate.";
     }
 
     document.getElementById("confirmInvoiceButton").disabled =
@@ -427,36 +505,57 @@ function openInvoiceDialog(periodType, timesheetId, employeeId) {
     ).show();
 }
 
-async function confirmTimesheetInvoice() {
-    if (!selectedInvoiceTimesheet) return;
 
-    const engagementId = Number(
-        document.getElementById("invoiceEngagement").value
+async function confirmTimesheetInvoice() {
+
+    if (!selectedInvoiceTimesheet) {
+        return;
+    }
+
+    const assignmentId = Number(
+        document.getElementById("invoiceAssignment").value
     );
+
+    if (!assignmentId) {
+        return;
+    }
 
     const button = document.getElementById("confirmInvoiceButton");
     const errorBox = document.getElementById("invoiceError");
 
     button.disabled = true;
     errorBox.classList.add("d-none");
+    errorBox.textContent = "";
 
     try {
+
         const response = await fetch("/api/timesheets/invoice", {
+
             method: "POST",
+
             headers: {
                 "Content-Type": "application/json",
                 "X-CSRF-Token": {{ csrf_token(request) | tojson }}
             },
+
             body: JSON.stringify({
+
                 period_type: selectedInvoiceTimesheet.periodType,
+
                 timesheet_id: selectedInvoiceTimesheet.timesheetId,
-                engagement_id: engagementId
+
+                // Legacy API field name.
+                // This value is the Assignment ID, not Engagement ID.
+                engagement_id: assignmentId
+
             })
+
         });
 
         const result = await response.json();
 
         if (!response.ok) {
+
             throw new Error(
                 typeof result.detail === "string"
                     ? result.detail
@@ -467,10 +566,14 @@ async function confirmTimesheetInvoice() {
         window.location.href = "/ui/invoices";
 
     } catch (error) {
+
         errorBox.textContent = error.message;
         errorBox.classList.remove("d-none");
+
         button.disabled = false;
     }
 }
+
 </script>
-\n{% endblock %}
+
+{% endblock %}

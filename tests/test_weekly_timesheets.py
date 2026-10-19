@@ -14,7 +14,8 @@ from app.main import (
     update_weekly_timesheet,
     approve_weekly_timesheet,
 )
-from app.models.employee import Employee
+from app.models.worker import Worker
+from app.models.engagement import Engagement
 from app.models.organisation import Organisation
 from app.models.timesheet import Timesheet
 from app.models.timesheet_header import TimesheetHeader
@@ -24,8 +25,8 @@ def unique_test_abn():
     return str(uuid.uuid4().int % 100_000_000_000).zfill(11)
 
 
-def create_test_employee():
-    """Create a test organisation and employee."""
+def create_test_engagement():
+    """Create a test organisation, Worker and Engagement."""
 
     with SessionLocal() as db:
 
@@ -38,27 +39,36 @@ def create_test_employee():
         db.add(organisation)
         db.flush()
 
-        employee = Employee(
-            organisation_id=organisation.id,
+        worker = Worker(
             first_name="Weekly",
             last_name="Tester",
             email=f"weekly-{uuid.uuid4().hex}@example.com",
         )
 
-        db.add(employee)
+        db.add(worker)
+        db.flush()
+
+        engagement = Engagement(
+            worker_id=worker.id,
+            organisation_id=organisation.id,
+            engagement_type="employee",
+            status="active",
+        )
+
+        db.add(engagement)
         db.commit()
 
-        return employee.id, organisation.id
+        return engagement.id, worker.id, organisation.id
 
 
-def cleanup_test_data(employee_id, organisation_id, header_id=None):
-    """Remove test timesheets, employee and organisation."""
+def cleanup_test_data(engagement_id, worker_id, organisation_id, header_id=None):
+    """Remove test timesheets, Engagement, Worker and organisation."""
 
     with SessionLocal() as db:
 
         daily_entries = db.scalars(
             select(Timesheet)
-            .where(Timesheet.employee_id == employee_id)
+            .where(Timesheet.engagement_id == engagement_id)
         ).all()
 
         for entry in daily_entries:
@@ -73,10 +83,17 @@ def cleanup_test_data(employee_id, organisation_id, header_id=None):
             if header is not None:
                 db.delete(header)
 
-        employee = db.get(Employee, employee_id)
+        engagement = db.get(Engagement, engagement_id)
 
-        if employee is not None:
-            db.delete(employee)
+        if engagement is not None:
+            db.delete(engagement)
+
+        db.flush()
+
+        worker = db.get(Worker, worker_id)
+
+        if worker is not None:
+            db.delete(worker)
 
         organisation = db.get(Organisation, organisation_id)
 
@@ -86,7 +103,7 @@ def cleanup_test_data(employee_id, organisation_id, header_id=None):
         db.commit()
 
 
-def build_weekly_request(employee_id, week_start, friday_hours="8.00"):
+def build_weekly_request(engagement_id, week_start, friday_hours="8.00"):
     """Build a Monday-to-Sunday weekly timesheet request."""
 
     entries = [
@@ -104,7 +121,7 @@ def build_weekly_request(employee_id, week_start, friday_hours="8.00"):
     ]
 
     return WeeklyTimesheetCreate(
-        employee_id=employee_id,
+        engagement_id=engagement_id,
         week_start=week_start,
         entries=entries,
     )
@@ -118,14 +135,14 @@ def test_create_weekly_timesheet():
 
     week_start = date(2026, 10, 12)
 
-    employee_id, organisation_id = create_test_employee()
+    engagement_id, worker_id, organisation_id = create_test_engagement()
 
     header_id = None
 
     try:
 
         request = build_weekly_request(
-            employee_id,
+            engagement_id,
             week_start,
         )
 
@@ -136,7 +153,7 @@ def test_create_weekly_timesheet():
 
         assert result["days_created"] == 7
         assert result["total_hours"] == Decimal("40.00")
-        assert result["employee_id"] == employee_id
+        assert result["engagement_id"] == engagement_id
 
         # Verify database records
         with SessionLocal() as db:
@@ -144,7 +161,8 @@ def test_create_weekly_timesheet():
             header = db.get(TimesheetHeader, header_id)
 
             assert header is not None
-            assert header.employee_id == employee_id
+            assert header.employee_id is None
+            assert header.engagement_id == engagement_id
             assert header.period_type == "weekly"
             assert header.period_start == week_start
             assert header.period_end == week_start + timedelta(days=6)
@@ -188,7 +206,8 @@ def test_create_weekly_timesheet():
     finally:
 
         cleanup_test_data(
-            employee_id,
+            engagement_id,
+            worker_id,
             organisation_id,
             header_id,
         )
@@ -202,7 +221,7 @@ def test_weekly_timesheet_edit_and_approve():
 
     week_start = date(2026, 10, 26)
 
-    employee_id, organisation_id = create_test_employee()
+    engagement_id, worker_id, organisation_id = create_test_engagement()
 
     header_id = None
 
@@ -213,7 +232,7 @@ def test_weekly_timesheet_edit_and_approve():
         # ----------------------------------------------------
 
         request = build_weekly_request(
-            employee_id,
+            engagement_id,
             week_start,
         )
 
@@ -230,7 +249,7 @@ def test_weekly_timesheet_edit_and_approve():
 
         # Change Friday from 8 hours to 6 hours.
         update_request = build_weekly_request(
-            employee_id,
+            engagement_id,
             week_start,
             friday_hours="6.00",
         )
@@ -325,7 +344,8 @@ def test_weekly_timesheet_edit_and_approve():
     finally:
 
         cleanup_test_data(
-            employee_id,
+            engagement_id,
+            worker_id,
             organisation_id,
             header_id,
         )

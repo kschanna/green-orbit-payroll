@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Components Catalogue</h2>
+        <a href="/ui/components/new" class="btn btn-success">
+            Add Component
+        </a>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Name</th>
+                            <th>Family</th>
+                            <th>Calculation</th>
+                            <th>Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for component in components %}
+                        <tr>
+                            <td>{{ component.code }}</td>
+                            <td>{{ component.name }}</td>
+                            <td>{{ component.family }}</td>
+                            <td>{{ component.calculation_type }}</td>
+                            <td>
+                                {% if component.active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="/ui/components/{{ component.id }}/edit"
+                                   class="btn btn-sm btn-outline-primary">
+                                    Edit
+                                </a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="text-muted">
+                                No components have been created yet.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

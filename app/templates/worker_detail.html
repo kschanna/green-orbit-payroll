@@ -1,0 +1,215 @@
+
+{% extends "base.html" %}
+{% block content %}
+
+
+
+
+
+
+
+
+
+
+
+
+
+<a href="/ui/workers" class="btn btn-link mb-3">
+    ← Back to Workers
+</a>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div>
+        <h2>{{ worker.first_name }} {{ worker.last_name }}</h2>
+
+        <p class="text-muted mb-0">
+            Worker #{{ worker.id }} ·
+            {{ "Active" if worker.active else "Inactive" }}
+        </p>
+    </div>
+
+    <a href="/ui/workers/{{ worker.id }}/edit"
+       class="btn btn-outline-success">
+        Edit Worker
+    </a>
+</div>
+
+
+<!-- WORKER FINANCIAL & COMPLIANCE DETAILS -->
+
+<h5 class="mb-3">Payroll & Compliance Details</h5>
+
+<div class="row g-3 mb-4">
+
+    <!-- TAX CARD -->
+    <div class="col-12 col-md-6 col-xl-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body d-flex flex-column">
+
+                <h5 class="card-title">Tax & TFN</h5>
+
+                <p class="card-text text-muted">
+                    Manage tax declarations, TFN information
+                    and withholding preferences.
+                </p>
+
+                <a href="/ui/workers/{{ worker.id }}/tax"
+                   class="btn btn-outline-primary mt-auto">
+                    Manage Tax Details
+                </a>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- BANK CARD -->
+    <div class="col-12 col-md-6 col-xl-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body d-flex flex-column">
+
+                <h5 class="card-title">Bank & Payment</h5>
+
+                <p class="card-text text-muted">
+                    Manage bank account information
+                    and payment arrangements.
+                </p>
+
+                <a href="/ui/workers/{{ worker.id }}/payment"
+                   class="btn btn-outline-primary mt-auto">
+                    Manage Bank Details
+                </a>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- SUPER CARD -->
+    <div class="col-12 col-md-6 col-xl-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body d-flex flex-column">
+
+                <h5 class="card-title">Superannuation</h5>
+
+                <p class="card-text text-muted">
+                    Manage superannuation fund details
+                    and contribution arrangements.
+                </p>
+
+                <a href="/ui/workers/{{ worker.id }}/super"
+                   class="btn btn-outline-primary mt-auto">
+                    Manage Superannuation
+                </a>
+
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div class="card p-4 mb-4">
+    <h5>Personal Details</h5>
+    <hr>
+
+    <p><strong>Email:</strong> {{ worker.email }}</p>
+    <p><strong>Phone:</strong> {{ worker.phone or "Not provided" }}</p>
+
+    <div id="message" class="alert alert-danger d-none"></div>
+
+    <button id="statusButton"
+            class="btn btn-outline-secondary"
+            onclick="changeStatus()">
+        {{ "Deactivate Worker" if worker.active else "Reactivate Worker" }}
+    </button>
+</div>
+
+<div class="card p-4">
+    <h5>Engagements</h5>
+    <a class="btn btn-sm btn-primary mb-3" href="/ui/workers/{{ worker.id }}/engagements/new">+ New Engagement</a>
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>Organisation</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for engagement in engagements %}
+                <tr>
+                    <td>
+                        {{ engagement.organisation }}
+                    </td>
+                    <td>{{ engagement.type | replace("_", " ") | title }}</td>
+                    <td>{{ engagement.status | title }}</td>
+                    <td>{{ engagement.start_date.strftime("%d/%m/%Y") if engagement.start_date else "—" }}</td>
+                    <td>{{ engagement.end_date.strftime("%d/%m/%Y") if engagement.end_date else "Ongoing" }}</td>
+                
+                    <td>
+                        {% if engagement.type in ("payg_employee", "employee") %}
+                        <a
+                            href="/ui/workers/{{ worker.id }}/engagements/{{ engagement.id }}/work-patterns"
+                            class="btn btn-sm btn-outline-success me-2">
+                            Work Patterns
+                        </a>
+                        {% endif %}
+
+
+                        <a
+                            href="/ui/workers/{{ worker.id }}/engagements/{{ engagement.id }}/assignments"
+                            class="btn btn-sm btn-outline-primary">
+                            Assignments
+                        </a>
+                    </td>
+</tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-muted text-center">
+                        No engagements found.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+async function changeStatus() {
+    const button = document.getElementById("statusButton");
+    const message = document.getElementById("message");
+
+    if (!confirm("Change this worker's active status?")) return;
+
+    button.disabled = true;
+
+    try {
+        const response = await fetch(
+            {{ ("/api/workers/" ~ worker.id ~ ("/deactivate" if worker.active else "/reactivate")) | tojson }},
+            {
+                method: "POST",
+                headers: {
+                    "X-CSRF-Token": {{ csrf_token(request) | tojson }}
+                }
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error("Unable to update worker status.");
+        }
+
+        window.location.reload();
+
+    } catch (error) {
+        message.textContent = error.message;
+        message.classList.remove("d-none");
+        button.disabled = false;
+    }
+}
+</script>
+
+{% endblock %}

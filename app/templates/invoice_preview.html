@@ -1,0 +1,246 @@
+
+{% extends "base.html" %}
+
+{% block content %}
+
+<style>
+    .invoice-preview {
+        max-width: 900px;
+        margin: 0 auto;
+    }
+
+    .invoice-heading {
+        letter-spacing: 1px;
+    }
+
+    @media print {
+        nav,
+        .navbar,
+        .invoice-actions,
+        footer {
+            display: none !important;
+        }
+
+        body {
+            background: white !important;
+        }
+
+        .invoice-preview {
+            max-width: 100%;
+        }
+
+        .invoice-card {
+            border: none !important;
+            box-shadow: none !important;
+        }
+    }
+</style>
+
+<div class="invoice-preview mt-4">
+
+    <!-- ACTIONS -->
+
+    <div class="d-flex justify-content-between mb-4 invoice-actions">
+
+        <a href="/ui/invoices"
+           class="btn btn-outline-secondary">
+            ← Back to Invoices
+        </a>
+
+        <div>
+            <a href="/invoices/{{ invoice.id }}/pdf"
+               class="btn btn-outline-success me-2">
+                Download PDF
+            </a>
+
+            <button type="button"
+                    onclick="window.print()"
+                    class="btn btn-primary">
+                Print Invoice
+            </button>
+        </div>
+
+    </div>
+
+    
+    <!-- PROTOTYPE: INVOICE-LINKED CONTRACTOR PAYROLL -->
+
+    <div class="d-flex justify-content-end mb-3 invoice-actions">
+
+        <a
+            href="/ui/invoices/{{ invoice.id }}/payroll/preview"
+            class="btn btn-outline-primary">
+            Generate Payroll
+        </a>
+
+    </div>
+
+<!-- INVOICE DOCUMENT -->
+
+    <div class="card shadow-sm invoice-card">
+
+        <div class="card-body p-5">
+
+            <div class="d-flex justify-content-between
+                        align-items-start mb-5">
+
+                <div>
+                    <h2 class="invoice-heading mb-3">
+                        TAX INVOICE
+                    </h2>
+
+                    <h5>{{ supplier.name }}</h5>
+
+                    <div class="text-muted">
+                        ABN: {{ supplier.abn }}
+                    </div>
+                </div>
+
+                <div class="text-end">
+
+                    <h5>{{ invoice.invoice_number }}</h5>
+
+                    <div>
+                        <strong>Invoice Date:</strong>
+                        {{ invoice.issue_date.strftime("%d/%m/%Y") }}
+                    </div>
+
+                    <div class="mt-2">
+                        <span class="badge bg-secondary">
+                            {{ invoice.status | title }}
+                        </span>
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- CUSTOMER -->
+
+            <div class="row mb-5">
+
+                <div class="col-md-6">
+
+                    <div class="text-muted small mb-2">
+                        BILL TO
+                    </div>
+
+                    <h5>{{ customer.name }}</h5>
+
+                    {% if customer.abn %}
+                    <div>
+                        ABN: {{ customer.abn }}
+                    </div>
+                    {% endif %}
+
+                </div>
+
+                <div class="col-md-6">
+
+                    <div class="text-muted small mb-2">
+                        WORK DETAILS
+                    </div>
+
+                    <div>
+                        <strong>Worker:</strong>
+                        {{ worker.first_name }} {{ worker.last_name }}
+                    </div>
+
+                    <div>
+                        <strong>Assignment:</strong>
+                        #{{ assignment.id }}
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- INVOICE ITEMS -->
+
+            <div class="table-responsive">
+
+                <table class="table align-middle">
+
+                    <thead class="table-light">
+                        <tr>
+                            <th>Description</th>
+                            <th class="text-end">Hours</th>
+                            <th class="text-end">Rate</th>
+                            <th class="text-end">Amount</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        <tr>
+                            <td>
+                                Services provided
+                            </td>
+
+                            <td class="text-end">
+                                {{ "%.2f"|format(hours) }}
+                            </td>
+
+                            <td class="text-end">
+                                ${{ "%.2f"|format(assignment.billing_rate) }}
+                            </td>
+
+                            <td class="text-end">
+                                ${{ "%.2f"|format(invoice.subtotal) }}
+                            </td>
+                        </tr>
+                    </tbody>
+
+                </table>
+
+            </div>
+
+            <!-- TOTALS -->
+
+            <div class="row justify-content-end mt-4">
+
+                <div class="col-md-5">
+
+                    <table class="table">
+
+                        <tr>
+                            <td>Subtotal</td>
+                            <td class="text-end">
+                                ${{ "%.2f"|format(invoice.subtotal) }}
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>GST</td>
+                            <td class="text-end">
+                                ${{ "%.2f"|format(invoice.gst) }}
+                            </td>
+                        </tr>
+
+                        <tr class="table-light fw-bold">
+                            <td>TOTAL</td>
+                            <td class="text-end">
+                                ${{ "%.2f"|format(invoice.total) }}
+                            </td>
+                        </tr>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+            <!-- FOOTER -->
+
+            <hr class="mt-5">
+
+            <p class="text-muted small mb-0">
+                Demonstration invoice — not for commercial use.
+            </p>
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}

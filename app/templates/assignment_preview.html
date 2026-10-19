@@ -1,0 +1,363 @@
+
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="container mt-4">
+
+    <a
+        href="/ui/workers/{{ worker_id }}/engagements/{{ engagement_id }}/assignments"
+        class="btn btn-link mb-3">
+        ← Back to Assignments
+    </a>
+
+    <div class="d-flex flex-wrap justify-content-between
+                align-items-center gap-3 mb-4">
+
+        <div>
+            <h2>Assignment #{{ assignment_id }}</h2>
+
+            <p class="text-muted mb-0">
+                {{ worker_name }} — {{ organisation_name }}
+            </p>
+
+            <span class="badge bg-primary mt-2">
+                {{ engagement_type | replace("_", " ") | title }}
+            </span>
+        </div>
+
+        <a
+            href="/ui/assignments/{{ assignment_id }}/components"
+            class="btn btn-outline-primary">
+            Manage Components
+        </a>
+
+    </div>
+
+
+    <!-- ASSIGNMENT DETAILS -->
+
+    <div class="card p-4 mb-4">
+
+        <h5>Assignment Details</h5>
+        <hr>
+
+        <div class="row g-3">
+
+            <div class="col-md-4">
+                <strong>Worker</strong>
+                <div>{{ worker_name }}</div>
+            </div>
+
+            <div class="col-md-4">
+                <strong>Engagement</strong>
+                <div>#{{ engagement_id }}</div>
+            </div>
+
+            <div class="col-md-4">
+                <strong>Employing Organisation</strong>
+                <div>{{ organisation_name }}</div>
+            </div>
+
+            <div class="col-md-4">
+                <strong>Customer</strong>
+                <div>{{ customer_name }}</div>
+            </div>
+
+            <div class="col-md-4">
+                <strong>Billing Rate</strong>
+                <div>
+                    ${{ "%.2f"|format(billing_rate) }}/hour
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- TIMESHEETS -->
+
+    <h4 class="mt-5 mb-3">Timesheets</h4>
+
+    <div class="card p-4">
+
+        <div class="table-responsive">
+
+            <table class="table table-hover align-middle">
+
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Type</th>
+                        <th>Period Start</th>
+                        <th>Period End</th>
+                        <th>Hours</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    {% for timesheet in timesheets %}
+
+                    <tr>
+                        <td>
+                            <a
+                                href="{{ timesheet.url }}"
+                                class="text-decoration-none fw-semibold">
+                                #{{ timesheet.id }}
+                            </a>
+                        </td>
+
+                        <td>{{ timesheet.type }}</td>
+
+                        <td>
+                            {{ timesheet.period_start.strftime("%d/%m/%Y") }}
+                        </td>
+
+                        <td>
+                            {{ timesheet.period_end.strftime("%d/%m/%Y") }}
+                        </td>
+
+                        <td>
+                            {{ "%.2f"|format(timesheet.hours) }}
+                        </td>
+
+                        <td>
+                            <span class="badge bg-secondary">
+                                {{ timesheet.status | title }}
+                            </span>
+                        </td>
+
+                        <td>
+                            <a
+                                href="{{ timesheet.url }}"
+                                class="btn btn-sm btn-outline-primary">
+                                Preview
+                            </a>
+                        </td>
+                    </tr>
+
+                    {% else %}
+
+                    <tr>
+                        <td colspan="7"
+                            class="text-center text-muted py-4">
+                            No Timesheets found for this Assignment.
+                        </td>
+                    </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+
+    <!-- CUSTOMER INVOICES -->
+
+    <h4 class="mt-5 mb-3">Customer Invoices</h4>
+
+    <div class="card p-4">
+
+        <div class="table-responsive">
+
+            <table class="table table-hover align-middle">
+
+                <thead>
+                    <tr>
+                        <th>Invoice ID</th>
+                        <th>Invoice Number</th>
+                        <th>Issue Date</th>
+                        <th>Subtotal</th>
+                        <th>GST</th>
+                        <th>Total</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    {% for invoice in invoices %}
+
+                    <tr>
+                        <td>
+                            <a
+                                href="/ui/invoices/{{ invoice.id }}/preview"
+                                class="text-decoration-none fw-semibold">
+                                #{{ invoice.id }}
+                            </a>
+                        </td>
+
+                        <td>{{ invoice.invoice_number }}</td>
+
+                        <td>
+                            {{ invoice.issue_date.strftime("%d/%m/%Y") }}
+                        </td>
+
+                        <td>
+                            ${{ "%.2f"|format(invoice.subtotal) }}
+                        </td>
+
+                        <td>
+                            ${{ "%.2f"|format(invoice.gst) }}
+                        </td>
+
+                        <td>
+                            <strong>
+                                ${{ "%.2f"|format(invoice.total) }}
+                            </strong>
+                        </td>
+
+                        <td>
+                            <span class="badge bg-secondary">
+                                {{ invoice.status | title }}
+                            </span>
+                        </td>
+
+                        <td>
+                            <a
+                                href="/ui/invoices/{{ invoice.id }}/preview"
+                                class="btn btn-sm btn-outline-primary">
+                                Preview
+                            </a>
+                        </td>
+                    </tr>
+
+                    {% else %}
+
+                    <tr>
+                        <td colspan="8"
+                            class="text-center text-muted py-4">
+                            No Customer Invoices found for this Assignment.
+                        </td>
+                    </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+
+    <!-- PAYSLIPS -->
+
+    <h4 class="mt-5 mb-3">Payslips</h4>
+
+    <div class="card p-4">
+
+        <div class="table-responsive">
+
+            <table class="table table-hover align-middle">
+
+                <thead>
+                    <tr>
+                        <th>Payslip ID</th>
+                        <th>Period Start</th>
+                        <th>Period End</th>
+                        <th>Payment Date</th>
+                        <th>Gross Pay</th>
+                        <th>PAYG</th>
+                        <th>Net Pay</th>
+                        <th>Super</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    {% for payslip in payslips %}
+
+                    <tr>
+                        <td>
+                            <a
+                                href="/ui/payslips/{{ payslip.id }}/preview"
+                                class="text-decoration-none fw-semibold">
+                                #{{ payslip.id }}
+                            </a>
+                        </td>
+
+                        <td>
+                            {{ payslip.period_start.strftime("%d/%m/%Y") }}
+                        </td>
+
+                        <td>
+                            {{ payslip.period_end.strftime("%d/%m/%Y") }}
+                        </td>
+
+                        <td>
+                            {{ payslip.payment_date.strftime("%d/%m/%Y") }}
+                        </td>
+
+                        <td>
+                            ${{ "%.2f"|format(payslip.gross_pay) }}
+                        </td>
+
+                        <td>
+                            ${{ "%.2f"|format(payslip.payg_withholding) }}
+                        </td>
+
+                        <td>
+                            <strong>
+                                ${{ "%.2f"|format(payslip.net_pay) }}
+                            </strong>
+                        </td>
+
+                        <td>
+                            ${{ "%.2f"|format(payslip.superannuation) }}
+                        </td>
+
+                        <td>
+                            <span class="badge bg-secondary">
+                                {{ payslip.status | title }}
+                            </span>
+                        </td>
+
+                        <td>
+                            <a
+                                href="/ui/payslips/{{ payslip.id }}/preview"
+                                class="btn btn-sm btn-outline-primary">
+                                Preview
+                            </a>
+                        </td>
+                    </tr>
+
+                    {% else %}
+
+                    <tr>
+                        <td colspan="10"
+                            class="text-center text-muted py-4">
+                            No Payslips found for this Assignment.
+                        </td>
+                    </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+    <p class="text-muted small mt-3">
+        Payslip amounts represent the full Payslip.
+        A Payslip may contain earnings from multiple Assignments.
+    </p>
+
+</div>
+
+{% endblock %}

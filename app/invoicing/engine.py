@@ -6,7 +6,6 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
 from app.models.assignment import Assignment
-from app.models.employee import Employee
 from app.models.timesheet import Timesheet
 from app.models.invoice import Invoice
 from app.models.invoice_timesheet import InvoiceTimesheet
@@ -21,15 +20,19 @@ def generate_invoice(engagement_id: int, start_date: date, end_date: date):
 
     with SessionLocal() as session:
 
-        engagement = session.get(Assignment, engagement_id)
+        assignment = session.get(Assignment, engagement_id)
 
-        if engagement is None:
-            raise ValueError("Worker engagement not found")
+        if assignment is None:
+            raise ValueError("Assignment not found")
+
+        if assignment.engagement_id is None:
+            raise ValueError("Assignment has no Engagement")
 
         # Retrieve approved timesheets that have not been invoiced
         timesheets = session.scalars(
             select(Timesheet).where(
-                Timesheet.employee_id == engagement.employee_id,
+                Timesheet.assignment_id == assignment.id,
+                Timesheet.engagement_id == assignment.engagement_id,
                 Timesheet.status == "approved",
                 Timesheet.work_date >= start_date,
                 Timesheet.work_date <= end_date,
@@ -51,15 +54,15 @@ def generate_invoice(engagement_id: int, start_date: date, end_date: date):
         # Calculate invoice amounts
         amounts = calculate_invoice(
             total_hours,
-            engagement.billing_rate
+            assignment.billing_rate
         )
 
         # Create invoice
         invoice = Invoice(
-            engagement_id=engagement.id,
+            engagement_id=assignment.id,
             invoice_number=(
                 f"INV-{date.today():%Y%m%d}-"
-                f"{engagement.id}-{timesheets[0].id}"
+                f"{assignment.id}-{timesheets[0].id}"
             ),
             issue_date=date.today(),
             subtotal=amounts["subtotal"],
@@ -110,10 +113,13 @@ def generate_invoice_for_timesheet(
         raise ValueError("Invalid timesheet selection")
 
     with SessionLocal() as session:
-        engagement = session.get(Assignment, engagement_id)
+        assignment = session.get(Assignment, engagement_id)
 
-        if engagement is None:
-            raise ValueError("Worker engagement not found")
+        if assignment is None:
+            raise ValueError("Assignment not found")
+
+        if assignment.engagement_id is None:
+            raise ValueError("Assignment has no Engagement")
 
         timesheets = session.scalars(
             select(Timesheet)
@@ -124,8 +130,12 @@ def generate_invoice_for_timesheet(
         if len(timesheets) != len(timesheet_ids):
             raise ValueError("One or more timesheets were not found")
 
-        if any(t.employee_id != engagement.employee_id for t in timesheets):
-            raise ValueError("Timesheet employee does not match engagement")
+        if any(
+            t.assignment_id != assignment.id
+            or t.engagement_id != assignment.engagement_id
+            for t in timesheets
+        ):
+            raise ValueError("Timesheet does not match assignment and engagement")
 
         if any(t.status != "approved" for t in timesheets):
             raise ValueError("Only approved timesheets can be invoiced")
@@ -149,14 +159,14 @@ def generate_invoice_for_timesheet(
 
         amounts = calculate_invoice(
             total_hours,
-            engagement.billing_rate
+            assignment.billing_rate
         )
 
         # Unique invoice number, independent of date or timesheet IDs.
         from uuid import uuid4
 
         invoice = Invoice(
-            engagement_id=engagement.id,
+            engagement_id=assignment.id,
             invoice_number=f"INV-{uuid4().hex[:12].upper()}",
             issue_date=date.today(),
             subtotal=amounts["subtotal"],

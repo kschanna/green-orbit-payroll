@@ -6,7 +6,8 @@ from sqlalchemy import select
 from test_authentication import client, login
 from app.database import SessionLocal
 from app.models.organisation import Organisation
-from app.models.employee import Employee
+from app.models.worker import Worker
+from app.models.engagement import Engagement
 from app.models.pay_run import PayRun
 from app.models.payslip import Payslip
 from app.models.timesheet import Timesheet
@@ -42,19 +43,27 @@ def test_prevent_double_payment(client):
         db.add(organisation)
         db.flush()
 
-        # Create an employee
-        employee = Employee(
-            organisation_id=organisation.id,
+        # Canonical worker and employer engagement.
+        worker = Worker(
             first_name="Payroll",
             last_name="Tester",
-            email="double-payment-test@example.com"
+            email="double-payment-test@example.com",
         )
-        db.add(employee)
+        db.add(worker)
+        db.flush()
+        engagement = Engagement(
+            worker_id=worker.id,
+            organisation_id=organisation.id,
+            engagement_type="employee",
+            status="active",
+        )
+        db.add(engagement)
         db.flush()
 
         # Create an approved timesheet
         timesheet = Timesheet(
-            employee_id=employee.id,
+            employee_id=None,
+            engagement_id=engagement.id,
             work_date=date(2026, 10, 14),
             hours_worked=Decimal("7.60"),
             status="approved"
@@ -80,7 +89,8 @@ def test_prevent_double_payment(client):
 
             payslip = Payslip(
                 pay_run_id=pay_run.id,
-                employee_id=employee.id,
+                employee_id=None,
+            engagement_id=engagement.id,
                 gross_pay=Decimal("342.00"),
                 payg_withholding=Decimal("50.00"),
                 net_pay=Decimal("292.00"),

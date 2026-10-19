@@ -1,0 +1,164 @@
+
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="container mt-4" style="max-width: 900px;">
+
+    <a
+        href="/ui/invoices/{{ payroll.invoice_id }}/preview"
+        class="btn btn-link mb-3">
+        ← Back to Invoice
+    </a>
+
+    <h2>Generate Contractor Payroll</h2>
+
+    <p class="text-muted">
+        Invoice-linked PAYG Contractor payroll preview.
+    </p>
+
+    <div class="card p-4 mb-4">
+
+        <h5>{{ payroll.worker_name }}</h5>
+
+        <p class="text-muted">
+            Engagement #{{ payroll.engagement_id }}
+            — Assignment #{{ payroll.assignment_id }}
+        </p>
+
+        <div class="alert alert-secondary">
+
+            <strong>Customer Invoice:</strong>
+            {{ payroll.invoice_number }}
+
+            <div class="mt-2">
+                Customer invoice total:
+                ${{ "%.2f"|format(payroll.invoice_total) }}
+            </div>
+
+            <div class="small mt-2">
+                Contractor payroll is calculated from the
+                Assignment pay rate, not the customer invoice total.
+            </div>
+
+        </div>
+
+        <div class="row g-3 mb-4">
+
+            <div class="col-md-4">
+                <strong>Period Start</strong>
+                <div>
+                    {{ payroll.period_start.strftime("%d/%m/%Y") }}
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <strong>Period End</strong>
+                <div>
+                    {{ payroll.period_end.strftime("%d/%m/%Y") }}
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <strong>Payment Date</strong>
+                <div>
+                    {{ payroll.payment_date.strftime("%d/%m/%Y") }}
+                </div>
+            </div>
+
+        </div>
+
+        <h5 class="mb-3">Payroll Calculation</h5>
+
+        <table class="table">
+
+            <tbody>
+
+                <tr>
+                    <td>Approved Timesheet Hours</td>
+                    <td class="text-end">
+                        {{ "%.2f"|format(payroll.hours) }}
+                    </td>
+                </tr>
+
+                <tr class="table-light">
+                    <td>Gross Contractor Earnings</td>
+                    <td class="text-end">
+                        <strong>
+                            ${{ "%.2f"|format(payroll.gross) }}
+                        </strong>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td>PAYG Withholding</td>
+                    <td class="text-end">
+                        ${{ "%.2f"|format(payroll.payg) }}
+                    </td>
+                </tr>
+
+                <tr class="table-light fw-bold">
+                    <td>Net Pay</td>
+                    <td class="text-end">
+                        ${{ "%.2f"|format(payroll.net) }}
+                    </td>
+                </tr>
+
+                <tr>
+                    <td>Employer Superannuation</td>
+                    <td class="text-end">
+                        ${{ "%.2f"|format(payroll.total_super) }}
+                    </td>
+                </tr>
+
+            </tbody>
+
+        </table>
+
+        <div class="alert alert-info mt-3">
+
+            This creates a <strong>draft</strong> Pay Run and Payslip.
+
+            <div class="small mt-2">
+                No bank payment will be initiated.
+            </div>
+
+        </div>
+
+        <form
+            method="post"
+            action="/ui/invoices/{{ payroll.invoice_id }}/payroll/generate">
+
+            <input
+                type="hidden"
+                name="csrf_token"
+                value="{{ csrf_token(request) }}">
+
+            <input
+                type="hidden"
+                name="expected_period_start"
+                value="{{ payroll.period_start.isoformat() }}">
+
+            <div class="d-flex justify-content-end gap-2">
+
+                <a
+                    href="/ui/invoices/{{ payroll.invoice_id }}/preview"
+                    class="btn btn-outline-secondary">
+                    Cancel
+                </a>
+
+                <button
+                    type="submit"
+                    class="btn btn-success">
+                    Generate Draft Payslip
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+{% endblock %}

@@ -30,7 +30,7 @@
 
             <thead>
                 <tr>
-                    <th>Employee</th>
+                    <th>Worker</th>
                     <th>Pay Run</th>
                     <th>Pay Period</th>
                     <th>Payment Date</th>
@@ -49,8 +49,8 @@
                 <tr>
 
                     <td>
-                        <a href="/ui/employees/{{ payslip.employee_id }}">
-                            {{ payslip.employee_name }}
+                        <a href="/ui/workers/{{ payslip.worker_id }}">
+                            {{ payslip.worker_name }}
                         </a>
                     </td>
 
@@ -127,9 +127,9 @@
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
 
             <h5 class="mb-0">
-                <a href="/ui/employees/{{ payslip.employee_id }}"
+                <a href="/ui/workers/{{ payslip.worker_id }}"
                    class="text-success text-decoration-none">
-                    {{ payslip.employee_name }}
+                    {{ payslip.worker_name }}
                 </a>
             </h5>
 

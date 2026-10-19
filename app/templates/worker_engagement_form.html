@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4" style="max-width:760px">
+  <h2>New Engagement</h2>
+  <p class="text-muted">Worker: {{ worker.first_name }} {{ worker.last_name }}</p>
+  <div id="engagementError" class="alert alert-danger d-none" role="alert"></div>
+  <form id="engagementForm" class="card card-body mt-3">
+    <div class="mb-3">
+      <label class="form-label" for="organisation_id">Employing organisation</label>
+      <select id="organisation_id" class="form-select" required>
+        <option value="">Select organisation</option>
+        {% for organisation in organisations %}
+          <option value="{{ organisation.id }}">{{ organisation.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="mb-3">
+      <label class="form-label" for="engagement_type">Engagement type</label>
+      <select id="engagement_type" class="form-select" required>
+        <option value="">Select engagement type</option>
+        <option value="payg_employee">PAYG Employee</option>
+        <option value="payg_contractor">PAYG Contractor</option>
+        <option value="company_contractor">Company Contractor</option>
+      </select>
+    </div>
+    <div class="mb-3">
+      <label class="form-label" for="status">Status</label>
+      <select id="status" class="form-select" required>
+        <option value="active">Active</option>
+        <option value="pending">Pending</option>
+        <option value="ended">Ended</option>
+      </select>
+    </div>
+    <div class="row g-3 mb-3">
+      <div class="col-md-6"><label for="start_date" class="form-label">Start date</label>
+        <input id="start_date" type="date" class="form-control" value="{{ today }}" required></div>
+      <div class="col-md-6"><label for="end_date" class="form-label">End date (optional)</label>
+        <input id="end_date" type="date" class="form-control"></div>
+    </div>
+    <div class="d-flex gap-2">
+      <button id="saveEngagement" type="submit" class="btn btn-primary">Create Engagement</button>
+      <a href="/ui/workers/{{ worker.id }}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+<script>
+document.getElementById('engagementForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = document.getElementById('saveEngagement');
+  const error = document.getElementById('engagementError');
+  button.disabled = true;
+  error.classList.add('d-none');
+  try {
+    const startDate = document.getElementById('start_date').value;
+    const endDate = document.getElementById('end_date').value;
+    const response = await fetch({{ ('/api/workers/' ~ worker.id ~ '/engagements') | tojson }}, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'X-CSRF-Token': {{ csrf_token(request) | tojson }}},
+      body: JSON.stringify({
+        organisation_id: Number(document.getElementById('organisation_id').value),
+        engagement_type: document.getElementById('engagement_type').value,
+        status: document.getElementById('status').value,
+        start_date: startDate || null,
+        end_date: endDate || null
+      })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : JSON.stringify(result.detail));
+    window.location.href = {{ ('/ui/workers/' ~ worker.id) | tojson }};
+  } catch (err) {
+    error.textContent = err.message;
+    error.classList.remove('d-none');
+    button.disabled = false;
+  }
+});
+</script>
+{% endblock %}

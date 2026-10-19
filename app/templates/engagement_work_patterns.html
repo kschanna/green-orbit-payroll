@@ -1,0 +1,249 @@
+
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="container mt-4">
+
+    <a href="/ui/workers/{{ worker_id }}"
+       class="btn btn-link mb-3">
+        ← Back to Worker
+    </a>
+
+    <div class="d-flex flex-wrap justify-content-between
+                align-items-center gap-3 mb-4">
+
+        <div>
+            <h2>Work Patterns</h2>
+
+            <p class="text-muted mb-0">
+                {{ worker_name }} — {{ organisation_name }}
+            </p>
+
+            <span class="badge bg-primary mt-2">
+                PAYG Employee
+            </span>
+        </div>
+
+        <a
+            href="/ui/workers/{{ worker_id }}/engagements/{{ engagement_id }}/payroll/preview"
+            class="btn btn-outline-success me-2">
+            Generate Payroll
+        </a>
+
+        <a
+            href="/ui/engagements/{{ engagement_id }}/agreements/new"
+            class="btn btn-primary">
+            + New Work Pattern
+        </a>
+
+    </div>
+
+    <div class="card p-4">
+
+        <div class="table-responsive">
+
+            <table class="table table-hover align-middle">
+
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Employment Type</th>
+                        <th>Pay Basis</th>
+                        <th>Hourly Rate</th>
+                        <th>Ordinary Hours / Week</th>
+                        <th>Pay Frequency</th>
+                        <th>Start Date</th>
+                        <th>End Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    {% for pattern in patterns %}
+
+                    <tr>
+                        <td>{{ pattern.id }}</td>
+
+                        <td>
+                            {{ pattern.employment_type | replace("_", " ") | title }}
+                        </td>
+
+                        <td>
+                            {{ pattern.pay_basis | title }}
+                        </td>
+
+                        <td>
+                            ${{ "%.2f"|format(pattern.hourly_rate) }}
+                        </td>
+
+                        <td>
+                            {{ "%.2f"|format(pattern.ordinary_hours_per_week) }}
+                        </td>
+
+                        <td>
+                            {{ pattern.pay_frequency | title }}
+                        </td>
+
+                        <td>
+                            {{ pattern.start_date.strftime("%d/%m/%Y") }}
+                        </td>
+
+                        <td>
+                            {{ pattern.end_date.strftime("%d/%m/%Y")
+                               if pattern.end_date else "Ongoing" }}
+                        </td>
+
+                        <td>
+                            <a
+                                href="/ui/agreements/{{ pattern.id }}/edit"
+                                class="btn btn-sm btn-outline-primary">
+                                Edit
+                            </a>
+                        </td>
+                    </tr>
+
+                    {% else %}
+
+                    <tr>
+                        <td colspan="9"
+                            class="text-center text-muted py-4">
+                            No Work Patterns found for this Engagement.
+                        </td>
+                    </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- ================================================== -->
+    <!-- ENGAGEMENT PAYSLIPS                                -->
+    <!-- ================================================== -->
+
+    <h4 class="mt-5 mb-3">Payslips</h4>
+
+    <div class="card p-4">
+
+        <div class="table-responsive">
+
+            <table class="table table-hover align-middle">
+
+                <thead>
+                    <tr>
+                        <th>Payslip ID</th>
+                        <th>Period Start</th>
+                        <th>Period End</th>
+                        <th>Payment Date</th>
+                        <th>Gross Pay</th>
+                        <th>PAYG</th>
+                        <th>Net Pay</th>
+                        <th>Super</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    {% for payslip in payslips %}
+
+                    <tr>
+
+                        <td>
+                            <a
+                                href="/ui/payslips/{{ payslip.id }}/preview"
+                                class="text-decoration-none fw-semibold">
+                                #{{ payslip.id }}
+                            </a>
+                        </td>
+
+                        <td>
+                            {{ payslip.period_start.strftime("%d/%m/%Y") }}
+                        </td>
+
+                        <td>
+                            {{ payslip.period_end.strftime("%d/%m/%Y") }}
+                        </td>
+
+                        <td>
+                            {{ payslip.payment_date.strftime("%d/%m/%Y") }}
+                        </td>
+
+                        <td>
+                            ${{ "%.2f"|format(payslip.gross_pay) }}
+                        </td>
+
+                        <td>
+                            ${{ "%.2f"|format(payslip.payg_withholding) }}
+                        </td>
+
+                        <td>
+                            <strong>
+                                ${{ "%.2f"|format(payslip.net_pay) }}
+                            </strong>
+                        </td>
+
+                        <td>
+                            ${{ "%.2f"|format(payslip.superannuation) }}
+                        </td>
+
+                        <td>
+                            {% if payslip.status == "approved" %}
+                                <span class="badge bg-success">
+                                    Approved
+                                </span>
+                            {% elif payslip.status == "draft" %}
+                                <span class="badge bg-warning text-dark">
+                                    Draft
+                                </span>
+                            {% else %}
+                                <span class="badge bg-secondary">
+                                    {{ payslip.status | title }}
+                                </span>
+                            {% endif %}
+                        </td>
+
+                        <td>
+                            <a
+                                href="/payslips/{{ payslip.id }}/pdf"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="btn btn-sm btn-outline-primary">
+                                View PDF
+                            </a>
+                        </td>
+
+                    </tr>
+
+                    {% else %}
+
+                    <tr>
+                        <td colspan="10"
+                            class="text-center text-muted py-4">
+                            No Payslips found for this Engagement.
+                        </td>
+                    </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+
+</div>
+
+{% endblock %}
