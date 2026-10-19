@@ -1,5 +1,6 @@
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.worker import Worker
@@ -112,3 +113,20 @@ class WorkerService:
         db.refresh(worker)
 
         return worker
+
+    @staticmethod
+    def delete(db: Session, worker: Worker):
+        """Permanently delete a worker that has no dependent records."""
+        worker_id = worker.id
+        db.delete(worker)
+
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise WorkerError(
+                "This worker has payroll or engagement records and cannot be "
+                "deleted. Deactivate the worker instead."
+            ) from exc
+
+        return worker_id

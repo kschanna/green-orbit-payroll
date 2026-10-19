@@ -1,7 +1,9 @@
 
 import pytest
+from unittest.mock import Mock
 
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.worker import Worker
@@ -79,3 +81,28 @@ def test_deactivate_reactivate(db):
 
     WorkerService.set_active(db, worker, True)
     assert worker.active is True
+
+
+def test_delete_worker_without_dependent_records(db):
+    worker = WorkerService.create(
+        db, "Ahmed", "Khan", "ahmed@example.com"
+    )
+    worker_id = worker.id
+
+    assert WorkerService.delete(db, worker) == worker_id
+    assert WorkerService.get(db, worker_id) is None
+
+
+def test_delete_worker_with_dependent_records_is_rejected():
+    db = Mock()
+    db.commit.side_effect = IntegrityError(
+        "DELETE FROM workers", {}, Exception("foreign key violation")
+    )
+    worker = Worker(id=42, first_name="Ahmed", last_name="Khan",
+                    email="ahmed@example.com", active=True)
+
+    with pytest.raises(WorkerError, match="Deactivate the worker instead"):
+        WorkerService.delete(db, worker)
+
+    db.delete.assert_called_once_with(worker)
+    db.rollback.assert_called_once_with()

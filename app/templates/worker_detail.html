@@ -28,10 +28,18 @@
         </p>
     </div>
 
-    <a href="/ui/workers/{{ worker.id }}/edit"
-       class="btn btn-outline-success">
-        Edit Worker
-    </a>
+    <div class="d-flex gap-2">
+        <a href="/ui/workers/{{ worker.id }}/edit"
+           class="btn btn-outline-success">
+            Edit Worker
+        </a>
+        <button id="deleteButton"
+                type="button"
+                class="btn btn-outline-danger"
+                onclick="deleteWorker()">
+            Delete Worker
+        </button>
+    </div>
 </div>
 
 
@@ -204,6 +212,41 @@ async function changeStatus() {
 
         window.location.reload();
 
+    } catch (error) {
+        message.textContent = error.message;
+        message.classList.remove("d-none");
+        button.disabled = false;
+    }
+}
+
+async function deleteWorker() {
+    const button = document.getElementById("deleteButton");
+    const message = document.getElementById("message");
+
+    if (!confirm(
+        "Permanently delete this worker? This is only possible when they have no payroll or engagement records."
+    )) return;
+
+    button.disabled = true;
+    message.classList.add("d-none");
+
+    try {
+        const response = await fetch(
+            {{ ("/api/workers/" ~ worker.id) | tojson }},
+            {
+                method: "DELETE",
+                headers: {
+                    "X-CSRF-Token": {{ csrf_token(request) | tojson }}
+                }
+            }
+        );
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.detail || "Unable to delete worker.");
+        }
+
+        window.location.href = "/ui/workers";
     } catch (error) {
         message.textContent = error.message;
         message.classList.remove("d-none");

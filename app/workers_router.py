@@ -168,6 +168,22 @@ def update_worker(worker_id: int, data: WorkerInput):
         return worker_data(worker)
 
 
+@router.delete("/api/workers/{worker_id}")
+def delete_worker(worker_id: int):
+    with SessionLocal() as db:
+        worker = WorkerService.get(db, worker_id)
+
+        if worker is None:
+            raise HTTPException(404, "Worker not found")
+
+        try:
+            WorkerService.delete(db, worker)
+        except WorkerError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+        return {"deleted": True, "id": worker_id}
+
+
 @router.post("/api/workers/{worker_id}/deactivate")
 def deactivate_worker(worker_id: int):
     with SessionLocal() as db:
