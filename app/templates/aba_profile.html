@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+{% set p = profile or {} %}
+<a href="/ui/organisations" class="btn btn-link mb-3">← Back to Organisations</a>
+<h2>ABA Profile</h2>
+<p class="text-muted">{{ organisation.name }} — prototype Direct Entry settings</p>
+<div class="alert alert-warning">
+    Use fictional banking details in this prototype. Real banking data requires
+    encryption, restricted access, and export auditing.
+</div>
+<div class="card p-4">
+<form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <div class="row g-3">
+        <div class="col-md-3"><label class="form-label">Financial institution code</label><input class="form-control" name="financial_institution" maxlength="3" value="{{ p.financial_institution or '' }}" placeholder="CBA" required></div>
+        <div class="col-md-3"><label class="form-label">APCA user ID</label><input class="form-control" name="apca_user_id" maxlength="6" value="{{ p.apca_user_id or '' }}" required></div>
+        <div class="col-md-3"><label class="form-label">Transaction code</label><input class="form-control" name="transaction_code" maxlength="2" value="{{ p.transaction_code or '53' }}" required></div>
+        <div class="col-md-3"><label class="form-label">File description</label><input class="form-control" name="file_description" maxlength="12" value="{{ p.file_description or 'PAYROLL' }}" required></div>
+        <div class="col-md-6"><label class="form-label">User supplying file</label><input class="form-control" name="user_name" maxlength="26" value="{{ p.user_name or organisation.name }}" required></div>
+        <div class="col-md-6"><label class="form-label">Remitter name</label><input class="form-control" name="remitter_name" maxlength="16" value="{{ p.remitter_name or organisation.name[:16] }}" required></div>
+        <div class="col-md-4"><label class="form-label">Source BSB</label><input class="form-control" name="source_bsb" maxlength="7" value="{{ p.source_bsb or '' }}" required></div>
+        <div class="col-md-4"><label class="form-label">Source account number</label><input class="form-control" name="source_account_number" maxlength="9" value="{{ p.source_account_number or '' }}" required></div>
+        <div class="col-md-4"><label class="form-label">Source account name</label><input class="form-control" name="source_account_name" maxlength="32" value="{{ p.source_account_name or '' }}" required></div>
+        <div class="col-12"><div class="form-check"><input class="form-check-input" type="checkbox" name="balancing_entry_required" value="true" {% if p.balancing_entry_required %}checked{% endif %}><label class="form-check-label">Bank requires a balancing/contra entry</label></div></div>
+    </div>
+    <button class="btn btn-success mt-4">Save ABA Profile</button>
+</form>
+</div>
+{% endblock %}

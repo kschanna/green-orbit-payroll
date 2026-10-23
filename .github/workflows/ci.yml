@@ -1,5 +1,9 @@
 name: Green Orbit CI
 
+concurrency:
+  group: green-orbit-${{ github.ref }}
+  cancel-in-progress: false
+
 on:
   push:
     branches:
@@ -76,6 +80,15 @@ jobs:
       contents: read
       id-token: write
 
+    env:
+      PROJECT_ID: green-orbit-payroll-demo
+      REGION: australia-southeast2
+      REPOSITORY: green-orbit-payroll
+      SERVICE: green-orbit-payroll
+      MIGRATION_JOB: green-orbit-payroll-migrate
+      CLOUD_SQL_CONNECTION_NAME: green-orbit-payroll-demo:australia-southeast2:green-orbit-postgres
+      RUNTIME_SERVICE_ACCOUNT: green-orbit-app@green-orbit-payroll-demo.iam.gserviceaccount.com
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -95,17 +108,50 @@ jobs:
       - name: Build Docker image
         run: |
           docker build \
-            -t australia-southeast2-docker.pkg.dev/green-orbit-payroll-demo/green-orbit-payroll/app:${{ github.sha }} \
+            -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/app:${{ github.sha }} \
             .
 
       - name: Push Docker image
         run: |
-          docker push australia-southeast2-docker.pkg.dev/green-orbit-payroll-demo/green-orbit-payroll/app:${{ github.sha }}
+          docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/app:${{ github.sha }}
+
+      - name: Deploy migration job
+        run: |
+          gcloud run jobs deploy $MIGRATION_JOB \
+            --project=$PROJECT_ID \
+            --region=$REGION \
+            --image=$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/app:${{ github.sha }} \
+            --service-account=$RUNTIME_SERVICE_ACCOUNT \
+            --set-cloudsql-instances=$CLOUD_SQL_CONNECTION_NAME \
+            --set-env-vars=CLOUD_SQL_CONNECTION_NAME=$CLOUD_SQL_CONNECTION_NAME,DB_USER=green_orbit_app,DB_NAME=green_orbit_payroll \
+            --set-secrets=DB_PASSWORD=green-orbit-db-password:latest \
+            --command=alembic \
+            --args=upgrade,head \
+            --max-retries=0 \
+            --task-timeout=10m \
+            --quiet
+
+      - name: Apply database migrations
+        run: |
+          gcloud run jobs execute $MIGRATION_JOB \
+            --project=$PROJECT_ID \
+            --region=$REGION \
+            --wait
 
       - name: Deploy to Cloud Run
         run: |
-          gcloud run deploy green-orbit-payroll \
-            --project=green-orbit-payroll-demo \
-            --region=australia-southeast2 \
-            --image=australia-southeast2-docker.pkg.dev/green-orbit-payroll-demo/green-orbit-payroll/app:${{ github.sha }} \
+          gcloud run deploy $SERVICE \
+            --project=$PROJECT_ID \
+            --region=$REGION \
+            --image=$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/app:${{ github.sha }} \
             --quiet
+
+      - name: Verify deployed service health
+        run: |
+          SERVICE_URL=$(gcloud run services describe $SERVICE \
+            --project=$PROJECT_ID \
+            --region=$REGION \
+            --format='value(status.url)')
+          curl --fail --show-error --silent \
+            --retry 6 --retry-delay 5 --retry-all-errors \
+            "$SERVICE_URL/health"

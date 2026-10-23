@@ -126,6 +126,45 @@ class PayRunProcessor:
                 "hours or hourly rate"
             )
 
+        leave_definitions = {
+            definition.id: definition
+            for definition in session.scalars(
+                select(ComponentDefinition).where(
+                    ComponentDefinition.code.in_((
+                        "ANNUAL_LEAVE", "PERSONAL_LEAVE"
+                    ))
+                )
+            ).all()
+        }
+        leave_timesheets = session.scalars(
+            select(Timesheet).where(
+                Timesheet.engagement_id == engagement.id,
+                Timesheet.work_date >= pay_run.period_start,
+                Timesheet.work_date <= pay_run.period_end,
+                Timesheet.status == "approved",
+                Timesheet.component_definition_id.in_(leave_definitions),
+            )
+        ).all()
+        from app.leave.service import LeaveService
+        LeaveService.validate_timesheets(
+            session, engagement.id, leave_timesheets
+        )
+        leave_hours_by_definition = {}
+        for row in leave_timesheets:
+            leave_hours_by_definition[row.component_definition_id] = (
+                leave_hours_by_definition.get(
+                    row.component_definition_id, Decimal("0")
+                ) + Decimal(row.hours_worked)
+            )
+        total_leave_hours = sum(
+            leave_hours_by_definition.values(), Decimal("0")
+        )
+        if total_leave_hours > hours:
+            raise ValueError(
+                f"Engagement {engagement.id}: leave hours exceed ordinary hours"
+            )
+        ordinary_hours = hours - total_leave_hours
+
         gross = (hours * rate).quantize(
             Decimal("0.01"),
             rounding=ROUND_HALF_UP,
@@ -292,12 +331,15 @@ class PayRunProcessor:
         session.add(payslip)
         session.flush()
 
-        components = (
+        ordinary_amount = (ordinary_hours * rate).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        components = [
             (
                 "ORDINARY_HOURS",
-                hours,
+                ordinary_hours,
                 rate,
-                gross,
+                ordinary_amount,
             ),
             (
                 "PAYG_WITHHOLDING",
@@ -317,7 +359,17 @@ class PayRunProcessor:
                 additional_rate / Decimal("100"),
                 additional_super,
             ),
-        )
+        ]
+
+        for definition_id, leave_hours in leave_hours_by_definition.items():
+            definition = leave_definitions[definition_id]
+            leave_amount = (leave_hours * rate).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            components.append((
+                definition.code, leave_hours, rate, leave_amount,
+            ))
+            definitions[definition.code] = definition
 
         for code, quantity, component_rate, amount in components:
             session.add(
@@ -329,6 +381,11 @@ class PayRunProcessor:
                     amount=amount,
                 )
             )
+
+        for timesheet in leave_timesheets:
+            session.add(PayslipTimesheet(
+                payslip_id=payslip.id, timesheet_id=timesheet.id
+            ))
 
         return 1
 

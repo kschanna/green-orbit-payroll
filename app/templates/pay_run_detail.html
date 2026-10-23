@@ -78,6 +78,39 @@
 
 </div>
 
+<!-- PAYMENT ACTIONS -->
+
+<div class="card p-3 p-md-4 mb-4">
+    <h5>Bank Payments</h5>
+    <p class="text-muted">
+        Prepare payment instructions and export an Australian Direct Entry ABA file.
+    </p>
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+        {% if payment_data.batch_id %}
+            <a href="/ui/payment-batches/{{ payment_data.batch_id }}"
+               class="btn btn-outline-primary">
+                View Payment Batch
+            </a>
+            <span class="badge bg-secondary">
+                {{ payment_data.batch_status | title }}
+            </span>
+        {% elif not payment_data.aba_configured %}
+            <a href="/ui/organisations/{{ payment_data.organisation_id }}/aba"
+               class="btn btn-outline-primary">
+                Configure ABA Profile
+            </a>
+        {% elif pay_run.status in ["approved", "completed"] and totals.employees_paid > 0 %}
+            <form method="post"
+                  action="/ui/pay-runs/{{ pay_run.id }}/payments/prepare">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+                <button class="btn btn-primary">Prepare Payments</button>
+            </form>
+        {% else %}
+            <span class="text-muted">Approve payroll before preparing payments.</span>
+        {% endif %}
+    </div>
+</div>
+
 
 <!-- PAY RUN INFORMATION -->
 

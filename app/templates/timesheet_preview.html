@@ -4,6 +4,7 @@
 
 <div class="container mt-4">
 
+    {% if request.query_params.get("embed") != "1" %}
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Timesheet Preview</h2>
 
@@ -11,6 +12,7 @@
             Back to Timesheets
         </a>
     </div>
+    {% endif %}
 
     <div class="card mb-4">
         <div class="card-body">
@@ -77,6 +79,7 @@
                         <tr>
                             <th>Date</th>
                             <th>Day</th>
+                            <th>Component</th>
                             <th class="text-end">Hours Worked</th>
                         </tr>
                     </thead>
@@ -92,6 +95,8 @@
                                 {{ entry.work_date.strftime("%A") }}
                             </td>
 
+                            <td>{{ entry.component }}</td>
+
                             <td class="text-end">
                                 {{ "%.2f"|format(entry.hours_worked) }}
                             </td>
@@ -103,7 +108,7 @@
 
                     <tfoot>
                         <tr class="table-light">
-                            <th colspan="2">Total Hours</th>
+                            <th colspan="3">Total Hours</th>
 
                             <th class="text-end">
                                 {{ "%.2f"|format(total_hours) }}
@@ -115,6 +120,18 @@
 
             </div>
 
+        </div>
+    </div>
+
+    <div class="card mt-4">
+        <div class="card-header"><strong>Component Totals</strong></div>
+        <div class="card-body">
+            {% for component, hours in component_totals.items() %}
+            <div class="d-flex justify-content-between border-bottom py-2">
+                <span>{{ component }}</span>
+                <strong>{{ "%.2f"|format(hours) }}</strong>
+            </div>
+            {% endfor %}
         </div>
     </div>
 

@@ -37,6 +37,15 @@ class Timesheet(Base):
         nullable=True
     )
 
+    component_definition_id: Mapped[int | None] = mapped_column(
+        ForeignKey("component_definitions.id"),
+        nullable=True,
+    )
+
+    leave_plan_id: Mapped[int | None] = mapped_column(
+        ForeignKey("leave_plans.id"), nullable=True, index=True
+    )
+
     # Links daily entries to a timesheet header.
     # Nullable to preserve existing timesheets.
     timesheet_header_id: Mapped[int | None] = mapped_column(

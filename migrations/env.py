@@ -33,6 +33,11 @@ from app.models.assignment_component import AssignmentComponent
 from app.models.invoice_component import InvoiceComponent
 from app.models.payroll_component import PayrollComponent
 from app.models.component_audit_log import ComponentAuditLog
+from app.models.leave_plan import LeavePlan
+from app.models.leave_transaction import LeaveTransaction
+from app.models.aba_profile import ABAProfile
+from app.models.payment_batch import PaymentBatch
+from app.models.payment_instruction import PaymentInstruction
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

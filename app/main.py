@@ -7,11 +7,13 @@ from app.assignment_components_router import router as assignment_components_rou
 from app.employee_tax_router import router as employee_tax_router
 from app.employee_tfn_router import router as employee_tfn_router
 from app.components_router import router as components_router
+from app.leave_router import router as leave_router
+from app.payments_router import router as payments_router
 import os
 from pathlib import Path
 from dotenv import load_dotenv
 from starlette.middleware.sessions import SessionMiddleware
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -41,6 +43,10 @@ from app.models.assignment import Assignment
 from app.models.engagement import Engagement
 from app.models.worker import Worker
 from app.models.invoice_timesheet import InvoiceTimesheet
+from app.models.invoice_component import InvoiceComponent
+from app.models.component_definition import ComponentDefinition
+from app.models.component_family import ComponentFamily
+from app.models.assignment_component import AssignmentComponent
 from app.reports.invoice_pdf import InvoicePDFGenerator
 from app.invoicing.engine import generate_invoice
 from app.models.timesheet_header import TimesheetHeader
@@ -59,7 +65,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 app = FastAPI(
     title="Green Orbit Payroll API",
     description="Australian Payroll Engine",
-    version="0.1.0"
+    version="0.2.0"
 )
 
 app.router.include_router(components_router)
@@ -69,6 +75,8 @@ app.router.include_router(employee_super_router)
 app.router.include_router(employee_payment_router)
 app.router.include_router(assignment_components_router)
 app.router.include_router(employee_tfn_router)
+app.router.include_router(leave_router)
+app.router.include_router(payments_router)
 
 session_secret = os.environ.get("SESSION_SECRET")
 
@@ -275,7 +283,7 @@ class PayRunCreate(BaseModel):
 def home():
     return {
         "application": "Green Orbit Payroll Engine",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "status": "running"
     }
 
@@ -482,6 +490,7 @@ def get_pay_run_summary(pay_run_id: int):
 class WeeklyTimesheetEntry(BaseModel):
     work_date: date
     assignment_id: int | None = None
+    component_definition_id: int | None = None
     hours_worked: Decimal = Field(
         ge=0,
         le=24,
@@ -556,10 +565,13 @@ def create_invoice_from_timesheet(data: TimesheetInvoiceInput):
                 .order_by(Timesheet.work_date)
             ).all()
 
-            if len(entries) != 7:
+            expected_dates = {
+                header.period_start + timedelta(days=i) for i in range(7)
+            }
+            if {entry.work_date for entry in entries} != expected_dates:
                 raise HTTPException(
                     status_code=409,
-                    detail="Weekly timesheet must contain seven entries"
+                    detail="Weekly timesheet must cover Monday through Sunday"
                 )
 
             timesheet_ids = [entry.id for entry in entries]
@@ -666,13 +678,10 @@ def _prepare_contractor_payroll(db, header_id):
         for i in range(7)
     ]
 
-    if (
-        len(entries) != 7
-        or [entry.work_date for entry in entries] != expected_dates
-    ):
+    if {entry.work_date for entry in entries} != set(expected_dates):
         raise HTTPException(
             409,
-            "Weekly Timesheet must contain exactly seven daily entries",
+            "Weekly Timesheet must cover Monday through Sunday",
         )
 
     for entry in entries:
@@ -1112,6 +1121,36 @@ def preview_weekly_timesheet(request: Request, header_id: int):
             (entry.hours_worked for entry in entries),
             Decimal("0.00"),
         )
+        definitions = {
+            definition.id: definition
+            for definition in db.scalars(select(ComponentDefinition)).all()
+        }
+        ordinary = next(
+            (
+                definition for definition in definitions.values()
+                if definition.code == "ORDINARY_HOURS"
+            ),
+            None,
+        )
+        component_totals = {}
+        entry_data = []
+        for entry in entries:
+            definition = (
+                definitions.get(entry.component_definition_id)
+                if entry.component_definition_id is not None else ordinary
+            )
+            component_name = (
+                definition.name if definition else "Ordinary Hours"
+            )
+            entry_data.append({
+                "work_date": entry.work_date,
+                "component": component_name,
+                "hours_worked": entry.hours_worked,
+            })
+            component_totals[component_name] = (
+                component_totals.get(component_name, Decimal("0"))
+                + entry.hours_worked
+            )
 
         return templates.TemplateResponse(
             request=request,
@@ -1125,13 +1164,8 @@ def preview_weekly_timesheet(request: Request, header_id: int):
                 "period_start": header.period_start,
                 "period_end": header.period_end,
                 "status": header.status,
-                "entries": [
-                    {
-                        "work_date": entry.work_date,
-                        "hours_worked": entry.hours_worked,
-                    }
-                    for entry in entries
-                ],
+                "entries": entry_data,
+                "component_totals": component_totals,
                 "total_hours": total_hours,
             },
         )
@@ -1168,10 +1202,14 @@ def preview_daily_timesheet(request: Request, timesheet_id: int):
                 "entries": [
                     {
                         "work_date": timesheet.work_date,
+                        "component": "Ordinary Hours",
                         "hours_worked": timesheet.hours_worked,
                     }
                 ],
                 "total_hours": timesheet.hours_worked,
+                "component_totals": {
+                    "Ordinary Hours": timesheet.hours_worked,
+                },
             },
         )
 
@@ -1245,10 +1283,13 @@ def edit_weekly_timesheet_page(request: Request, header_id: int):
             .order_by(Timesheet.work_date)
         ).all()
 
-        if len(entries) != 7:
+        expected_dates = {
+            header.period_start + timedelta(days=i) for i in range(7)
+        }
+        if {entry.work_date for entry in entries} != expected_dates:
             raise HTTPException(
                 status_code=409,
-                detail="Weekly timesheet must contain seven daily entries"
+                detail="Weekly timesheet must cover Monday through Sunday"
             )
 
         engagements = db.scalars(
@@ -1338,6 +1379,132 @@ def validate_timesheet_assignment(db, assignment_id, engagement_id):
             detail="Selected assignment does not belong to this Engagement"
         )
 
+    return assignment
+
+
+def timesheet_component_options(db, assignment_id, work_date):
+    from app.models.leave_plan import LeavePlan
+
+    assignment = db.get(Assignment, assignment_id)
+    rows = db.execute(
+        select(ComponentDefinition, ComponentFamily)
+        .join(
+            ComponentFamily,
+            ComponentFamily.id == ComponentDefinition.family_id,
+        )
+        .join(
+            AssignmentComponent,
+            AssignmentComponent.component_definition_id
+            == ComponentDefinition.id,
+        )
+        .where(
+            AssignmentComponent.assignment_id == assignment_id,
+            AssignmentComponent.effective_from <= work_date,
+            (
+                AssignmentComponent.effective_to.is_(None)
+                | (AssignmentComponent.effective_to >= work_date)
+            ),
+            AssignmentComponent.applies_to.in_(("payroll", "invoice", "both")),
+            ComponentDefinition.active.is_(True),
+            ComponentFamily.code == "EARNINGS",
+            ComponentDefinition.code != "GST",
+        )
+        .order_by(ComponentFamily.name, ComponentDefinition.name)
+    ).all()
+    options = []
+    for definition, family in rows:
+        options.append({
+            "id": definition.id,
+            "name": definition.name,
+            "family": family.name,
+            "leave_plan_id": None,
+        })
+    if assignment is not None:
+        leave_rows = db.execute(
+            select(LeavePlan, ComponentDefinition, ComponentFamily)
+            .join(
+                ComponentDefinition,
+                ComponentDefinition.id
+                == LeavePlan.component_definition_id,
+            )
+            .join(
+                ComponentFamily,
+                ComponentFamily.id == ComponentDefinition.family_id,
+            )
+            .where(
+                LeavePlan.engagement_id == assignment.engagement_id,
+                LeavePlan.status == "active",
+                LeavePlan.effective_from <= work_date,
+                (
+                    LeavePlan.effective_to.is_(None)
+                    | (LeavePlan.effective_to >= work_date)
+                ),
+                ComponentDefinition.active.is_(True),
+                ComponentFamily.code == "LEAVE",
+            )
+            .order_by(ComponentDefinition.name)
+        ).all()
+        for plan, definition, family in leave_rows:
+            options.append({
+                "id": definition.id,
+                "name": definition.name,
+                "family": family.name,
+                "leave_plan_id": plan.id,
+            })
+    return options
+
+
+def validate_timesheet_component(
+    db, assignment_id, component_definition_id, work_date,
+):
+    # NULL remains valid for historical/API compatibility and means ordinary.
+    if component_definition_id is None:
+        return None
+    options = timesheet_component_options(db, assignment_id, work_date)
+    if component_definition_id not in {option["id"] for option in options}:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Selected component is not active and configured for this "
+                "Assignment on the work date"
+            ),
+        )
+    return next(
+        option["leave_plan_id"]
+        for option in options
+        if option["id"] == component_definition_id
+    )
+
+
+def validate_weekly_entries(entries, expected_dates):
+    submitted_dates = {entry.work_date for entry in entries}
+    if submitted_dates != set(expected_dates):
+        raise HTTPException(
+            status_code=422,
+            detail="Entries must cover Monday through Sunday",
+        )
+    for work_date in expected_dates:
+        total = sum(
+            (
+                entry.hours_worked for entry in entries
+                if entry.work_date == work_date
+            ),
+            Decimal("0"),
+        )
+        if total > Decimal("24"):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Total hours for {work_date} cannot exceed 24",
+            )
+
+
+@app.get("/api/assignments/{assignment_id}/timesheet-components")
+def list_timesheet_components(assignment_id: int, work_date: date):
+    with SessionLocal() as db:
+        if db.get(Assignment, assignment_id) is None:
+            raise HTTPException(404, "Assignment not found")
+        return timesheet_component_options(db, assignment_id, work_date)
+
 
 @app.post("/api/timesheets/weekly", status_code=201)
 def create_weekly_timesheet(data: WeeklyTimesheetCreate):
@@ -1349,13 +1516,6 @@ def create_weekly_timesheet(data: WeeklyTimesheetCreate):
             detail="Week must start on Monday"
         )
 
-    # Validate exactly seven entries
-    if len(data.entries) != 7:
-        raise HTTPException(
-            status_code=422,
-            detail="Exactly seven daily entries are required"
-        )
-
     # Validate consecutive dates, Monday through Sunday
     from datetime import timedelta
 
@@ -1364,13 +1524,7 @@ def create_weekly_timesheet(data: WeeklyTimesheetCreate):
         for i in range(7)
     ]
 
-    submitted_dates = [entry.work_date for entry in data.entries]
-
-    if submitted_dates != expected_dates:
-        raise HTTPException(
-            status_code=422,
-            detail="Entries must cover Monday through Sunday in order"
-        )
+    validate_weekly_entries(data.entries, expected_dates)
 
     with SessionLocal() as db:
 
@@ -1404,8 +1558,18 @@ def create_weekly_timesheet(data: WeeklyTimesheetCreate):
         db.flush()
 
         for entry in data.entries:
-            validate_timesheet_assignment(
+            assignment = validate_timesheet_assignment(
                 db, entry.assignment_id, data.engagement_id
+            )
+            if assignment is None:
+                if entry.component_definition_id is not None:
+                    raise HTTPException(422, "Assignment is required")
+                continue
+            validate_timesheet_component(
+                db,
+                assignment.id,
+                entry.component_definition_id,
+                entry.work_date,
             )
 
         # Create seven daily entries linked to the header
@@ -1415,6 +1579,13 @@ def create_weekly_timesheet(data: WeeklyTimesheetCreate):
                 employee_id=None,
                 timesheet_header_id=header.id,
                 assignment_id=entry.assignment_id,
+                component_definition_id=entry.component_definition_id,
+                leave_plan_id=validate_timesheet_component(
+                    db,
+                    entry.assignment_id,
+                    entry.component_definition_id,
+                    entry.work_date,
+                ),
                 work_date=entry.work_date,
                 hours_worked=entry.hours_worked,
                 status="draft"
@@ -1430,7 +1601,8 @@ def create_weekly_timesheet(data: WeeklyTimesheetCreate):
             "timesheet_header_id": header.id,
             "engagement_id": data.engagement_id,
             "week_start": data.week_start,
-            "days_created": len(timesheets),
+            "lines_created": len(timesheets),
+            "days_created": len({entry.work_date for entry in data.entries}),
             "total_hours": sum(
                 entry.hours_worked for entry in data.entries
             )
@@ -1483,14 +1655,7 @@ def update_weekly_timesheet(
             for i in range(7)
         ]
 
-        if (
-            len(data.entries) != 7
-            or [entry.work_date for entry in data.entries] != expected_dates
-        ):
-            raise HTTPException(
-                status_code=422,
-                detail="Entries must cover Monday through Sunday"
-            )
+        validate_weekly_entries(data.entries, expected_dates)
 
         entries = db.scalars(
             select(Timesheet)
@@ -1498,10 +1663,7 @@ def update_weekly_timesheet(
             .order_by(Timesheet.work_date)
         ).all()
 
-        if (
-            len(entries) != 7
-            or [entry.work_date for entry in entries] != expected_dates
-        ):
+        if {entry.work_date for entry in entries} != set(expected_dates):
             raise HTTPException(
                 status_code=409,
                 detail="Weekly timesheet has incomplete daily entries"
@@ -1514,22 +1676,52 @@ def update_weekly_timesheet(
             )
 
         for submitted in data.entries:
-            validate_timesheet_assignment(
+            assignment = validate_timesheet_assignment(
                 db, submitted.assignment_id, data.engagement_id
             )
+            if assignment is None:
+                if submitted.component_definition_id is not None:
+                    raise HTTPException(422, "Assignment is required")
+                continue
+            validate_timesheet_component(
+                db,
+                assignment.id,
+                submitted.component_definition_id,
+                submitted.work_date,
+            )
 
-        for existing, submitted in zip(entries, data.entries):
-            existing.hours_worked = submitted.hours_worked
-            existing.assignment_id = submitted.assignment_id
+        for existing in entries:
+            db.delete(existing)
+        db.flush()
+        db.add_all([
+            Timesheet(
+                engagement_id=data.engagement_id,
+                employee_id=None,
+                timesheet_header_id=header.id,
+                assignment_id=submitted.assignment_id,
+                component_definition_id=submitted.component_definition_id,
+                leave_plan_id=validate_timesheet_component(
+                    db,
+                    submitted.assignment_id,
+                    submitted.component_definition_id,
+                    submitted.work_date,
+                ),
+                work_date=submitted.work_date,
+                hours_worked=submitted.hours_worked,
+                status="draft",
+            )
+            for submitted in data.entries
+        ])
 
         db.commit()
 
         return {
             "timesheet_header_id": header.id,
             "status": header.status,
-            "days_updated": len(entries),
+            "lines_updated": len(data.entries),
+            "days_updated": len({entry.work_date for entry in data.entries}),
             "total_hours": sum(
-                entry.hours_worked for entry in entries
+                entry.hours_worked for entry in data.entries
             )
         }
 
@@ -1601,11 +1793,13 @@ def approve_weekly_timesheet(header_id: int):
             .order_by(Timesheet.work_date)
         ).all()
 
-        # Ensure the weekly timesheet is complete
-        if len(entries) != 7:
+        expected_dates = {
+            header.period_start + timedelta(days=i) for i in range(7)
+        }
+        if {entry.work_date for entry in entries} != expected_dates:
             raise HTTPException(
                 status_code=409,
-                detail="Weekly timesheet must contain seven daily entries"
+                detail="Weekly timesheet must cover Monday through Sunday"
             )
 
         if any(entry.status != "draft" for entry in entries):
@@ -1613,6 +1807,12 @@ def approve_weekly_timesheet(header_id: int):
                 status_code=409,
                 detail="All daily entries must be in draft status"
             )
+
+        from app.leave.service import LeaveService
+        try:
+            LeaveService.validate_timesheets(db, header.engagement_id, entries)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error))
 
         # Approve header and all daily entries
         header.status = "approved"
@@ -1625,7 +1825,8 @@ def approve_weekly_timesheet(header_id: int):
         return {
             "timesheet_header_id": header.id,
             "status": header.status,
-            "days_approved": len(entries),
+            "lines_approved": len(entries),
+            "days_approved": len({entry.work_date for entry in entries}),
             "total_hours": sum(
                 entry.hours_worked for entry in entries
             )
@@ -1911,6 +2112,9 @@ def complete_pay_run_api(pay_run_id: int):
                     f"{sorted(set(duplicate_timesheet_ids))}"
                 )
 
+            from app.leave.service import LeaveService
+            LeaveService.post_pay_run(session, pay_run)
+
             PayRunLifecycle().transition(
                 pay_run=pay_run,
                 new_status="completed"
@@ -1947,6 +2151,10 @@ def preview_payslip_page(request: Request, payslip_id: int):
 
     from app.models.payroll_component import PayrollComponent
     from app.models.component_definition import ComponentDefinition
+    from app.models.leave_plan import LeavePlan
+    from app.models.payment_batch import PaymentBatch
+    from app.models.payment_instruction import PaymentInstruction
+    from app.leave.service import LeaveService
 
     with SessionLocal() as db:
 
@@ -2013,6 +2221,86 @@ def preview_payslip_page(request: Request, payslip_id: int):
             for component, definition in rows
         ]
 
+        ordinary_hours = sum(
+            (
+                Decimal(component.quantity)
+                for component, definition in rows
+                if definition.code == "ORDINARY_HOURS"
+            ),
+            Decimal("0"),
+        )
+        paid_leave_hours = sum(
+            (
+                Decimal(component.quantity)
+                for component, definition in rows
+                if definition.code in {"ANNUAL_LEAVE", "PERSONAL_LEAVE"}
+            ),
+            Decimal("0"),
+        )
+        leave_plans = db.execute(
+            select(LeavePlan, ComponentDefinition)
+            .join(
+                ComponentDefinition,
+                ComponentDefinition.id
+                == LeavePlan.component_definition_id,
+            )
+            .where(
+                LeavePlan.engagement_id == engagement.id,
+                LeavePlan.status == "active",
+                LeavePlan.effective_from <= pay_run.payment_date,
+                (
+                    LeavePlan.effective_to.is_(None)
+                    | (LeavePlan.effective_to >= pay_run.payment_date)
+                ),
+            )
+            .order_by(ComponentDefinition.name)
+        ).all()
+        leave_summary = []
+        for plan, definition in leave_plans:
+            balance = LeaveService.balance(db, plan.id)
+            basis = ordinary_hours
+            if plan.accrues_during_paid_leave:
+                basis += paid_leave_hours
+            projected_accrual = Decimal("0")
+            if pay_run.status != "completed":
+                projected_accrual = (
+                    basis * Decimal(plan.accrual_rate_per_hour)
+                ).quantize(Decimal("0.0001"))
+            leave_summary.append({
+                "name": definition.name,
+                "current_balance": balance,
+                "projected_accrual": projected_accrual,
+                "projected_balance": balance + projected_accrual,
+            })
+
+        payment_rows = db.execute(
+            select(PaymentInstruction, PaymentBatch)
+            .join(
+                PaymentBatch,
+                PaymentBatch.id == PaymentInstruction.payment_batch_id,
+            )
+            .where(PaymentInstruction.payslip_id == payslip.id)
+            .order_by(PaymentBatch.id.desc(), PaymentInstruction.id.desc())
+        ).all()
+        payment_instructions = [{
+            "id": instruction.id,
+            "batch_id": batch.id,
+            "batch_status": batch.status,
+            "processing_date": batch.processing_date,
+            "source_type": instruction.source_type,
+            "status": instruction.status,
+            "amount": instruction.amount,
+            "account_name": instruction.recipient_account_name,
+            "bsb": (
+                f"{instruction.recipient_bsb[:3]}-"
+                f"{instruction.recipient_bsb[3:]}"
+            ),
+            "account_number": (
+                "****" + instruction.recipient_account_number[-4:]
+            ),
+            "reference": instruction.lodgement_reference,
+        } for instruction, batch in payment_rows]
+
         return templates.TemplateResponse(
             request=request,
             name="payslip_preview.html",
@@ -2023,6 +2311,8 @@ def preview_payslip_page(request: Request, payslip_id: int):
                 "engagement": engagement,
                 "organisation": organisation,
                 "components": components,
+                "leave_summary": leave_summary,
+                "payment_instructions": payment_instructions,
             },
         )
 
@@ -2162,6 +2452,73 @@ def download_payslip_pdf(payslip_id: int):
                     )
                 )
 
+        from app.models.leave_plan import LeavePlan
+        from app.leave.service import LeaveService
+
+        component_rows = [
+            (
+                component,
+                session.get(
+                    ComponentDefinition,
+                    component.component_definition_id,
+                ),
+            )
+            for component in components
+        ]
+        ordinary_hours = sum(
+            (
+                Decimal(component.quantity)
+                for component, definition in component_rows
+                if definition is not None
+                and definition.code == "ORDINARY_HOURS"
+            ),
+            Decimal("0"),
+        )
+        paid_leave_hours = sum(
+            (
+                Decimal(component.quantity)
+                for component, definition in component_rows
+                if definition is not None
+                and definition.code in {"ANNUAL_LEAVE", "PERSONAL_LEAVE"}
+            ),
+            Decimal("0"),
+        )
+        leave_plans = session.execute(
+            select(LeavePlan, ComponentDefinition)
+            .join(
+                ComponentDefinition,
+                ComponentDefinition.id
+                == LeavePlan.component_definition_id,
+            )
+            .where(
+                LeavePlan.engagement_id == engagement.id,
+                LeavePlan.status == "active",
+                LeavePlan.effective_from <= pay_run.payment_date,
+                (
+                    LeavePlan.effective_to.is_(None)
+                    | (LeavePlan.effective_to >= pay_run.payment_date)
+                ),
+            )
+            .order_by(ComponentDefinition.name)
+        ).all()
+        leave_summary = []
+        for plan, definition in leave_plans:
+            balance = LeaveService.balance(session, plan.id)
+            basis = ordinary_hours
+            if plan.accrues_during_paid_leave:
+                basis += paid_leave_hours
+            projected_accrual = Decimal("0")
+            if pay_run.status != "completed":
+                projected_accrual = (
+                    basis * Decimal(plan.accrual_rate_per_hour)
+                ).quantize(Decimal("0.0001"))
+            leave_summary.append({
+                "name": definition.name,
+                "current_balance": balance,
+                "projected_accrual": projected_accrual,
+                "projected_balance": balance + projected_accrual,
+            })
+
         pdf_buffer = PayslipPDFGenerator().generate(
             payslip=payslip,
             employee=worker,
@@ -2169,7 +2526,8 @@ def download_payslip_pdf(payslip_id: int):
             pay_run=pay_run,
             earnings_lines=earnings_lines,
             withholding_lines=withholding_lines,
-            employer_super_lines=employer_super_lines
+            employer_super_lines=employer_super_lines,
+            leave_summary=leave_summary,
         )
 
         filename = f"payslip_{payslip.id}.pdf"
@@ -2317,6 +2675,21 @@ def pay_run_detail_page(request: Request, pay_run_id: int):
             "payment_date": pay_run.payment_date,
             "status": pay_run.status
         }
+        from app.models.aba_profile import ABAProfile
+        from app.models.payment_batch import PaymentBatch
+        payment_batch = session.scalar(select(PaymentBatch).where(
+            PaymentBatch.pay_run_id == pay_run.id
+        ))
+        aba_profile = session.scalar(select(ABAProfile).where(
+            ABAProfile.organisation_id == pay_run.organisation_id,
+            ABAProfile.active.is_(True),
+        ))
+        payment_data = {
+            "batch_id": payment_batch.id if payment_batch else None,
+            "batch_status": payment_batch.status if payment_batch else None,
+            "aba_configured": aba_profile is not None,
+            "organisation_id": pay_run.organisation_id,
+        }
 
     return templates.TemplateResponse(
         request=request,
@@ -2324,7 +2697,8 @@ def pay_run_detail_page(request: Request, pay_run_id: int):
         context={
             "pay_run": pay_run_data,
             "payslips": payslip_data,
-            "totals": totals
+            "totals": totals,
+            "payment_data": payment_data,
         }
     )
 
@@ -3218,9 +3592,8 @@ def payslips_page(request: Request):
             .join(Worker, Engagement.worker_id == Worker.id)
             .join(PayRun, Payslip.pay_run_id == PayRun.id)
             .order_by(
-                PayRun.payment_date.desc(),
-                Worker.last_name,
-                Worker.first_name
+                PayRun.id.desc(),
+                Payslip.id.desc()
             )
         ).all()
 
@@ -3756,6 +4129,34 @@ def invoices_page(request: Request):
                 assignment.engagement.worker
                 if assignment.engagement is not None else None
             )
+            payroll_payslip_id = session.scalar(
+                select(PayslipTimesheet.payslip_id)
+                .join(
+                    InvoiceTimesheet,
+                    InvoiceTimesheet.timesheet_id
+                    == PayslipTimesheet.timesheet_id,
+                )
+                .where(InvoiceTimesheet.invoice_id == invoice.id)
+                .limit(1)
+            )
+            engagement = assignment.engagement
+            payroll_unavailable_reason = None
+            if payroll_payslip_id is not None:
+                payroll_unavailable_reason = (
+                    f"Payroll already exists (payslip #{payroll_payslip_id})"
+                )
+            elif engagement is None:
+                payroll_unavailable_reason = "Invoice has no canonical engagement"
+            elif engagement.engagement_type != "payg_contractor":
+                payroll_unavailable_reason = (
+                    "Invoice payroll is available only for PAYG contractors"
+                )
+            elif invoice.status not in {"issued", "paid"}:
+                payroll_unavailable_reason = (
+                    "Issue the invoice before generating payroll"
+                )
+            elif engagement.status != "active" or not engagement.worker.active:
+                payroll_unavailable_reason = "Worker or engagement is inactive"
             invoice_data.append({
                 "id": invoice.id,
                 "invoice_number": invoice.invoice_number,
@@ -3769,6 +4170,9 @@ def invoices_page(request: Request):
                 "gst": invoice.gst,
                 "total": invoice.total,
                 "status": invoice.status,
+                "payroll_payslip_id": payroll_payslip_id,
+                "payroll_selectable": payroll_unavailable_reason is None,
+                "payroll_unavailable_reason": payroll_unavailable_reason,
             })
 
     return templates.TemplateResponse(
@@ -3828,6 +4232,27 @@ def preview_invoice_page(request: Request, invoice_id: int):
             Decimal("0.00"),
         )
 
+        component_rows = session.execute(
+            select(InvoiceComponent, ComponentDefinition)
+            .join(
+                ComponentDefinition,
+                ComponentDefinition.id
+                == InvoiceComponent.component_definition_id,
+            )
+            .where(InvoiceComponent.invoice_id == invoice.id)
+            .order_by(InvoiceComponent.id)
+        ).all()
+        line_items = [
+            {
+                "description": definition.name,
+                "calculation_type": definition.calculation_type,
+                "quantity": component.quantity,
+                "rate": component.rate,
+                "amount": component.amount,
+            }
+            for component, definition in component_rows
+        ]
+
         return templates.TemplateResponse(
             request=request,
             name="invoice_preview.html",
@@ -3839,6 +4264,7 @@ def preview_invoice_page(request: Request, invoice_id: int):
                 "customer": customer,
                 "hours": hours,
                 "timesheets": timesheets,
+                "line_items": line_items,
             },
         )
 
@@ -3908,7 +4334,7 @@ def _prepare_invoice_contractor_payroll(db, invoice_id):
             "Worker or Engagement is inactive",
         )
 
-    entries = db.scalars(
+    invoice_entries = db.scalars(
         select(Timesheet)
         .join(
             InvoiceTimesheet,
@@ -3918,7 +4344,7 @@ def _prepare_invoice_contractor_payroll(db, invoice_id):
         .order_by(Timesheet.work_date, Timesheet.id)
     ).all()
 
-    if not entries:
+    if not invoice_entries:
         raise HTTPException(
             409,
             "Invoice has no linked Timesheets",
@@ -3928,7 +4354,7 @@ def _prepare_invoice_contractor_payroll(db, invoice_id):
     # Timesheet, with seven daily entries.
     header_ids = {
         entry.timesheet_header_id
-        for entry in entries
+        for entry in invoice_entries
     }
 
     if len(header_ids) != 1 or None in header_ids:
@@ -3959,6 +4385,15 @@ def _prepare_invoice_contractor_payroll(db, invoice_id):
             "Weekly Timesheet Engagement mismatch",
         )
 
+    # The customer invoice intentionally excludes LEAVE-family rows. Use the
+    # invoice to identify the approved weekly timesheet, then calculate payroll
+    # from the complete timesheet so paid leave is not omitted.
+    entries = db.scalars(
+        select(Timesheet)
+        .where(Timesheet.timesheet_header_id == header.id)
+        .order_by(Timesheet.work_date, Timesheet.id)
+    ).all()
+
     from datetime import timedelta
 
     expected_dates = [
@@ -3969,8 +4404,7 @@ def _prepare_invoice_contractor_payroll(db, invoice_id):
     if (
         header.period_start.weekday() != 0
         or header.period_end != header.period_start + timedelta(days=6)
-        or len(entries) != 7
-        or [entry.work_date for entry in entries] != expected_dates
+        or {entry.work_date for entry in entries} != set(expected_dates)
     ):
         raise HTTPException(
             409,
@@ -4155,6 +4589,95 @@ def _prepare_invoice_contractor_payroll(db, invoice_id):
 
     total_super = statutory_super + additional_super
 
+    earnings_definition_ids = {
+        line["component_definition_id"] for line in earnings["lines"]
+    }
+    statutory_codes = {
+        "PAYG_WITHHOLDING", "SUPER_GUARANTEE", "SUPER_EMPLOYER_EXTRA"
+    }
+    definition_rows = db.execute(
+        select(ComponentDefinition, ComponentFamily)
+        .join(
+            ComponentFamily,
+            ComponentFamily.id == ComponentDefinition.family_id,
+        )
+        .where(
+            (ComponentDefinition.id.in_(earnings_definition_ids))
+            | (ComponentDefinition.code.in_(statutory_codes))
+        )
+    ).all()
+    definition_details = {
+        definition.id: (definition, family)
+        for definition, family in definition_rows
+    }
+    definitions_by_code = {
+        definition.code: (definition, family)
+        for definition, family in definition_rows
+    }
+    missing_statutory = statutory_codes - definitions_by_code.keys()
+    if missing_statutory:
+        raise HTTPException(
+            409,
+            f"Missing payroll component definitions: "
+            f"{sorted(missing_statutory)}",
+        )
+
+    grouped_components = {}
+
+    def add_component(definition, family, quantity, rate, amount):
+        group = grouped_components.setdefault(
+            family.code,
+            {
+                "code": family.code,
+                "name": family.name,
+                "items": [],
+                "subtotal": Decimal("0.00"),
+            },
+        )
+        group["items"].append({
+            "name": definition.name,
+            "calculation_type": definition.calculation_type,
+            "quantity": quantity,
+            "rate": rate,
+            "amount": amount,
+        })
+        group["subtotal"] += amount
+
+    for line in earnings["lines"]:
+        details = definition_details.get(line["component_definition_id"])
+        if details is None:
+            raise HTTPException(409, "Payroll component definition not found")
+        add_component(
+            *details, line["quantity"], line["rate"], line["amount"]
+        )
+
+    payg_definition, payg_family = definitions_by_code["PAYG_WITHHOLDING"]
+    add_component(
+        payg_definition, payg_family, Decimal("1"), payg, payg
+    )
+    guarantee_definition, guarantee_family = definitions_by_code[
+        "SUPER_GUARANTEE"
+    ]
+    add_component(
+        guarantee_definition, guarantee_family, gross, Decimal("0.12"),
+        statutory_super,
+    )
+    extra_definition, extra_family = definitions_by_code[
+        "SUPER_EMPLOYER_EXTRA"
+    ]
+    add_component(
+        extra_definition, extra_family, gross,
+        additional_rate / Decimal("100"), additional_super,
+    )
+
+    family_order = {
+        "EARNINGS": 0, "LEAVE": 1, "TAX": 2, "SUPERANNUATION": 3
+    }
+    component_groups = sorted(
+        grouped_components.values(),
+        key=lambda group: (family_order.get(group["code"], 99), group["name"]),
+    )
+
     hours = sum(
         (entry.hours_worked for entry in entries),
         Decimal("0"),
@@ -4183,6 +4706,7 @@ def _prepare_invoice_contractor_payroll(db, invoice_id):
         "statutory_super": statutory_super,
         "additional_super": additional_super,
         "total_super": total_super,
+        "component_groups": component_groups,
         "earnings_lines": earnings["lines"],
         "timesheet_ids": [entry.id for entry in entries],
     }
@@ -4419,6 +4943,26 @@ def download_invoice_pdf(invoice_id: int):
             .where(InvoiceTimesheet.invoice_id == invoice.id)
         ).all()
         hours = sum(t.hours_worked for t in timesheets)
+        component_rows = session.execute(
+            select(InvoiceComponent, ComponentDefinition)
+            .join(
+                ComponentDefinition,
+                ComponentDefinition.id
+                == InvoiceComponent.component_definition_id,
+            )
+            .where(InvoiceComponent.invoice_id == invoice.id)
+            .order_by(InvoiceComponent.id)
+        ).all()
+        line_items = [
+            {
+                "description": definition.name,
+                "calculation_type": definition.calculation_type,
+                "quantity": component.quantity,
+                "rate": component.rate,
+                "amount": component.amount,
+            }
+            for component, definition in component_rows
+        ]
         pdf = InvoicePDFGenerator().generate(
             invoice=invoice,
             engagement=assignment,
@@ -4426,6 +4970,7 @@ def download_invoice_pdf(invoice_id: int):
             supplier=supplier,
             customer=customer,
             hours=hours,
+            line_items=line_items,
         )
         return StreamingResponse(
             pdf,

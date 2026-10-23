@@ -16,7 +16,10 @@ from reportlab.platypus import (
 
 class InvoicePDFGenerator:
 
-    def generate(self, invoice, engagement, worker, supplier, customer, hours):
+    def generate(
+        self, invoice, engagement, worker, supplier, customer, hours,
+        line_items=None,
+    ):
 
         buffer = BytesIO()
         document = SimpleDocTemplate(buffer, pagesize=A4)
@@ -52,15 +55,29 @@ class InvoicePDFGenerator:
         elements.append(Spacer(1, 25))
 
         # Invoice amounts
-        data = [
-            ["Description", "Amount"],
-            [
+        data = [["Description", "Amount"]]
+        if line_items:
+            for item in line_items:
+                if item["calculation_type"] == "percentage":
+                    description = (
+                        f'{item["description"]} ({item["rate"]:.2f}%)'
+                    )
+                else:
+                    description = (
+                        f'{item["description"]}: {item["quantity"]:.2f} '
+                        f'hours @ ${item["rate"]:.2f}'
+                    )
+                data.append([description, f'${item["amount"]:,.2f}'])
+        else:
+            data.append([
                 f"{hours:.2f} hours @ ${engagement.billing_rate:.2f}",
-                f"${invoice.subtotal:,.2f}"
-            ],
+                f"${invoice.subtotal:,.2f}",
+            ])
+        data.extend([
+            ["SUBTOTAL", f"${invoice.subtotal:,.2f}"],
             ["GST (10%)", f"${invoice.gst:,.2f}"],
             ["TOTAL", f"${invoice.total:,.2f}"],
-        ]
+        ])
 
         table = Table(data, colWidths=[300, 150])
 

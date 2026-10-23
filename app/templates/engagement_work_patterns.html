@@ -25,17 +25,19 @@
             </span>
         </div>
 
-        <a
-            href="/ui/workers/{{ worker_id }}/engagements/{{ engagement_id }}/payroll/preview"
-            class="btn btn-outline-success me-2">
-            Generate Payroll
-        </a>
+        <div class="d-flex flex-wrap gap-2">
+            <a
+                href="/ui/workers/{{ worker_id }}/engagements/{{ engagement_id }}/payroll/preview"
+                class="btn btn-outline-success">
+                Generate Payroll
+            </a>
 
-        <a
-            href="/ui/engagements/{{ engagement_id }}/agreements/new"
-            class="btn btn-primary">
-            + New Work Pattern
-        </a>
+            <a
+                href="/ui/engagements/{{ engagement_id }}/agreements/new"
+                class="btn btn-primary">
+                + New Work Pattern
+            </a>
+        </div>
 
     </div>
 

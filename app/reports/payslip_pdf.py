@@ -24,13 +24,18 @@ class PayslipPDFGenerator:
         earnings_lines=None,
         withholding_lines=None,
         employer_super_lines=None,
+        leave_summary=None,
     ):
 
         buffer = BytesIO()
 
         document = SimpleDocTemplate(
             buffer,
-            pagesize=A4
+            pagesize=A4,
+            leftMargin=36,
+            rightMargin=36,
+            topMargin=36,
+            bottomMargin=36,
         )
 
         styles = getSampleStyleSheet()
@@ -41,7 +46,7 @@ class PayslipPDFGenerator:
             Paragraph("GREEN ORBIT — PAYSLIP", styles["Title"])
         )
 
-        elements.append(Spacer(1, 20))
+        elements.append(Spacer(1, 12))
 
         # Employer and employee details
         elements.append(
@@ -74,7 +79,7 @@ class PayslipPDFGenerator:
             )
         )
 
-        elements.append(Spacer(1, 25))
+        elements.append(Spacer(1, 14))
 
         # Assignment and payroll component breakdown
         if earnings_lines:
@@ -126,13 +131,13 @@ class PayslipPDFGenerator:
                     ("FONTSIZE", (0, 0), (-1, -1), 8),
                     ("ALIGN", (2, 1), (-1, -1), "RIGHT"),
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("TOPPADDING", (0, 0), (-1, -1), 8),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
                 ])
             )
 
             elements.append(earnings_table)
-            elements.append(Spacer(1, 20))
+            elements.append(Spacer(1, 12))
 
         # Realised employee withholding and employer contributions.
         for heading, lines in (
@@ -172,13 +177,60 @@ class PayslipPDFGenerator:
                     ("FONTSIZE", (0, 0), (-1, -1), 9),
                     ("ALIGN", (1, 0), (1, -1), "RIGHT"),
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("TOPPADDING", (0, 0), (-1, -1), 8),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
                 ])
             )
 
             elements.append(section_table)
-            elements.append(Spacer(1, 20))
+            elements.append(Spacer(1, 12))
+
+        if leave_summary:
+            elements.append(
+                Paragraph("Leave Summary", styles["Heading2"])
+            )
+            elements.append(Spacer(1, 10))
+
+            leave_data = [[
+                "Leave Type",
+                "Current Balance",
+                (
+                    "Accrued"
+                    if pay_run.status == "completed"
+                    else "Projected Accrual"
+                ),
+                (
+                    "Balance"
+                    if pay_run.status == "completed"
+                    else "Projected Balance"
+                ),
+            ]]
+
+            for line in leave_summary:
+                leave_data.append([
+                    Paragraph(str(line["name"]), styles["Normal"]),
+                    f'{line["current_balance"]:,.4f} h',
+                    f'{line["projected_accrual"]:,.4f} h',
+                    f'{line["projected_balance"]:,.4f} h',
+                ])
+
+            leave_table = Table(
+                leave_data,
+                colWidths=[150, 100, 100, 100],
+                repeatRows=1,
+            )
+            leave_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]))
+            elements.append(leave_table)
+            elements.append(Spacer(1, 12))
 
         # Payroll amounts
         data = [
@@ -198,14 +250,14 @@ class PayslipPDFGenerator:
                 ("ALIGN", (1, 0), (1, -1), "RIGHT"),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("FONTNAME", (0, 3), (-1, 3), "Helvetica-Bold"),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-                ("TOPPADDING", (0, 0), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
             ])
         )
 
         elements.append(table)
 
-        elements.append(Spacer(1, 30))
+        elements.append(Spacer(1, 16))
 
         elements.append(
             Paragraph(

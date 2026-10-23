@@ -40,6 +40,7 @@
 
     <!-- ACTIONS -->
 
+    {% if request.query_params.get("embed") != "1" %}
     <div class="d-flex justify-content-between mb-4 invoice-actions">
 
         <a href="/ui/invoices"
@@ -61,10 +62,12 @@
         </div>
 
     </div>
+    {% endif %}
 
     
     <!-- PROTOTYPE: INVOICE-LINKED CONTRACTOR PAYROLL -->
 
+    {% if request.query_params.get("embed") != "1" %}
     <div class="d-flex justify-content-end mb-3 invoice-actions">
 
         <a
@@ -74,6 +77,7 @@
         </a>
 
     </div>
+    {% endif %}
 
 <!-- INVOICE DOCUMENT -->
 
@@ -171,23 +175,42 @@
                     </thead>
 
                     <tbody>
+                        {% if line_items %}
+                        {% for item in line_items %}
                         <tr>
                             <td>
-                                Services provided
+                                {{ item.description }}
                             </td>
 
                             <td class="text-end">
-                                {{ "%.2f"|format(hours) }}
+                                {% if item.calculation_type == "percentage" %}
+                                    —
+                                {% else %}
+                                    {{ "%.2f"|format(item.quantity) }}
+                                {% endif %}
                             </td>
 
                             <td class="text-end">
-                                ${{ "%.2f"|format(assignment.billing_rate) }}
+                                {% if item.calculation_type == "percentage" %}
+                                    {{ "%.2f"|format(item.rate) }}%
+                                {% else %}
+                                    ${{ "%.2f"|format(item.rate) }}
+                                {% endif %}
                             </td>
 
                             <td class="text-end">
-                                ${{ "%.2f"|format(invoice.subtotal) }}
+                                ${{ "%.2f"|format(item.amount) }}
                             </td>
                         </tr>
+                        {% endfor %}
+                        {% else %}
+                        <tr>
+                            <td>Services provided</td>
+                            <td class="text-end">{{ "%.2f"|format(hours) }}</td>
+                            <td class="text-end">${{ "%.2f"|format(assignment.billing_rate) }}</td>
+                            <td class="text-end">${{ "%.2f"|format(invoice.subtotal) }}</td>
+                        </tr>
+                        {% endif %}
                     </tbody>
 
                 </table>

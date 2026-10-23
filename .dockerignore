@@ -22,5 +22,4 @@ __pycache__/
 
 # Development files
 tests/
-migrations/
 data/

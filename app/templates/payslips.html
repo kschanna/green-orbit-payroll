@@ -30,6 +30,7 @@
 
             <thead>
                 <tr>
+                    <th>Payslip ID</th>
                     <th>Worker</th>
                     <th>Pay Run</th>
                     <th>Pay Period</th>
@@ -47,6 +48,15 @@
                 {% for payslip in payslips %}
 
                 <tr>
+
+                    <td>
+                        <a href="/ui/payslips/{{ payslip.id }}/preview"
+                           data-bs-toggle="modal"
+                           data-bs-target="#payslipPreviewModal"
+                           data-payslip-id="{{ payslip.id }}">
+                            #{{ payslip.id }}
+                        </a>
+                    </td>
 
                     <td>
                         <a href="/ui/workers/{{ payslip.worker_id }}">
@@ -98,7 +108,7 @@
                 {% else %}
 
                 <tr>
-                    <td colspan="9" class="text-center text-muted">
+                    <td colspan="10" class="text-center text-muted">
                         No payslips have been generated yet.
                     </td>
                 </tr>
@@ -126,12 +136,21 @@
 
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
 
-            <h5 class="mb-0">
-                <a href="/ui/workers/{{ payslip.worker_id }}"
-                   class="text-success text-decoration-none">
-                    {{ payslip.worker_name }}
+            <div>
+                <a href="/ui/payslips/{{ payslip.id }}/preview"
+                   class="small"
+                   data-bs-toggle="modal"
+                   data-bs-target="#payslipPreviewModal"
+                   data-payslip-id="{{ payslip.id }}">
+                    Payslip #{{ payslip.id }}
                 </a>
-            </h5>
+                <h5 class="mb-0">
+                    <a href="/ui/workers/{{ payslip.worker_id }}"
+                       class="text-success text-decoration-none">
+                        {{ payslip.worker_name }}
+                    </a>
+                </h5>
+            </div>
 
             <a href="/ui/pay-runs/{{ payslip.pay_run_id }}"
                class="badge bg-light text-dark text-decoration-none">
@@ -232,5 +251,63 @@
     {% endfor %}
 
 </div>
+
+
+<!-- PAYSLIP PREVIEW MODAL -->
+
+<div class="modal fade"
+     id="payslipPreviewModal"
+     tabindex="-1"
+     aria-labelledby="payslipPreviewModalLabel"
+     aria-hidden="true">
+
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-md-down">
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+
+                <h5 class="modal-title" id="payslipPreviewModalLabel">
+                    Payslip
+                </h5>
+
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close">
+                </button>
+
+            </div>
+
+            <div class="modal-body p-0">
+                <iframe id="payslipPreviewFrame"
+                        title="Payslip preview"
+                        class="w-100 border-0 d-block"
+                        style="height: 80vh;">
+                </iframe>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+    const payslipPreviewModal = document.getElementById("payslipPreviewModal");
+    const payslipPreviewFrame = document.getElementById("payslipPreviewFrame");
+
+    payslipPreviewModal.addEventListener("show.bs.modal", (event) => {
+        const payslipId = event.relatedTarget.dataset.payslipId;
+
+        document.getElementById("payslipPreviewModalLabel").textContent =
+            `Payslip #${payslipId}`;
+        payslipPreviewFrame.src = `/ui/payslips/${payslipId}/preview?embed=1`;
+    });
+
+    payslipPreviewModal.addEventListener("hidden.bs.modal", () => {
+        payslipPreviewFrame.src = "about:blank";
+    });
+</script>
 
 {% endblock %}

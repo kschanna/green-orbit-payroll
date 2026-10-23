@@ -30,6 +30,7 @@ venv/
 # Generated files
 *.pdf
 !data/ato/*.pdf
+tmp/
 
 # Database backups
 *.dump

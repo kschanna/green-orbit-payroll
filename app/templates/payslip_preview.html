@@ -66,11 +66,15 @@
     <div class="d-flex flex-wrap justify-content-between
                 align-items-center gap-2 mb-4 payslip-actions">
 
+        {% if request.query_params.get("embed") != "1" %}
         <a
             href="/ui/workers/{{ worker.id }}/engagements/{{ engagement.id }}/work-patterns"
             class="btn btn-outline-secondary">
             ← Back to Work Patterns
         </a>
+        {% else %}
+        <span></span>
+        {% endif %}
 
         <div>
             <a
@@ -258,6 +262,36 @@
 
             </div>
 
+            {% if leave_summary %}
+            <h5 class="mt-5 mb-3">Leave Summary</h5>
+            <div class="table-responsive">
+                <table class="table align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Leave Type</th>
+                            <th class="text-end">Current Balance</th>
+                            <th class="text-end">
+                                {{ "Accrued" if pay_run.status == "completed" else "Projected Accrual" }}
+                            </th>
+                            <th class="text-end">
+                                {{ "Balance" if pay_run.status == "completed" else "Projected Balance" }}
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for leave in leave_summary %}
+                        <tr>
+                            <td><strong>{{ leave.name }}</strong></td>
+                            <td class="text-end">{{ "%.4f"|format(leave.current_balance) }} h</td>
+                            <td class="text-end">{{ "%.4f"|format(leave.projected_accrual) }} h</td>
+                            <td class="text-end"><strong>{{ "%.4f"|format(leave.projected_balance) }} h</strong></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+
 
             <!-- PAY SUMMARY -->
 
@@ -302,6 +336,51 @@
                 </div>
 
             </div>
+
+            <!-- PAYMENT INSTRUCTIONS -->
+
+            <h5 class="mt-5 mb-3">Payment Instructions</h5>
+
+            {% if payment_instructions %}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle small">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Processing Date</th>
+                            <th>Destination</th>
+                            <th>Status</th>
+                            <th class="text-end">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for payment in payment_instructions %}
+                        <tr>
+                            <td>{{ payment.processing_date | date_au }}</td>
+                            <td>
+                                <strong>{{ payment.account_name }}</strong>
+                                <div class="small text-muted">
+                                    {{ payment.bsb }} / {{ payment.account_number }}
+                                </div>
+                            </td>
+                            <td>
+                                <span class="badge bg-{{ 'success' if payment.batch_status == 'exported' else 'secondary' }}">
+                                    {{ payment.batch_status | title }}
+                                </span>
+                            </td>
+                            <td class="text-end fw-semibold">
+                                ${{ "%.2f"|format(payment.amount) }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-secondary">
+                No payment instruction has been prepared for this payslip.
+                Prepare payments from Pay Run #{{ pay_run.id }} to create one.
+            </div>
+            {% endif %}
 
 
             <!-- FOOTER -->

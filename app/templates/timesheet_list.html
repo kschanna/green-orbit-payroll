@@ -42,7 +42,16 @@
 
                     <tr>
 
-                        <td>{{ timesheet.id }}</td>
+                        <td>
+                            <a href="/ui/timesheets/weekly/{{ timesheet.id }}/preview"
+                               data-bs-toggle="modal"
+                               data-bs-target="#timesheetPreviewModal"
+                               data-timesheet-id="{{ timesheet.id }}"
+                               data-period-type="weekly"
+                               class="text-decoration-none fw-semibold">
+                                #{{ timesheet.id }}
+                            </a>
+                        </td>
 
                         <td>{{ timesheet.employee_name }}</td>
 
@@ -71,12 +80,6 @@
                         </td>
 
                         <td>
-
-                            <a
-                                href="/ui/timesheets/weekly/{{ timesheet.id }}/preview"
-                                class="btn btn-sm btn-outline-secondary me-2">
-                                Preview
-                            </a>
 
                             {% if timesheet.status == "approved"
                                   and timesheet.engagement_id %}
@@ -187,7 +190,16 @@
 
                     <tr>
 
-                        <td>{{ timesheet.id }}</td>
+                        <td>
+                            <a href="/ui/timesheets/daily/{{ timesheet.id }}/preview"
+                               data-bs-toggle="modal"
+                               data-bs-target="#timesheetPreviewModal"
+                               data-timesheet-id="{{ timesheet.id }}"
+                               data-period-type="daily"
+                               class="text-decoration-none fw-semibold">
+                                #{{ timesheet.id }}
+                            </a>
+                        </td>
 
                         <td>{{ timesheet.employee_name }}</td>
 
@@ -214,12 +226,6 @@
                         </td>
 
                         <td>
-
-                            <a
-                                href="/ui/timesheets/daily/{{ timesheet.id }}/preview"
-                                class="btn btn-sm btn-outline-secondary me-2">
-                                Preview
-                            </a>
 
                             {% if timesheet.status == "approved" %}
 
@@ -294,6 +300,54 @@
 
 {% endif %}
 </div>
+
+<!-- TIMESHEET PREVIEW MODAL -->
+
+<div class="modal fade"
+     id="timesheetPreviewModal"
+     tabindex="-1"
+     aria-labelledby="timesheetPreviewModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-md-down">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="timesheetPreviewModalLabel">
+                    Timesheet preview
+                </h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <iframe id="timesheetPreviewFrame"
+                        title="Timesheet preview"
+                        class="w-100 border-0 d-block"
+                        style="height: 82vh;"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const timesheetPreviewModal = document.getElementById("timesheetPreviewModal");
+const timesheetPreviewFrame = document.getElementById("timesheetPreviewFrame");
+
+timesheetPreviewModal.addEventListener("show.bs.modal", (event) => {
+    const trigger = event.relatedTarget;
+    const timesheetId = trigger.dataset.timesheetId;
+    const periodType = trigger.dataset.periodType;
+
+    document.getElementById("timesheetPreviewModalLabel").textContent =
+        `Timesheet #${timesheetId}`;
+    timesheetPreviewFrame.src =
+        `/ui/timesheets/${periodType}/${timesheetId}/preview?embed=1`;
+});
+
+timesheetPreviewModal.addEventListener("hidden.bs.modal", () => {
+    timesheetPreviewFrame.src = "about:blank";
+});
+</script>
 
 
 <!-- APPROVAL JAVASCRIPT -->

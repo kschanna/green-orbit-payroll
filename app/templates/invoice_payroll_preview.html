@@ -29,7 +29,26 @@
         <div class="alert alert-secondary">
 
             <strong>Customer Invoice:</strong>
-            {{ payroll.invoice_number }}
+            <a href="/ui/invoices/{{ payroll.invoice_id }}/preview"
+               class="preview-modal-link fw-semibold"
+               data-preview-url="/ui/invoices/{{ payroll.invoice_id }}/preview?embed=1"
+               data-preview-title="Invoice {{ payroll.invoice_number }}"
+               data-bs-toggle="modal"
+               data-bs-target="#payrollSourcePreviewModal">
+                {{ payroll.invoice_number }}
+            </a>
+
+            <div class="mt-2">
+                <strong>Related Timesheet:</strong>
+                <a href="/ui/timesheets/weekly/{{ payroll.header_id }}/preview"
+                   class="preview-modal-link fw-semibold"
+                   data-preview-url="/ui/timesheets/weekly/{{ payroll.header_id }}/preview?embed=1"
+                   data-preview-title="Timesheet #{{ payroll.header_id }}"
+                   data-bs-toggle="modal"
+                   data-bs-target="#payrollSourcePreviewModal">
+                    #{{ payroll.header_id }}
+                </a>
+            </div>
 
             <div class="mt-2">
                 Customer invoice total:
@@ -68,51 +87,81 @@
 
         </div>
 
-        <h5 class="mb-3">Payroll Calculation</h5>
+        <h5 class="mb-3">Itemised Payroll Components</h5>
 
+        {% for group in payroll.component_groups %}
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between">
+                <strong>{{ group.name }}</strong>
+                <span>${{ "%.2f"|format(group.subtotal) }}</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Component</th>
+                            <th class="text-end">Quantity / Base</th>
+                            <th class="text-end">Rate</th>
+                            <th class="text-end">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in group["items"] %}
+                        <tr>
+                            <td>{{ item.name }}</td>
+                            <td class="text-end">
+                                {% if item.calculation_type == "hourly" %}
+                                    {{ "%.2f"|format(item.quantity) }} hrs
+                                {% elif item.calculation_type == "percentage" %}
+                                    ${{ "%.2f"|format(item.quantity) }}
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if item.calculation_type == "hourly" %}
+                                    ${{ "%.2f"|format(item.rate) }}
+                                {% elif item.calculation_type == "percentage" %}
+                                    {{ "%.2f"|format(item.rate * 100) }}%
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                            <td class="text-end fw-semibold">
+                                ${{ "%.2f"|format(item.amount) }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endfor %}
+
+        <h5 class="mt-4 mb-3">Payroll Summary</h5>
         <table class="table">
-
             <tbody>
-
                 <tr>
                     <td>Approved Timesheet Hours</td>
-                    <td class="text-end">
-                        {{ "%.2f"|format(payroll.hours) }}
-                    </td>
+                    <td class="text-end">{{ "%.2f"|format(payroll.hours) }}</td>
                 </tr>
-
-                <tr class="table-light">
-                    <td>Gross Contractor Earnings</td>
-                    <td class="text-end">
-                        <strong>
-                            ${{ "%.2f"|format(payroll.gross) }}
-                        </strong>
-                    </td>
+                <tr>
+                    <td>Gross Pay</td>
+                    <td class="text-end">${{ "%.2f"|format(payroll.gross) }}</td>
                 </tr>
-
                 <tr>
                     <td>PAYG Withholding</td>
-                    <td class="text-end">
-                        ${{ "%.2f"|format(payroll.payg) }}
-                    </td>
+                    <td class="text-end">${{ "%.2f"|format(payroll.payg) }}</td>
                 </tr>
-
                 <tr class="table-light fw-bold">
                     <td>Net Pay</td>
-                    <td class="text-end">
-                        ${{ "%.2f"|format(payroll.net) }}
-                    </td>
+                    <td class="text-end">${{ "%.2f"|format(payroll.net) }}</td>
                 </tr>
-
                 <tr>
                     <td>Employer Superannuation</td>
-                    <td class="text-end">
-                        ${{ "%.2f"|format(payroll.total_super) }}
-                    </td>
+                    <td class="text-end">${{ "%.2f"|format(payroll.total_super) }}</td>
                 </tr>
-
             </tbody>
-
         </table>
 
         <div class="alert alert-info mt-3">
@@ -160,5 +209,51 @@
     </div>
 
 </div>
+
+<div class="modal fade"
+     id="payrollSourcePreviewModal"
+     tabindex="-1"
+     aria-labelledby="payrollSourcePreviewModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-md-down">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="payrollSourcePreviewModalLabel">
+                    Preview
+                </h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <iframe id="payrollSourcePreviewFrame"
+                        title="Payroll source preview"
+                        class="w-100 border-0 d-block"
+                        style="height: 82vh;"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const payrollSourcePreviewModal = document.getElementById(
+    "payrollSourcePreviewModal"
+);
+const payrollSourcePreviewFrame = document.getElementById(
+    "payrollSourcePreviewFrame"
+);
+
+payrollSourcePreviewModal.addEventListener("show.bs.modal", (event) => {
+    const trigger = event.relatedTarget;
+    document.getElementById("payrollSourcePreviewModalLabel").textContent =
+        trigger.dataset.previewTitle;
+    payrollSourcePreviewFrame.src = trigger.dataset.previewUrl;
+});
+
+payrollSourcePreviewModal.addEventListener("hidden.bs.modal", () => {
+    payrollSourcePreviewFrame.src = "about:blank";
+});
+</script>
 
 {% endblock %}

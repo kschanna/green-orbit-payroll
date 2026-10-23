@@ -13,6 +13,17 @@
 
 <body>
 
+    {# ?embed=1 renders the page without navigation, for use inside modal iframes #}
+    {% set embedded = request.query_params.get("embed") == "1" %}
+
+    {% if embedded %}
+
+    <main class="p-3">
+        {{ self.content() }}
+    </main>
+
+    {% else %}
+
     <!-- Mobile navigation -->
     <header class="mobile-header d-lg-none">
         <a href="/dashboard" class="mobile-brand">🌿 Green Orbit</a>
@@ -102,6 +113,8 @@
         </main>
 
     </div>
+
+    {% endif %}
 
     <!-- Bootstrap JavaScript for mobile menu -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
