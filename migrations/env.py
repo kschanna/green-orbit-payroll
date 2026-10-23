@@ -7,6 +7,7 @@ from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
+from sqlalchemy.engine import URL
 
 from alembic import context
 
@@ -42,8 +43,12 @@ from app.models.payment_instruction import PaymentInstruction
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-#config.set_main_option("sqlalchemy.url", DATABASE_URL)
-config.set_main_option("sqlalchemy.url", DATABASE_URL.replace("%", "%%"))
+database_url = (
+    DATABASE_URL.render_as_string(hide_password=False)
+    if isinstance(DATABASE_URL, URL)
+    else DATABASE_URL
+)
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
