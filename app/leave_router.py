@@ -48,32 +48,6 @@ def worker_leave_page(request: Request, worker_id: int):
             select(LeavePlan).where(LeavePlan.worker_id == worker_id)
             .order_by(LeavePlan.effective_from.desc())
         ).all()
-        edit_plan = None
-        edit_plan_id = request.query_params.get("edit_plan")
-        if edit_plan_id:
-            try:
-                requested_plan_id = int(edit_plan_id)
-            except ValueError as error:
-                raise HTTPException(404, "Leave plan not found") from error
-            selected_plan = db.get(LeavePlan, requested_plan_id)
-            if selected_plan is None or selected_plan.worker_id != worker_id:
-                raise HTTPException(404, "Leave plan not found")
-            edit_plan = {
-                "id": selected_plan.id,
-                "engagement_id": selected_plan.engagement_id,
-                "component_definition_id": selected_plan.component_definition_id,
-                "annual_entitlement_hours": selected_plan.annual_entitlement_hours,
-                "standard_hours_per_year": selected_plan.standard_hours_per_year,
-                "opening_balance_hours": selected_plan.opening_balance_hours,
-                "paid_leave_rate": selected_plan.paid_leave_rate,
-                "effective_from": selected_plan.effective_from.isoformat(),
-                "effective_to": (
-                    selected_plan.effective_to.isoformat()
-                    if selected_plan.effective_to else ""
-                ),
-                "allow_negative_balance": selected_plan.allow_negative_balance,
-                "accrues_during_paid_leave": selected_plan.accrues_during_paid_leave,
-            }
         definition_names = {d.id: d.name for d in definitions}
         rows = [{
             "id": p.id,
@@ -89,6 +63,24 @@ def worker_leave_page(request: Request, worker_id: int):
             "allow_negative_balance": p.allow_negative_balance,
             "plan_basis": p.plan_basis,
             "paid_leave_rate": p.paid_leave_rate,
+            "edit_data": {
+                "id": p.id,
+                "engagement_id": p.engagement_id,
+                "component_definition_id": p.component_definition_id,
+                "annual_entitlement_hours": str(p.annual_entitlement_hours),
+                "standard_hours_per_year": str(p.standard_hours_per_year),
+                "opening_balance_hours": str(p.opening_balance_hours),
+                "paid_leave_rate": (
+                    str(p.paid_leave_rate)
+                    if p.paid_leave_rate is not None else ""
+                ),
+                "effective_from": p.effective_from.isoformat(),
+                "effective_to": (
+                    p.effective_to.isoformat() if p.effective_to else ""
+                ),
+                "allow_negative_balance": p.allow_negative_balance,
+                "accrues_during_paid_leave": p.accrues_during_paid_leave,
+            },
         } for p in plans]
         transactions = db.execute(
             select(LeaveTransaction, LeavePlan, ComponentDefinition)
@@ -118,7 +110,6 @@ def worker_leave_page(request: Request, worker_id: int):
                 "description": t.description,
             } for t, p, d in transactions],
             "today": date.today().isoformat(),
-            "edit_plan": edit_plan,
         }
     return templates.TemplateResponse(request=request, name="worker_leave.html", context=context)
 

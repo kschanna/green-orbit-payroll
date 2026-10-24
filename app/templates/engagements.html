@@ -25,6 +25,8 @@
                     <th>Worker</th>
                     <th>Customer</th>
                     <th>Billing Rate</th>
+                    <th>Start Date</th>
+                    <th>End Date</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -46,20 +48,22 @@
                     <td>{{ engagement.customer_name }}</td>
                     <td>${{ engagement.billing_rate }}/hr</td>
                     <td>
+                        {{ engagement.start_date_display }}
+                    </td>
+                    <td>
+                        {{ engagement.end_date_display }}
+                    </td>
+                    <td>
                         <button type="button"
                                 class="btn btn-sm btn-outline-secondary"
                                 onclick='editEngagement({{ engagement | tojson }})'>
                             Edit
                         </button>
-                        <a href="/ui/assignments/{{ engagement.id }}/components"
-                           class="btn btn-sm btn-outline-success">
-                            Manage Components
-                        </a>
                     </td>
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="5" class="text-center text-muted">
+                    <td colspan="7" class="text-center text-muted">
                         No assignments found.
                     </td>
                 </tr>
@@ -69,11 +73,23 @@
     </div>
 </div>
 
-<div id="engagementEditor" class="card d-none">
-    <div class="card-body p-4">
-        <h5 id="formTitle" class="mb-4">New Assignment</h5>
+<div class="modal fade"
+     id="engagementEditor"
+     tabindex="-1"
+     aria-labelledby="formTitle"
+     aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="formTitle">New Assignment</h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+            </div>
 
-        <form id="engagementForm">
+            <form id="engagementForm">
+                <div class="modal-body">
             <input type="hidden" id="assignmentId">
 
             <div class="row g-3">
@@ -111,24 +127,44 @@
                            class="form-control"
                            min="0.01" step="0.01" required>
                 </div>
+
+                <div class="col-md-6">
+                    <label for="assignmentStartDate" class="form-label">
+                        Start Date
+                    </label>
+                    <input type="date"
+                           id="assignmentStartDate"
+                           class="form-control">
+                </div>
+
+                <div class="col-md-6">
+                    <label for="assignmentEndDate" class="form-label">
+                        End Date
+                    </label>
+                    <input type="date"
+                           id="assignmentEndDate"
+                           class="form-control">
+                </div>
             </div>
 
             <div id="formMessage" class="alert alert-danger mt-3 d-none"
                  role="alert"></div>
+                </div>
 
-            <div class="d-flex gap-2 mt-4">
-                <button type="submit" id="saveButton"
-                        class="btn btn-success">
-                    Save Assignment
-                </button>
-
+                <div class="modal-footer">
                 <button type="button"
                         class="btn btn-outline-secondary"
                         onclick="cancelEngagement()">
                     Cancel
                 </button>
-            </div>
-        </form>
+
+                <button type="submit" id="saveButton"
+                        class="btn btn-success">
+                    Save Assignment
+                </button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 
@@ -140,8 +176,8 @@ const saveButton = document.getElementById("saveButton");
 
 function showEditor() {
     message.classList.add("d-none");
-    editor.classList.remove("d-none");
-    editor.scrollIntoView({ behavior: "smooth", block: "start" });
+    saveButton.disabled = false;
+    bootstrap.Modal.getOrCreateInstance(editor).show();
 }
 
 function newEngagement() {
@@ -157,15 +193,25 @@ function editEngagement(engagement) {
     document.getElementById("engagementId").value = engagement.engagement_id;
     document.getElementById("customerId").value = engagement.customer_id;
     document.getElementById("billingRate").value = engagement.billing_rate;
+    document.getElementById("assignmentStartDate").value =
+        engagement.start_date;
+    document.getElementById("assignmentEndDate").value =
+        engagement.end_date;
     document.getElementById("formTitle").textContent =
         "Edit Assignment #" + engagement.id;
     showEditor();
 }
 
 function cancelEngagement() {
-    editor.classList.add("d-none");
+    bootstrap.Modal.getOrCreateInstance(editor).hide();
     form.reset();
 }
+
+editor.addEventListener("hidden.bs.modal", () => {
+    form.reset();
+    message.classList.add("d-none");
+    saveButton.disabled = false;
+});
 
 form.addEventListener("submit", async event => {
     event.preventDefault();
@@ -174,7 +220,9 @@ form.addEventListener("submit", async event => {
     const payload = {
         engagement_id: Number(document.getElementById("engagementId").value),
         customer_id: Number(document.getElementById("customerId").value),
-        billing_rate: document.getElementById("billingRate").value
+        billing_rate: document.getElementById("billingRate").value,
+        start_date: document.getElementById("assignmentStartDate").value || null,
+        end_date: document.getElementById("assignmentEndDate").value || null
     };
 
     saveButton.disabled = true;

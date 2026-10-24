@@ -2,8 +2,9 @@
 
 {% block content %}
 
-<a href="/ui/engagements" class="btn btn-link mb-3">
-    ← Back to Assignments
+<a href="/ui/workers/{{ assignment.worker_id }}/engagements/{{ assignment.engagement_id }}/assignments/{{ assignment.id }}/preview"
+   class="btn btn-link mb-3">
+    ← Back to Assignment
 </a>
 
 <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
@@ -15,78 +16,12 @@
             {{ assignment.customer }}
         </p>
     </div>
-</div>
-
-<div class="card p-4 mb-4">
-    <h5>Add Component</h5>
-    <hr>
-
-    <form method="post">
-        <input type="hidden" name="csrf_token"
-               value="{{ request.session.get('csrf_token', '') }}">
-
-        <div class="row g-3">
-            <div class="col-md-6">
-                <label class="form-label">Component</label>
-                <select name="component_definition_id"
-                        class="form-select" required>
-                    <option value="">Select component</option>
-                    {% for family, components in component_groups.items() %}
-                    <optgroup label="{{ family }}">
-                        {% for component in components %}
-                        <option value="{{ component.id }}">
-                            {{ component.name }}
-                        </option>
-                        {% endfor %}
-                    </optgroup>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <div class="col-md-6">
-                <label class="form-label">Applies To</label>
-                <select name="applies_to" id="applies_to"
-                        class="form-select" required>
-                    <option value="both">Payroll and Invoice</option>
-                    <option value="payroll">Payroll Only</option>
-                    <option value="invoice">Invoice Only</option>
-                </select>
-            </div>
-
-            <div class="col-md-6" id="pay_rate_group">
-                <label class="form-label">Pay Rate ($ or %)</label>
-                <input type="number" name="pay_rate" id="pay_rate"
-                       class="form-control"
-                       min="0" max="99999999" step="0.0001">
-            </div>
-
-            <div class="col-md-6" id="bill_rate_group">
-                <label class="form-label">Bill Rate ($ or %)</label>
-                <input type="number" name="bill_rate" id="bill_rate"
-                       class="form-control"
-                       min="0" max="99999999" step="0.0001">
-                <div class="form-text">
-                    Invoice percentage components are calculated from ordinary billed services.
-                </div>
-            </div>
-
-            <div class="col-md-6">
-                <label class="form-label">Effective From</label>
-                <input type="date" name="effective_from"
-                       class="form-control" required>
-            </div>
-
-            <div class="col-md-6">
-                <label class="form-label">Effective To (optional)</label>
-                <input type="date" name="effective_to"
-                       class="form-control">
-            </div>
-        </div>
-
-        <button type="submit" class="btn btn-success mt-4">
-            Save Component
-        </button>
-    </form>
+    <button type="button"
+            class="btn btn-success"
+            data-bs-toggle="modal"
+            data-bs-target="#newComponentModal">
+        + New Component
+    </button>
 </div>
 
 <div class="card p-4" style="min-width: 0;">
@@ -104,6 +39,7 @@
                     <th>Bill Rate</th>
                     <th>Effective From</th>
                     <th>Effective To</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -127,16 +63,226 @@
                     </td>
                     <td>{{ item.effective_from | date_au }}</td>
                     <td>{{ (item.effective_to | date_au) if item.effective_to else "Ongoing" }}</td>
+                    <td>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-primary edit-component"
+                                data-bs-toggle="modal"
+                                data-bs-target="#editComponentModal"
+                                data-component-id="{{ item.id }}"
+                                data-component-definition-id="{{ item.component_definition_id }}"
+                                data-component-name="{{ item.name | e }}"
+                                data-applies-to="{{ item.applies_to }}"
+                                data-pay-rate="{{ item.pay_rate if item.pay_rate is not none else '' }}"
+                                data-bill-rate="{{ item.bill_rate if item.bill_rate is not none else '' }}"
+                                data-effective-from="{{ item.effective_from.isoformat() }}"
+                                data-effective-to="{{ item.effective_to.isoformat() if item.effective_to else '' }}">
+                            Edit
+                        </button>
+                    </td>
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="7" class="text-center text-muted">
+                    <td colspan="8" class="text-center text-muted">
                         No components configured for this assignment.
                     </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
+    </div>
+</div>
+
+<div class="modal fade"
+     id="newComponentModal"
+     tabindex="-1"
+     aria-labelledby="newComponentModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="newComponentModalLabel">
+                    New Component
+                </h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+            </div>
+
+            <form method="post">
+                <div class="modal-body">
+                    <input type="hidden" name="csrf_token"
+                           value="{{ request.session.get('csrf_token', '') }}">
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Component</label>
+                            <select name="component_definition_id"
+                                    class="form-select" required>
+                                <option value="">Select component</option>
+                                {% for family, components in component_groups.items() %}
+                                <optgroup label="{{ family }}">
+                                    {% for component in components %}
+                                    <option value="{{ component.id }}">
+                                        {{ component.name }}
+                                    </option>
+                                    {% endfor %}
+                                </optgroup>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">Applies To</label>
+                            <select name="applies_to" id="applies_to"
+                                    class="form-select" required>
+                                <option value="both">Payroll and Invoice</option>
+                                <option value="payroll">Payroll Only</option>
+                                <option value="invoice">Invoice Only</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-6" id="pay_rate_group">
+                            <label class="form-label">Pay Rate ($ or %)</label>
+                            <input type="number" name="pay_rate" id="pay_rate"
+                                   class="form-control"
+                                   min="0" max="99999999" step="0.0001">
+                        </div>
+
+                        <div class="col-md-6" id="bill_rate_group">
+                            <label class="form-label">Bill Rate ($ or %)</label>
+                            <input type="number" name="bill_rate" id="bill_rate"
+                                   class="form-control"
+                                   min="0" max="99999999" step="0.0001">
+                            <div class="form-text">
+                                Invoice percentage components are calculated from ordinary billed services.
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">Effective From</label>
+                            <input type="date" name="effective_from"
+                                   class="form-control" required>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">Effective To (optional)</label>
+                            <input type="date" name="effective_to"
+                                   class="form-control">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button"
+                            class="btn btn-outline-secondary"
+                            data-bs-dismiss="modal">
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn btn-success">
+                        Save Component
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade"
+     id="editComponentModal"
+     tabindex="-1"
+     aria-labelledby="editComponentModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editComponentModalLabel">
+                    Edit Component
+                </h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+            </div>
+
+            <form method="post" id="edit_component_form">
+                <div class="modal-body">
+                    <input type="hidden" name="csrf_token"
+                           value="{{ request.session.get('csrf_token', '') }}">
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Component</label>
+                            <select name="component_definition_id"
+                                    id="edit_component_definition_id"
+                                    class="form-select" required>
+                                {% for family, components in component_groups.items() %}
+                                <optgroup label="{{ family }}">
+                                    {% for component in components %}
+                                    <option value="{{ component.id }}">
+                                        {{ component.name }}
+                                    </option>
+                                    {% endfor %}
+                                </optgroup>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">Applies To</label>
+                            <select name="applies_to" id="edit_applies_to"
+                                    class="form-select" required>
+                                <option value="both">Payroll and Invoice</option>
+                                <option value="payroll">Payroll Only</option>
+                                <option value="invoice">Invoice Only</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-6" id="edit_pay_rate_group">
+                            <label class="form-label">Pay Rate ($ or %)</label>
+                            <input type="number" name="pay_rate" id="edit_pay_rate"
+                                   class="form-control"
+                                   min="0" max="99999999" step="0.0001">
+                        </div>
+
+                        <div class="col-md-6" id="edit_bill_rate_group">
+                            <label class="form-label">Bill Rate ($ or %)</label>
+                            <input type="number" name="bill_rate" id="edit_bill_rate"
+                                   class="form-control"
+                                   min="0" max="99999999" step="0.0001">
+                            <div class="form-text">
+                                Invoice percentage components are calculated from ordinary billed services.
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">Effective From</label>
+                            <input type="date" name="effective_from"
+                                   id="edit_effective_from"
+                                   class="form-control" required>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">Effective To (optional)</label>
+                            <input type="date" name="effective_to"
+                                   id="edit_effective_to"
+                                   class="form-control">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button"
+                            class="btn btn-outline-secondary"
+                            data-bs-dismiss="modal">
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 
@@ -165,6 +311,56 @@ document.addEventListener("DOMContentLoaded", function () {
 
     appliesTo.addEventListener("change", updateRateFields);
     updateRateFields();
+});
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const modal = document.getElementById("editComponentModal");
+    const form = document.getElementById("edit_component_form");
+    const definition = document.getElementById(
+        "edit_component_definition_id"
+    );
+    const appliesTo = document.getElementById("edit_applies_to");
+    const payGroup = document.getElementById("edit_pay_rate_group");
+    const billGroup = document.getElementById("edit_bill_rate_group");
+    const payRate = document.getElementById("edit_pay_rate");
+    const billRate = document.getElementById("edit_bill_rate");
+    const effectiveFrom = document.getElementById("edit_effective_from");
+    const effectiveTo = document.getElementById("edit_effective_to");
+
+    function updateRateFields() {
+        const usePay = appliesTo.value !== "invoice";
+        const useBill = appliesTo.value !== "payroll";
+
+        payGroup.style.display = usePay ? "" : "none";
+        billGroup.style.display = useBill ? "" : "none";
+        payRate.required = usePay;
+        billRate.required = useBill;
+
+        if (!usePay) payRate.value = "";
+        if (!useBill) billRate.value = "";
+    }
+
+    appliesTo.addEventListener("change", updateRateFields);
+
+    modal.addEventListener("show.bs.modal", function (event) {
+        const trigger = event.relatedTarget;
+
+        form.action = (
+            `/ui/assignments/{{ assignment.id }}/components/`
+            + trigger.dataset.componentId
+        );
+        document.getElementById("editComponentModalLabel").textContent =
+            `Edit ${trigger.dataset.componentName}`;
+        definition.value = trigger.dataset.componentDefinitionId;
+        appliesTo.value = trigger.dataset.appliesTo;
+        payRate.value = trigger.dataset.payRate;
+        billRate.value = trigger.dataset.billRate;
+        effectiveFrom.value = trigger.dataset.effectiveFrom;
+        effectiveTo.value = trigger.dataset.effectiveTo;
+        updateRateFields();
+    });
 });
 </script>
 

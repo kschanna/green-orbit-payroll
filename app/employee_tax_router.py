@@ -51,6 +51,7 @@ def worker_tax_details_page(request: Request, worker_id: int):
 
         profile_data = [
             {
+                "id": p.id,
                 "residency_status": p.residency_status,
                 "claims_tax_free_threshold": p.claims_tax_free_threshold,
                 "has_study_loan": p.has_study_loan,
@@ -141,6 +142,70 @@ def save_worker_tax_details(
                 effective_to=effective_to,
             )
         )
+        db.commit()
+
+    return RedirectResponse(
+        f"/ui/workers/{worker_id}/tax",
+        status_code=303,
+    )
+
+
+@router.post("/ui/workers/{worker_id}/tax/{profile_id}")
+def update_worker_tax_details(
+    request: Request,
+    worker_id: int,
+    profile_id: int,
+    csrf_token: str = Form(...),
+    residency_status: str = Form(...),
+    claims_tax_free_threshold: bool = Form(False),
+    has_study_loan: bool = Form(False),
+    tfn_declaration_received: bool = Form(False),
+    effective_from: date = Form(...),
+    effective_to: date | None = Form(None),
+):
+    from app.employee_tfn_router import require_csrf
+
+    require_tfn_admin(request)
+    require_csrf(request, csrf_token)
+
+    if residency_status not in {
+        "resident", "foreign_resident", "working_holiday_maker"
+    }:
+        raise HTTPException(422, "Invalid residency status")
+
+    if effective_to is not None and effective_to < effective_from:
+        raise HTTPException(422, "End date cannot precede start date")
+
+    with SessionLocal() as db:
+        profile = db.get(EmployeeTaxProfile, profile_id)
+        if profile is None or profile.worker_id != worker_id:
+            raise HTTPException(404, "Tax profile not found")
+
+        other_profiles = db.scalars(
+            select(EmployeeTaxProfile).where(
+                EmployeeTaxProfile.worker_id == worker_id,
+                EmployeeTaxProfile.id != profile_id,
+            )
+        ).all()
+
+        for other in other_profiles:
+            overlaps = (
+                (effective_to is None or other.effective_from <= effective_to)
+                and
+                (other.effective_to is None or effective_from <= other.effective_to)
+            )
+            if overlaps:
+                raise HTTPException(
+                    409,
+                    "Tax profile dates overlap an existing profile",
+                )
+
+        profile.residency_status = residency_status
+        profile.claims_tax_free_threshold = claims_tax_free_threshold
+        profile.has_study_loan = has_study_loan
+        profile.tfn_declaration_received = tfn_declaration_received
+        profile.effective_from = effective_from
+        profile.effective_to = effective_to
         db.commit()
 
     return RedirectResponse(

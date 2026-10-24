@@ -326,9 +326,39 @@ def dashboard(request: Request):
 
         pay_runs = session.scalars(
             select(PayRun)
-            .order_by(PayRun.payment_date.desc())
+            .order_by(PayRun.id.desc())
             .limit(10)
         ).all()
+
+        worker_status_rows = session.execute(
+            select(Worker.active, func.count(Worker.id))
+            .group_by(Worker.active)
+        ).all()
+        worker_status_counts = {
+            bool(is_active): count
+            for is_active, count in worker_status_rows
+        }
+
+        pay_run_status_rows = session.execute(
+            select(PayRun.status, func.count(PayRun.id))
+            .group_by(PayRun.status)
+            .order_by(PayRun.status)
+        ).all()
+
+        completed_value_rows = session.execute(
+            select(
+                PayRun.id,
+                PayRun.payment_date,
+                func.coalesce(func.sum(Payslip.gross_pay), 0),
+                func.coalesce(func.sum(Payslip.net_pay), 0),
+            )
+            .outerjoin(Payslip, Payslip.pay_run_id == PayRun.id)
+            .where(PayRun.status == "completed")
+            .group_by(PayRun.id, PayRun.payment_date)
+            .order_by(PayRun.id.desc())
+            .limit(6)
+        ).all()
+        completed_value_rows.reverse()
 
         return templates.TemplateResponse(
             request=request,
@@ -337,7 +367,38 @@ def dashboard(request: Request):
                 "worker_count": worker_count,
                 "pay_run_count": pay_run_count,
                 "completed_count": completed_count,
-                "pay_runs": pay_runs
+                "pay_runs": pay_runs,
+                "worker_chart": {
+                    "labels": ["Active", "Inactive"],
+                    "values": [
+                        worker_status_counts.get(True, 0),
+                        worker_status_counts.get(False, 0),
+                    ],
+                },
+                "pay_run_chart": {
+                    "labels": [
+                        status.replace("_", " ").title()
+                        for status, _ in pay_run_status_rows
+                    ],
+                    "values": [
+                        count for _, count in pay_run_status_rows
+                    ],
+                },
+                "completed_value_chart": {
+                    "labels": [
+                        f"Run #{run_id} · {payment_date.strftime('%d/%m/%y')}"
+                        for run_id, payment_date, _, _
+                        in completed_value_rows
+                    ],
+                    "gross_values": [
+                        float(gross)
+                        for _, _, gross, _ in completed_value_rows
+                    ],
+                    "net_values": [
+                        float(net)
+                        for _, _, _, net in completed_value_rows
+                    ],
+                },
             }
         )
 
@@ -2718,7 +2779,7 @@ def organisations_page(request: Request):
                 Engagement.organisation_id == Organisation.id
             )
             .group_by(Organisation.id)
-            .order_by(Organisation.name)
+            .order_by(Organisation.id.desc())
         ).all()
 
         organisation_data = [
@@ -3636,6 +3697,8 @@ class AssignmentInput(BaseModel):
     engagement_id: int
     customer_id: int
     billing_rate: Decimal
+    start_date: date | None = None
+    end_date: date | None = None
 
 
 
@@ -3735,6 +3798,63 @@ def assignment_preview_page(
         worker = engagement.worker
         organisation = engagement.organisation
         customer = assignment.customer
+        customer_options = db.scalars(
+            select(Organisation).order_by(Organisation.name)
+        ).all()
+
+        definitions = db.scalars(
+            select(ComponentDefinition)
+            .order_by(ComponentDefinition.name)
+        ).all()
+        families = db.scalars(
+            select(ComponentFamily).order_by(ComponentFamily.name)
+        ).all()
+        family_names = {
+            family.id: family.name for family in families
+        }
+        definition_lookup = {
+            definition.id: definition for definition in definitions
+        }
+        component_groups = {}
+
+        for definition in definitions:
+            if not definition.active:
+                continue
+            family_name = family_names.get(definition.family_id, "Other")
+            component_groups.setdefault(family_name, []).append({
+                "id": definition.id,
+                "name": definition.name,
+            })
+
+        configured_components = db.scalars(
+            select(AssignmentComponent)
+            .where(AssignmentComponent.assignment_id == assignment_id)
+            .order_by(
+                AssignmentComponent.effective_from.desc(),
+                AssignmentComponent.id.desc(),
+            )
+        ).all()
+        component_history = []
+
+        for component in configured_components:
+            definition = definition_lookup.get(
+                component.component_definition_id
+            )
+            component_history.append({
+                "id": component.id,
+                "component_definition_id": (
+                    component.component_definition_id
+                ),
+                "name": definition.name if definition else "Unknown",
+                "calculation_type": (
+                    definition.calculation_type if definition else ""
+                ),
+                "applies_to": component.applies_to,
+                "pay_rate": component.pay_rate,
+                "bill_rate": component.bill_rate,
+                "effective_from": component.effective_from,
+                "effective_to": component.effective_to,
+            })
 
         # --------------------------------------------------
         # TIMESHEETS
@@ -3900,6 +4020,15 @@ def assignment_preview_page(
                 "customer_name": customer.name,
                 "engagement_type": engagement.engagement_type,
                 "billing_rate": assignment.billing_rate,
+                "assignment_start_date": assignment.start_date,
+                "assignment_end_date": assignment.end_date,
+                "assignment_customer_id": assignment.customer_id,
+                "customer_options": [
+                    {"id": option.id, "name": option.name}
+                    for option in customer_options
+                ],
+                "component_groups": component_groups,
+                "component_history": component_history,
                 "timesheets": timesheet_data,
                 "invoices": invoice_data,
                 "payslips": payslip_data,
@@ -3911,7 +4040,7 @@ def assignment_preview_page(
 def assignments_page(request: Request):
     with SessionLocal() as db:
         assignments = db.scalars(
-            select(Assignment).order_by(Assignment.id)
+            select(Assignment).order_by(Assignment.id.desc())
         ).all()
         assignment_data = [
             {
@@ -3931,6 +4060,22 @@ def assignments_page(request: Request):
                 ),
                 "customer_name": assignment.customer.name,
                 "billing_rate": str(assignment.billing_rate),
+                "start_date": (
+                    assignment.start_date.isoformat()
+                    if assignment.start_date else ""
+                ),
+                "start_date_display": (
+                    assignment.start_date.strftime("%d/%m/%Y")
+                    if assignment.start_date else "Not set"
+                ),
+                "end_date": (
+                    assignment.end_date.isoformat()
+                    if assignment.end_date else ""
+                ),
+                "end_date_display": (
+                    assignment.end_date.strftime("%d/%m/%Y")
+                    if assignment.end_date else "Ongoing"
+                ),
             }
             for assignment in assignments
         ]
@@ -3967,6 +4112,12 @@ def assignments_page(request: Request):
 
 
 def validate_engagement_input(db, data):
+    if (
+        data.start_date is not None
+        and data.end_date is not None
+        and data.end_date < data.start_date
+    ):
+        raise HTTPException(422, "End date cannot be before start date")
     if not data.billing_rate.is_finite() or data.billing_rate <= 0:
         raise HTTPException(422, "Billing rate must be greater than zero")
     if data.billing_rate.as_tuple().exponent < -2:
@@ -3989,6 +4140,8 @@ def create_engagement(data: AssignmentInput):
             employee_id=None,
             customer_id=data.customer_id,
             billing_rate=data.billing_rate,
+            start_date=data.start_date,
+            end_date=data.end_date,
         )
         db.add(assignment)
         db.commit()
@@ -4008,6 +4161,8 @@ def update_engagement(engagement_id: int, data: AssignmentInput):
         assignment.employee_id = None
         assignment.customer_id = data.customer_id
         assignment.billing_rate = data.billing_rate
+        assignment.start_date = data.start_date
+        assignment.end_date = data.end_date
         db.commit()
         return {"id": assignment.id}
 
@@ -4017,11 +4172,15 @@ def create_assignment(
     engagement_id: int = Form(...),
     customer_id: int = Form(...),
     billing_rate: Decimal = Form(...),
+    start_date: date | None = Form(None),
+    end_date: date | None = Form(None),
 ):
     data = AssignmentInput(
         engagement_id=engagement_id,
         customer_id=customer_id,
         billing_rate=billing_rate,
+        start_date=start_date,
+        end_date=end_date,
     )
     with SessionLocal() as db:
         validate_engagement_input(db, data)
@@ -4030,6 +4189,8 @@ def create_assignment(
             employee_id=None,
             customer_id=data.customer_id,
             billing_rate=data.billing_rate,
+            start_date=data.start_date,
+            end_date=data.end_date,
         )
         db.add(assignment)
         db.commit()

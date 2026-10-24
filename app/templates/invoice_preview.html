@@ -40,29 +40,32 @@
 
     <!-- ACTIONS -->
 
-    {% if request.query_params.get("embed") != "1" %}
-    <div class="d-flex justify-content-between mb-4 invoice-actions">
+    <div class="d-flex {% if request.query_params.get('embed') == '1' %}justify-content-end{% else %}justify-content-between{% endif %} mb-4 invoice-actions">
 
+        {% if request.query_params.get("embed") != "1" %}
         <a href="/ui/invoices"
            class="btn btn-outline-secondary">
             ← Back to Invoices
         </a>
+        {% endif %}
 
         <div>
             <a href="/invoices/{{ invoice.id }}/pdf"
-               class="btn btn-outline-success me-2">
+               download="{{ invoice.invoice_number }}.pdf"
+               class="btn btn-outline-success{% if request.query_params.get('embed') != '1' %} me-2{% endif %}">
                 Download PDF
             </a>
 
+            {% if request.query_params.get("embed") != "1" %}
             <button type="button"
                     onclick="window.print()"
                     class="btn btn-primary">
                 Print Invoice
             </button>
+            {% endif %}
         </div>
 
     </div>
-    {% endif %}
 
     
     <!-- PROTOTYPE: INVOICE-LINKED CONTRACTOR PAYROLL -->

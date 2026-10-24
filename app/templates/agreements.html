@@ -83,17 +83,23 @@
                     <td>
                         <div class="d-flex gap-2">
 
-                            <a
-                                href="/ui/agreements/{{ agreement.id }}"
-                                class="btn btn-sm btn-outline-secondary">
+                            <button type="button"
+                                class="btn btn-sm btn-outline-secondary"
+                                data-bs-toggle="modal"
+                                data-bs-target="#agreementModal"
+                                data-modal-title="Work Pattern #{{ agreement.id }}"
+                                data-modal-url="/ui/agreements/{{ agreement.id }}?embed=1">
                                 View
-                            </a>
+                            </button>
 
-                            <a
-                                href="/ui/agreements/{{ agreement.id }}/edit"
-                                class="btn btn-sm btn-outline-primary">
+                            <button type="button"
+                                class="btn btn-sm btn-outline-primary"
+                                data-bs-toggle="modal"
+                                data-bs-target="#agreementModal"
+                                data-modal-title="Edit Work Pattern #{{ agreement.id }}"
+                                data-modal-url="/ui/agreements/{{ agreement.id }}/edit?embed=1">
                                 Edit
-                            </a>
+                            </button>
 
                         </div>
                     </td>
@@ -206,17 +212,23 @@
 
         <div class="d-flex gap-2 mt-3">
 
-            <a
-                href="/ui/agreements/{{ agreement.id }}"
-                class="btn btn-outline-secondary flex-fill">
+            <button type="button"
+                class="btn btn-outline-secondary flex-fill"
+                data-bs-toggle="modal"
+                data-bs-target="#agreementModal"
+                data-modal-title="Work Pattern #{{ agreement.id }}"
+                data-modal-url="/ui/agreements/{{ agreement.id }}?embed=1">
                 View
-            </a>
+            </button>
 
-            <a
-                href="/ui/agreements/{{ agreement.id }}/edit"
-                class="btn btn-outline-primary flex-fill">
+            <button type="button"
+                class="btn btn-outline-primary flex-fill"
+                data-bs-toggle="modal"
+                data-bs-target="#agreementModal"
+                data-modal-title="Edit Work Pattern #{{ agreement.id }}"
+                data-modal-url="/ui/agreements/{{ agreement.id }}/edit?embed=1">
                 Edit
-            </a>
+            </button>
 
         </div>
 
@@ -236,5 +248,68 @@
     {% endfor %}
 
 </div>
+
+<div class="modal fade" id="agreementModal" tabindex="-1"
+     aria-labelledby="agreementModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-md-down">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="agreementModalLabel">Work Pattern</h5>
+                <button type="button" class="btn-close"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <iframe id="agreementModalFrame"
+                        title="Work pattern"
+                        class="w-100 border-0"
+                        style="display: block; height: 320px;"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const agreementModal = document.getElementById("agreementModal");
+const agreementModalFrame = document.getElementById("agreementModalFrame");
+const agreementModalTitle = document.getElementById("agreementModalLabel");
+
+agreementModal.addEventListener("show.bs.modal", event => {
+    const trigger = event.relatedTarget;
+    agreementModalTitle.textContent = trigger.dataset.modalTitle;
+    agreementModalFrame.src = trigger.dataset.modalUrl;
+});
+
+agreementModal.addEventListener("hidden.bs.modal", () => {
+    agreementModalFrame.src = "about:blank";
+    agreementModalFrame.style.height = "320px";
+});
+
+agreementModalFrame.addEventListener("load", () => {
+    if (agreementModalFrame.src === "about:blank") return;
+
+    const frameDocument = agreementModalFrame.contentDocument;
+    if (!frameDocument) return;
+
+    const contentHeight = Math.max(
+        frameDocument.body.scrollHeight,
+        frameDocument.documentElement.scrollHeight
+    );
+    const maximumHeight = Math.max(320, window.innerHeight - 190);
+    agreementModalFrame.style.height =
+        `${Math.min(contentHeight + 8, maximumHeight)}px`;
+});
+
+window.addEventListener("message", event => {
+    if (event.origin !== window.location.origin) return;
+
+    if (event.data?.type === "close-agreement-modal") {
+        bootstrap.Modal.getOrCreateInstance(agreementModal).hide();
+    }
+
+    if (event.data?.type === "agreement-saved") {
+        window.location.reload();
+    }
+});
+</script>
 
 {% endblock %}

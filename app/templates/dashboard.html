@@ -12,10 +12,10 @@
             Welcome to Green Orbit Payroll
         </p>
         <span class="badge bg-success mt-2">
-            Prototype v0.2
+            Prototype v0.3
         </span>
         <span class="badge bg-secondary mt-2 ms-1">
-            Released 23/10/2026
+            Released 24/10/2026
         </span>
     </div>
 
@@ -51,6 +51,40 @@
         </div>
     </div>
 
+</div>
+
+<!-- DASHBOARD CHARTS -->
+
+<div class="row g-3 mt-3">
+    <div class="col-12 col-lg-4">
+        <div class="card p-3 p-md-4 h-100">
+            <h5 class="mb-1">Worker Status</h5>
+            <p class="text-muted small mb-3">Active and inactive workers</p>
+            <div class="dashboard-chart">
+                <canvas id="workerStatusChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-4">
+        <div class="card p-3 p-md-4 h-100">
+            <h5 class="mb-1">Pay Runs by Status</h5>
+            <p class="text-muted small mb-3">Current payroll workflow</p>
+            <div class="dashboard-chart">
+                <canvas id="payRunStatusChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-4">
+        <div class="card p-3 p-md-4 h-100">
+            <h5 class="mb-1">Completed Payroll Value</h5>
+            <p class="text-muted small mb-3">Gross and net pay for the latest six runs</p>
+            <div class="dashboard-chart">
+                <canvas id="completedValueChart"></canvas>
+            </div>
+        </div>
+    </div>
 </div>
 
 
@@ -190,5 +224,106 @@
     {% endfor %}
 
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+const workerChartData = {{ worker_chart | tojson }};
+const payRunChartData = {{ pay_run_chart | tojson }};
+const completedValueData = {{ completed_value_chart | tojson }};
+const chartTextColour = "#5f6368";
+const currencyFormatter = new Intl.NumberFormat("en-AU", {
+    style: "currency",
+    currency: "AUD",
+    maximumFractionDigits: 0
+});
+
+Chart.defaults.color = chartTextColour;
+Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+
+new Chart(document.getElementById("workerStatusChart"), {
+    type: "doughnut",
+    data: {
+        labels: workerChartData.labels,
+        datasets: [{
+            data: workerChartData.values,
+            backgroundColor: ["#36845b", "#adb5bd"],
+            borderWidth: 0
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: "65%",
+        plugins: { legend: { position: "bottom" } }
+    }
+});
+
+new Chart(document.getElementById("payRunStatusChart"), {
+    type: "bar",
+    data: {
+        labels: payRunChartData.labels,
+        datasets: [{
+            label: "Pay runs",
+            data: payRunChartData.values,
+            backgroundColor: "#6c757d",
+            borderRadius: 5
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            y: { beginAtZero: true, ticks: { precision: 0 } },
+            x: { grid: { display: false } }
+        }
+    }
+});
+
+new Chart(document.getElementById("completedValueChart"), {
+    type: "line",
+    data: {
+        labels: completedValueData.labels,
+        datasets: [
+            {
+                label: "Gross pay",
+                data: completedValueData.gross_values,
+                borderColor: "#36845b",
+                backgroundColor: "rgba(54, 132, 91, 0.12)",
+                fill: true,
+                tension: 0.25
+            },
+            {
+                label: "Net pay",
+                data: completedValueData.net_values,
+                borderColor: "#495057",
+                backgroundColor: "transparent",
+                tension: 0.25
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+            legend: { position: "bottom" },
+            tooltip: {
+                callbacks: {
+                    label: context =>
+                        `${context.dataset.label}: ${currencyFormatter.format(context.raw)}`
+                }
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: { callback: value => currencyFormatter.format(value) }
+            },
+            x: { grid: { display: false } }
+        }
+    }
+});
+</script>
 
 {% endblock %}

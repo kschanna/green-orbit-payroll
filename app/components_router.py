@@ -34,6 +34,8 @@ def components_page(request: Request):
                 "id": component.id,
                 "code": component.code,
                 "name": component.name,
+                "description": component.description or "",
+                "family_id": component.family_id,
                 "family": family_names.get(component.family_id, "Unknown"),
                 "calculation_type": component.calculation_type,
                 "active": component.active,
@@ -41,10 +43,23 @@ def components_page(request: Request):
             for component in definitions
         ]
 
+        rows.sort(
+            key=lambda component: (
+                component["family"].lower(),
+                component["name"].lower(),
+            )
+        )
+
     return templates.TemplateResponse(
         request=request,
         name="components.html",
-        context={"components": rows},
+        context={
+            "components": rows,
+            "families": [
+                {"id": family.id, "name": family.name}
+                for family in families
+            ],
+        },
     )
 
 

@@ -34,7 +34,6 @@
                     <th>Worker</th>
                     <th>Total</th>
                     <th>Status</th>
-                    <th>Invoice PDF</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -86,12 +85,6 @@
                         </span>
                     </td>
                     <td>
-                        <a href="/invoices/{{ invoice.id }}/pdf"
-                        class="btn btn-sm btn-outline-success">
-                            Download PDF
-                        </a>
-                    </td>
-                    <td>
                         {% if invoice.status == "draft" %}
 
                         <form action="/ui/invoices/{{ invoice.id }}/status" method="post">
@@ -129,7 +122,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="9" class="text-center text-muted">
+                    <td colspan="8" class="text-center text-muted">
                         No invoices have been generated yet.
                     </td>
                 </tr>

@@ -1,6 +1,8 @@
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Numeric
+from datetime import date
+
+from sqlalchemy import Date, ForeignKey, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.organisation import Base
@@ -33,6 +35,16 @@ class Assignment(Base):
     billing_rate: Mapped[Decimal] = mapped_column(
         Numeric(10, 2),
         nullable=False
+    )
+
+    start_date: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
+    )
+
+    end_date: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
     )
 
 

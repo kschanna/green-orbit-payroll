@@ -47,6 +47,7 @@ def worker_payment_details_page(request: Request, worker_id: int):
 
         profile_data = [
             {
+                "id": p.id,
                 "payment_method": p.payment_method,
                 "account_name": p.account_name,
                 "bsb": p.bsb,
@@ -159,6 +160,95 @@ def save_worker_payment_details(
                 effective_to=effective_to,
             )
         )
+        db.commit()
+
+    return RedirectResponse(
+        f"/ui/workers/{worker_id}/payment",
+        status_code=303,
+    )
+
+
+@router.post("/ui/workers/{worker_id}/payment/{profile_id}")
+def update_worker_payment_details(
+    request: Request,
+    worker_id: int,
+    profile_id: int,
+    payment_method: str = Form(...),
+    account_name: str = Form(""),
+    bsb: str = Form(""),
+    account_number: str = Form(""),
+    effective_from: date = Form(...),
+    effective_to: date | None = Form(None),
+    csrf_token: str = Form(...),
+):
+    from app.employee_tfn_router import require_csrf
+
+    if not request.session.get("user_id"):
+        raise HTTPException(401, "Authentication required")
+
+    require_csrf(request, csrf_token)
+
+    if payment_method not in {"bank_transfer", "cash", "cheque"}:
+        raise HTTPException(422, "Invalid payment method")
+
+    if effective_to is not None and effective_to < effective_from:
+        raise HTTPException(422, "Invalid effective date range")
+
+    with SessionLocal() as db:
+        profile = db.get(EmployeePaymentDetail, profile_id)
+        if profile is None or profile.worker_id != worker_id:
+            raise HTTPException(404, "Payment profile not found")
+
+        if payment_method == "bank_transfer":
+            bsb = bsb.replace("-", "").replace(" ", "")
+            account_number = account_number.replace(" ", "")
+
+            if not account_name.strip():
+                raise HTTPException(422, "Account name required")
+            if not re.fullmatch(r"[0-9]{6}", bsb):
+                raise HTTPException(422, "BSB must contain six digits")
+
+            if account_number:
+                if not re.fullmatch(r"[0-9]{4,10}", account_number):
+                    raise HTTPException(
+                        422,
+                        "Account number must contain 4–10 digits",
+                    )
+            elif profile.payment_method == "bank_transfer":
+                account_number = profile.account_number or ""
+
+            if not account_number:
+                raise HTTPException(422, "Account number required")
+        else:
+            account_name = ""
+            bsb = ""
+            account_number = ""
+
+        other_profiles = db.scalars(
+            select(EmployeePaymentDetail).where(
+                EmployeePaymentDetail.worker_id == worker_id,
+                EmployeePaymentDetail.id != profile_id,
+            )
+        ).all()
+
+        for other in other_profiles:
+            overlaps = (
+                (effective_to is None or other.effective_from <= effective_to)
+                and
+                (other.effective_to is None or effective_from <= other.effective_to)
+            )
+            if overlaps:
+                raise HTTPException(
+                    409,
+                    "Payment profile dates overlap an existing profile",
+                )
+
+        profile.payment_method = payment_method
+        profile.account_name = account_name or None
+        profile.bsb = bsb or None
+        profile.account_number = account_number or None
+        profile.effective_from = effective_from
+        profile.effective_to = effective_to
         db.commit()
 
     return RedirectResponse(

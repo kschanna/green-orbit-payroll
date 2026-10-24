@@ -60,72 +60,14 @@
     </form>
 </div>
 
-<div class="card p-4 mb-4">
-    <h5>New Tax Profile</h5>
-    <hr>
-
-    <form method="post">
-        <input type="hidden" name="csrf_token"
-               value="{{ csrf_token(request) }}">
-
-        <div class="row g-3">
-            <div class="col-md-6">
-                <label class="form-label">Tax Residency</label>
-                <select name="residency_status" class="form-select" required>
-                    <option value="resident">Australian Resident</option>
-                    <option value="foreign_resident">Foreign Resident</option>
-                    <option value="working_holiday_maker">Working Holiday Maker</option>
-                </select>
-            </div>
-
-            <div class="col-md-6">
-                <label class="form-label">Effective From</label>
-                <input type="date" name="effective_from"
-                       class="form-control" required>
-            </div>
-
-            <div class="col-md-6">
-                <label class="form-label">Effective To (optional)</label>
-                <input type="date" name="effective_to"
-                       class="form-control">
-            </div>
-        </div>
-
-        <div class="form-check mt-4">
-            <input class="form-check-input" type="checkbox"
-                   name="claims_tax_free_threshold" value="true"
-                   id="tax_free">
-            <label class="form-check-label" for="tax_free">
-                Claims Tax-Free Threshold
-            </label>
-        </div>
-
-        <div class="form-check mt-3">
-            <input class="form-check-input" type="checkbox"
-                   name="has_study_loan" value="true"
-                   id="study_loan">
-            <label class="form-check-label" for="study_loan">
-                Has HELP / Study Loan Obligation
-            </label>
-        </div>
-
-        <div class="form-check mt-3">
-            <input class="form-check-input" type="checkbox"
-                   name="tfn_declaration_received" value="true"
-                   id="tfn">
-            <label class="form-check-label" for="tfn">
-                TFN Declaration Received
-            </label>
-        </div>
-
-        <button type="submit" class="btn btn-success mt-4">
-            Save Tax Profile
-        </button>
-    </form>
-</div>
-
 <div class="card p-4">
-    <h5>Tax Profile History</h5>
+    <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+        <h5 class="mb-0">Tax Profile History</h5>
+        <button type="button" class="btn btn-success"
+                data-bs-toggle="modal" data-bs-target="#newTaxProfileModal">
+            + New Tax Profile
+        </button>
+    </div>
     <div class="table-responsive">
         <table class="table">
             <thead>
@@ -136,6 +78,7 @@
                     <th>Tax-Free Threshold</th>
                     <th>Study Loan</th>
                     <th>TFN Declaration</th>
+                    <th>Edit</th>
                 </tr>
             </thead>
             <tbody>
@@ -147,16 +90,113 @@
                     <td>{{ "Yes" if p.claims_tax_free_threshold else "No" }}</td>
                     <td>{{ "Yes" if p.has_study_loan else "No" }}</td>
                     <td>{{ "Yes" if p.tfn_declaration_received else "No" }}</td>
+                    <td>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary"
+                                data-bs-toggle="modal"
+                                data-bs-target="#editTaxProfileModal"
+                                data-profile='{{ p | tojson }}'>
+                            Edit
+                        </button>
+                    </td>
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="6" class="text-muted text-center">
+                    <td colspan="7" class="text-muted text-center">
                         No tax profiles recorded.
                     </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
+    </div>
+</div>
+
+{% macro tax_profile_fields(prefix) %}
+<div class="row g-3">
+    <div class="col-md-6">
+        <label for="{{ prefix }}_residency_status" class="form-label">Tax Residency</label>
+        <select id="{{ prefix }}_residency_status" name="residency_status"
+                class="form-select" required>
+            <option value="resident">Australian Resident</option>
+            <option value="foreign_resident">Foreign Resident</option>
+            <option value="working_holiday_maker">Working Holiday Maker</option>
+        </select>
+    </div>
+    <div class="col-md-3">
+        <label for="{{ prefix }}_effective_from" class="form-label">Effective From</label>
+        <input id="{{ prefix }}_effective_from" type="date" name="effective_from"
+               class="form-control" required>
+    </div>
+    <div class="col-md-3">
+        <label for="{{ prefix }}_effective_to" class="form-label">Effective To</label>
+        <input id="{{ prefix }}_effective_to" type="date" name="effective_to"
+               class="form-control">
+    </div>
+</div>
+<div class="row g-2 mt-2">
+    <div class="col-md-4 form-check">
+        <input class="form-check-input" type="checkbox"
+               name="claims_tax_free_threshold" value="true"
+               id="{{ prefix }}_tax_free">
+        <label class="form-check-label" for="{{ prefix }}_tax_free">Tax-Free Threshold</label>
+    </div>
+    <div class="col-md-4 form-check">
+        <input class="form-check-input" type="checkbox"
+               name="has_study_loan" value="true"
+               id="{{ prefix }}_study_loan">
+        <label class="form-check-label" for="{{ prefix }}_study_loan">HELP / Study Loan</label>
+    </div>
+    <div class="col-md-4 form-check">
+        <input class="form-check-input" type="checkbox"
+               name="tfn_declaration_received" value="true"
+               id="{{ prefix }}_tfn_declaration">
+        <label class="form-check-label" for="{{ prefix }}_tfn_declaration">TFN Declaration</label>
+    </div>
+</div>
+{% endmacro %}
+
+<div class="modal fade" id="newTaxProfileModal" tabindex="-1"
+     aria-labelledby="newTaxProfileModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="newTaxProfileModalLabel">New Tax Profile</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+            </div>
+            <form method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+                <div class="modal-body">{{ tax_profile_fields("new") }}</div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary"
+                            data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">Save Tax Profile</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="editTaxProfileModal" tabindex="-1"
+     aria-labelledby="editTaxProfileModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editTaxProfileModalLabel">Edit Tax Profile</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+            </div>
+            <form id="editTaxProfileForm" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+                <div class="modal-body">{{ tax_profile_fields("edit") }}</div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary"
+                            data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">Save Changes</button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 
@@ -180,6 +220,27 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     });
 });
+
+document.getElementById("editTaxProfileModal").addEventListener(
+    "show.bs.modal",
+    function (event) {
+        const profile = JSON.parse(event.relatedTarget.dataset.profile);
+        document.getElementById("editTaxProfileForm").action =
+            `/ui/workers/{{ employee.id }}/tax/${profile.id}`;
+        document.getElementById("edit_residency_status").value =
+            profile.residency_status;
+        document.getElementById("edit_effective_from").value =
+            profile.effective_from;
+        document.getElementById("edit_effective_to").value =
+            profile.effective_to || "";
+        document.getElementById("edit_tax_free").checked =
+            profile.claims_tax_free_threshold;
+        document.getElementById("edit_study_loan").checked =
+            profile.has_study_loan;
+        document.getElementById("edit_tfn_declaration").checked =
+            profile.tfn_declaration_received;
+    }
+);
 </script>
 
 {% endblock %}

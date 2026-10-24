@@ -71,6 +71,8 @@ def assignment_components_page(request: Request, assignment_id: int):
 
         assignment_data = {
             "id": assignment.id,
+            "engagement_id": assignment.engagement_id,
+            "worker_id": assignment.engagement.worker_id,
             "employee": (
                 f"{assignment.engagement.worker.first_name} "
                 f"{assignment.engagement.worker.last_name}"
@@ -111,6 +113,8 @@ def assignment_components_page(request: Request, assignment_id: int):
             )
 
             history.append({
+                "id": row.id,
+                "component_definition_id": row.component_definition_id,
                 "name": definition.name if definition else "Unknown",
                 "code": definition.code if definition else "",
                 "calculation_type": (
@@ -145,6 +149,7 @@ def save_assignment_component(
     bill_rate: Decimal | None = Form(None),
     effective_from: date = Form(...),
     effective_to: date | None = Form(None),
+    return_to_preview: bool = Form(False),
     csrf_token: str = Form(...),
 ):
     require_session(request)
@@ -181,6 +186,12 @@ def save_assignment_component(
 
         if assignment is None:
             raise HTTPException(404, "Assignment not found")
+
+        preview_url = (
+            f"/ui/workers/{assignment.engagement.worker_id}"
+            f"/engagements/{assignment.engagement_id}"
+            f"/assignments/{assignment.id}/preview"
+        )
 
         definition = db.get(
             ComponentDefinition,
@@ -234,6 +245,123 @@ def save_assignment_component(
         db.commit()
 
     return RedirectResponse(
-        f"/ui/assignments/{assignment_id}/components",
+        preview_url if return_to_preview
+        else f"/ui/assignments/{assignment_id}/components",
+        status_code=303,
+    )
+
+
+@router.post(
+    "/ui/assignments/{assignment_id}/components/{component_id}"
+)
+def update_assignment_component(
+    request: Request,
+    assignment_id: int,
+    component_id: int,
+    component_definition_id: int = Form(...),
+    applies_to: str = Form(...),
+    pay_rate: Decimal | None = Form(None),
+    bill_rate: Decimal | None = Form(None),
+    effective_from: date = Form(...),
+    effective_to: date | None = Form(None),
+    return_to_preview: bool = Form(False),
+    csrf_token: str = Form(...),
+):
+    require_session(request)
+
+    expected_token = request.session.get("csrf_token")
+
+    if not expected_token or csrf_token != expected_token:
+        raise HTTPException(403, "Invalid CSRF token")
+
+    if effective_to is not None and effective_to < effective_from:
+        raise HTTPException(422, "Invalid effective date range")
+
+    if applies_to not in ("payroll", "invoice", "both"):
+        raise HTTPException(422, "Invalid component applicability")
+
+    for value in (pay_rate, bill_rate):
+        if value is not None and (value < 0 or value > 99999999):
+            raise HTTPException(422, "Invalid component rate")
+
+    if applies_to in ("payroll", "both") and pay_rate is None:
+        raise HTTPException(422, "Pay rate is required")
+
+    if applies_to in ("invoice", "both") and bill_rate is None:
+        raise HTTPException(422, "Bill rate is required")
+
+    if applies_to == "payroll" and bill_rate is not None:
+        raise HTTPException(422, "Bill rate must be empty")
+
+    if applies_to == "invoice" and pay_rate is not None:
+        raise HTTPException(422, "Pay rate must be empty")
+
+    with SessionLocal() as db:
+        assignment = db.get(Assignment, assignment_id)
+
+        if assignment is None:
+            raise HTTPException(404, "Assignment not found")
+
+        preview_url = (
+            f"/ui/workers/{assignment.engagement.worker_id}"
+            f"/engagements/{assignment.engagement_id}"
+            f"/assignments/{assignment.id}/preview"
+        )
+
+        component = db.get(AssignmentComponent, component_id)
+
+        if component is None or component.assignment_id != assignment_id:
+            raise HTTPException(404, "Assignment component not found")
+
+        definition = db.get(
+            ComponentDefinition,
+            component_definition_id,
+        )
+
+        if definition is None or not definition.active:
+            raise HTTPException(422, "Invalid or inactive component")
+
+        existing = db.scalars(
+            select(AssignmentComponent).where(
+                AssignmentComponent.assignment_id == assignment_id,
+                AssignmentComponent.component_definition_id
+                == component_definition_id,
+                AssignmentComponent.id != component_id,
+            )
+        ).all()
+
+        for profile in existing:
+            overlaps = (
+                (
+                    effective_to is None
+                    or profile.effective_from <= effective_to
+                )
+                and
+                (
+                    profile.effective_to is None
+                    or effective_from <= profile.effective_to
+                )
+            )
+
+            if overlaps:
+                raise HTTPException(
+                    409,
+                    "This component already has a configuration "
+                    "for the selected dates",
+                )
+
+        component.component_definition_id = component_definition_id
+        component.rate = pay_rate
+        component.pay_rate = pay_rate
+        component.bill_rate = bill_rate
+        component.applies_to = applies_to
+        component.effective_from = effective_from
+        component.effective_to = effective_to
+
+        db.commit()
+
+    return RedirectResponse(
+        preview_url if return_to_preview
+        else f"/ui/assignments/{assignment_id}/components",
         status_code=303,
     )

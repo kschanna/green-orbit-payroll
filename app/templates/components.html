@@ -4,9 +4,17 @@
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Components Catalogue</h2>
-        <a href="/ui/components/new" class="btn btn-success">
-            Add Component
-        </a>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-secondary fs-6">
+                {{ components | length }} Components
+            </span>
+            <button type="button"
+                    class="btn btn-success"
+                    data-bs-toggle="modal"
+                    data-bs-target="#newComponentModal">
+                Add Component
+            </button>
+        </div>
     </div>
 
     <div class="card shadow-sm">
@@ -15,19 +23,25 @@
                 <table class="table table-hover align-middle">
                     <thead>
                         <tr>
-                            <th>Code</th>
                             <th>Name</th>
+                            <th>Code</th>
                             <th>Family</th>
                             <th>Calculation</th>
                             <th>Status</th>
-                            <th></th>
+                            <th>Edit</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for component in components %}
+                        {% for family, family_components in components | groupby("family") %}
+                        <tr class="table-secondary">
+                            <th colspan="6" class="text-uppercase small">
+                                {{ family }}
+                            </th>
+                        </tr>
+                        {% for component in family_components %}
                         <tr>
-                            <td>{{ component.code }}</td>
                             <td>{{ component.name }}</td>
+                            <td>{{ component.code }}</td>
                             <td>{{ component.family }}</td>
                             <td>{{ component.calculation_type }}</td>
                             <td>
@@ -38,23 +52,280 @@
                                 {% endif %}
                             </td>
                             <td>
-                                <a href="/ui/components/{{ component.id }}/edit"
-                                   class="btn btn-sm btn-outline-primary">
+                                <button type="button"
+                                   class="btn btn-sm btn-outline-primary edit-component"
+                                   data-bs-toggle="modal"
+                                   data-bs-target="#editComponentModal"
+                                   data-component-id="{{ component.id }}"
+                                   data-code="{{ component.code | e }}"
+                                   data-name="{{ component.name | e }}"
+                                   data-description="{{ component.description | e }}"
+                                   data-family-id="{{ component.family_id }}"
+                                   data-calculation-type="{{ component.calculation_type }}"
+                                   data-active="{{ 'true' if component.active else 'false' }}">
                                     Edit
-                                </a>
+                                </button>
                             </td>
                         </tr>
-                        {% else %}
+                        {% endfor %}
+                        {% endfor %}
+                        {% if not components %}
                         <tr>
                             <td colspan="6" class="text-muted">
                                 No components have been created yet.
                             </td>
                         </tr>
-                        {% endfor %}
+                        {% endif %}
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
 </div>
+
+<div class="modal fade"
+     id="newComponentModal"
+     tabindex="-1"
+     aria-labelledby="newComponentModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="newComponentModalLabel">
+                    Add Component
+                </h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+            </div>
+
+            <form method="post"
+                  action="/ui/components/save"
+                  id="new_component_form">
+                <div class="modal-body">
+                    <input type="hidden"
+                           name="csrf_token"
+                           value="{{ csrf_token(request) }}">
+
+                    <div class="mb-3">
+                        <label for="new_code" class="form-label">Code</label>
+                        <input class="form-control"
+                               id="new_code"
+                               name="code"
+                               maxlength="50"
+                               required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="new_name" class="form-label">Name</label>
+                        <input class="form-control"
+                               id="new_name"
+                               name="name"
+                               maxlength="150"
+                               required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="new_family_id" class="form-label">Family</label>
+                        <select class="form-select"
+                                id="new_family_id"
+                                name="family_id"
+                                required>
+                            {% for family in families %}
+                            <option value="{{ family.id }}">
+                                {{ family.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="new_description" class="form-label">
+                            Description
+                        </label>
+                        <textarea class="form-control"
+                                  id="new_description"
+                                  name="description"
+                                  maxlength="500"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="new_calculation_type" class="form-label">
+                            Calculation Type
+                        </label>
+                        <select class="form-select"
+                                id="new_calculation_type"
+                                name="calculation_type"
+                                required>
+                            {% for value in ["fixed", "hourly", "percentage", "quantity"] %}
+                            <option value="{{ value }}">{{ value | title }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-check">
+                        <input class="form-check-input"
+                               type="checkbox"
+                               name="active"
+                               value="true"
+                               id="new_active"
+                               checked>
+                        <label class="form-check-label" for="new_active">
+                            Active
+                        </label>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button"
+                            class="btn btn-outline-secondary"
+                            data-bs-dismiss="modal">
+                        Cancel
+                    </button>
+                    <button class="btn btn-success" type="submit">
+                        Save Component
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade"
+     id="editComponentModal"
+     tabindex="-1"
+     aria-labelledby="editComponentModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editComponentModalLabel">
+                    Edit Component
+                </h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+            </div>
+
+            <form method="post" action="/ui/components/save">
+                <div class="modal-body">
+                    <input type="hidden"
+                           name="csrf_token"
+                           value="{{ csrf_token(request) }}">
+                    <input type="hidden"
+                           name="component_id"
+                           id="edit_component_id">
+
+                    <div class="mb-3">
+                        <label for="edit_code" class="form-label">Code</label>
+                        <input class="form-control"
+                               id="edit_code"
+                               name="code"
+                               maxlength="50"
+                               required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="edit_name" class="form-label">Name</label>
+                        <input class="form-control"
+                               id="edit_name"
+                               name="name"
+                               maxlength="150"
+                               required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="edit_family_id" class="form-label">Family</label>
+                        <select class="form-select"
+                                id="edit_family_id"
+                                name="family_id"
+                                required>
+                            {% for family in families %}
+                            <option value="{{ family.id }}">
+                                {{ family.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="edit_description" class="form-label">
+                            Description
+                        </label>
+                        <textarea class="form-control"
+                                  id="edit_description"
+                                  name="description"
+                                  maxlength="500"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="edit_calculation_type" class="form-label">
+                            Calculation Type
+                        </label>
+                        <select class="form-select"
+                                id="edit_calculation_type"
+                                name="calculation_type"
+                                required>
+                            {% for value in ["fixed", "hourly", "percentage", "quantity"] %}
+                            <option value="{{ value }}">{{ value | title }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-check">
+                        <input class="form-check-input"
+                               type="checkbox"
+                               name="active"
+                               value="true"
+                               id="edit_active">
+                        <label class="form-check-label" for="edit_active">
+                            Active
+                        </label>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button"
+                            class="btn btn-outline-secondary"
+                            data-bs-dismiss="modal">
+                        Cancel
+                    </button>
+                    <button class="btn btn-primary" type="submit">
+                        Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+const newComponentModal = document.getElementById("newComponentModal");
+
+newComponentModal.addEventListener("hidden.bs.modal", () => {
+    document.getElementById("new_component_form").reset();
+});
+
+const editComponentModal = document.getElementById("editComponentModal");
+
+editComponentModal.addEventListener("show.bs.modal", (event) => {
+    const component = event.relatedTarget.dataset;
+
+    document.getElementById("editComponentModalLabel").textContent =
+        `Edit ${component.name}`;
+    document.getElementById("edit_component_id").value =
+        component.componentId;
+    document.getElementById("edit_code").value = component.code;
+    document.getElementById("edit_name").value = component.name;
+    document.getElementById("edit_description").value =
+        component.description;
+    document.getElementById("edit_family_id").value = component.familyId;
+    document.getElementById("edit_calculation_type").value =
+        component.calculationType;
+    document.getElementById("edit_active").checked =
+        component.active === "true";
+});
+</script>
 {% endblock %}
