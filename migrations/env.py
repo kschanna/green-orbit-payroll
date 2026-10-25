@@ -39,6 +39,9 @@ from app.models.leave_transaction import LeaveTransaction
 from app.models.aba_profile import ABAProfile
 from app.models.payment_batch import PaymentBatch
 from app.models.payment_instruction import PaymentInstruction
+from app.models.pbt_schedule import PBTSchedule
+from app.models.pbt_schedule_rule import PBTScheduleRule
+from app.models.pbt_schedule_period import PBTSchedulePeriod
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

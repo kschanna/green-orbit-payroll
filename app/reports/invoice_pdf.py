@@ -41,6 +41,7 @@ class InvoicePDFGenerator:
             ("Customer", customer.name),
             ("Invoice number", invoice.invoice_number),
             ("Invoice date", format_date_au(invoice.issue_date)),
+            ("Payment due", format_date_au(invoice.due_date)),
             ("Worker", f"{worker.first_name} {worker.last_name}"),
         ]
 

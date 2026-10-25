@@ -56,12 +56,22 @@
                     <strong>Engagement</strong>
                     <div>#{{ engagement_id }}</div>
                 </div>
+
+                <div>
+                    <strong>PBT Schedule</strong>
+                    <div>{{ assignment_pbt_schedule_name or "Not assigned" }}</div>
+                </div>
             </div>
 
             <div class="col-md-4">
                 <div class="mb-3">
                     <strong>Customer</strong>
                     <div>{{ customer_name }}</div>
+                </div>
+
+                <div class="mb-3">
+                    <strong>Host Organisation</strong>
+                    <div>{{ assignment_host_organisation_name or "Not assigned" }}</div>
                 </div>
 
                 <div>
@@ -133,6 +143,34 @@
                                     </option>
                                     {% endfor %}
                                 </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="editAssignmentHostOrganisation"
+                                       class="form-label">
+                                    Host Organisation
+                                </label>
+                                <select id="editAssignmentHostOrganisation"
+                                        class="form-select">
+                                    <option value="">No host organisation</option>
+                                    {% for option in customer_options %}
+                                    <option value="{{ option.id }}"
+                                            {% if option.id == assignment_host_organisation_id %}selected{% endif %}>
+                                        {{ option.name }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="editAssignmentPbtSchedule" class="form-label">
+                                    PBT Schedule
+                                </label>
+                                <select id="editAssignmentPbtSchedule"
+                                        class="form-select">
+                                    <option value="">No PBT schedule</option>
+                                </select>
+                                <div class="form-text">
+                                    Only schedules for the selected customer are shown.
+                                </div>
                             </div>
                             <div class="col-md-4">
                                 <label for="editAssignmentBillingRate" class="form-label">
@@ -776,6 +814,38 @@ const editAssignmentMessage = document.getElementById(
 const editAssignmentSaveButton = document.getElementById(
     "editAssignmentSaveButton"
 );
+const editAssignmentCustomer = document.getElementById(
+    "editAssignmentCustomer"
+);
+const editAssignmentPbtSchedule = document.getElementById(
+    "editAssignmentPbtSchedule"
+);
+const assignmentPbtSchedules = {{ pbt_schedule_options | tojson }};
+
+function updateAssignmentPbtScheduleOptions(selectedScheduleId = null) {
+    const selectedCustomerId = Number(editAssignmentCustomer.value);
+    const matches = assignmentPbtSchedules.filter(
+        schedule => schedule.customer_id === selectedCustomerId
+    );
+
+    editAssignmentPbtSchedule.replaceChildren();
+    editAssignmentPbtSchedule.add(new Option("No PBT schedule", ""));
+    matches.forEach(schedule => {
+        const status = schedule.status.charAt(0).toUpperCase()
+            + schedule.status.slice(1);
+        editAssignmentPbtSchedule.add(
+            new Option(`${schedule.name} (${status})`, schedule.id)
+        );
+    });
+    editAssignmentPbtSchedule.disabled = matches.length === 0;
+    editAssignmentPbtSchedule.value = selectedScheduleId ?? "";
+}
+
+editAssignmentCustomer.addEventListener(
+    "change",
+    () => updateAssignmentPbtScheduleOptions()
+);
+updateAssignmentPbtScheduleOptions({{ assignment_pbt_schedule_id | tojson }});
 
 editAssignmentForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -787,6 +857,16 @@ editAssignmentForm.addEventListener("submit", async (event) => {
         customer_id: Number(
             document.getElementById("editAssignmentCustomer").value
         ),
+        pbt_schedule_id: editAssignmentPbtSchedule.value
+            ? Number(editAssignmentPbtSchedule.value)
+            : null,
+        host_organisation_id: document.getElementById(
+            "editAssignmentHostOrganisation"
+        ).value
+            ? Number(document.getElementById(
+                "editAssignmentHostOrganisation"
+            ).value)
+            : null,
         billing_rate: document.getElementById(
             "editAssignmentBillingRate"
         ).value,

@@ -39,15 +39,19 @@
             </a>
 
             <div class="mt-2">
-                <strong>Related Timesheet:</strong>
-                <a href="/ui/timesheets/weekly/{{ payroll.header_id }}/preview"
+                <strong>Related Timesheet{% if payroll.timesheet_headers|length != 1 %}s{% endif %}:</strong>
+                {% for header in payroll.timesheet_headers %}
+                {% set preview_url = '/ui/timesheets/scheduled/' ~ header.id ~ '/preview' if header.period_type == 'scheduled' else '/ui/timesheets/weekly/' ~ header.id ~ '/preview' %}
+                <a href="{{ preview_url }}"
                    class="preview-modal-link fw-semibold"
-                   data-preview-url="/ui/timesheets/weekly/{{ payroll.header_id }}/preview?embed=1"
-                   data-preview-title="Timesheet #{{ payroll.header_id }}"
+                   data-preview-url="{{ preview_url }}?embed=1"
+                   data-preview-title="Timesheet #{{ header.id }}"
                    data-bs-toggle="modal"
                    data-bs-target="#payrollSourcePreviewModal">
-                    #{{ payroll.header_id }}
+                    #{{ header.id }}
                 </a>
+                {% if not loop.last %}, {% endif %}
+                {% endfor %}
             </div>
 
             <div class="mt-2">
@@ -83,6 +87,7 @@
                 <div>
                     {{ payroll.payment_date.strftime("%d/%m/%Y") }}
                 </div>
+                <div class="small text-muted">{{ payroll.pay_frequency | replace('_', ' ') | title }}</div>
             </div>
 
         </div>

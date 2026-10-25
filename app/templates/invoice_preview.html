@@ -112,6 +112,13 @@
                         {{ invoice.issue_date.strftime("%d/%m/%Y") }}
                     </div>
 
+                    {% if invoice.due_date %}
+                    <div>
+                        <strong>Payment Due:</strong>
+                        {{ invoice.due_date.strftime("%d/%m/%Y") }}
+                    </div>
+                    {% endif %}
+
                     <div class="mt-2">
                         <span class="badge bg-secondary">
                             {{ invoice.status | title }}

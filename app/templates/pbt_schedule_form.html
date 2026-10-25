@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block content %}
+
+<a href="/ui/pbt-schedules" class="btn btn-link mb-3">← Back to PBT Schedules</a>
+
+<div class="mb-4">
+    <h2>New PBT Schedule</h2>
+    <p class="text-muted mb-0">
+        Configure customer timesheet, invoice and payment cycles. Complete periods
+        will be generated 12 months in advance.
+    </p>
+</div>
+
+<form method="post" action="/ui/pbt-schedules">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+
+    <div class="card p-4 mb-4">
+        <h5>Schedule Details</h5>
+        <hr>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label for="customer_organisation_id" class="form-label">Customer Organisation</label>
+                <select id="customer_organisation_id" name="customer_organisation_id"
+                        class="form-select" required>
+                    <option value="">Select customer</option>
+                    {% for customer in customers %}
+                    <option value="{{ customer.id }}">{{ customer.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label for="name" class="form-label">Schedule Name</label>
+                <input id="name" name="name" class="form-control" required
+                       placeholder="Weekly Time / Monthly Billing">
+            </div>
+            <div class="col-md-4">
+                <label for="effective_from" class="form-label">Effective From</label>
+                <input id="effective_from" type="date" name="effective_from"
+                       value="{{ today }}" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+                <label for="effective_to" class="form-label">Effective To</label>
+                <input id="effective_to" type="date" name="effective_to"
+                       class="form-control">
+            </div>
+            <div class="col-md-4">
+                <label for="status" class="form-label">Status</label>
+                <select id="status" name="status" class="form-select">
+                    <option value="draft">Draft</option>
+                    <option value="active">Active</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    {% set rule_configs = [
+        ("timesheet", "Timesheet Schedule", "When timesheets are due", "weekly", 1),
+        ("invoice", "Invoice Schedule", "When invoices are issued", "monthly", 2),
+        ("payment", "Payment Schedule", "When worker and contractor payments run", "fortnightly", 5)
+    ] %}
+    <div class="row g-3 mb-4">
+        {% for prefix, title, description, default_frequency, default_offset in rule_configs %}
+        <div class="col-12 col-xl-4">
+            <div class="card p-4 h-100 schedule-rule-card">
+                <h5>{{ title }}</h5>
+                <p class="text-muted small">{{ description }}</p>
+
+                <div class="mb-3">
+                    <label for="{{ prefix }}_frequency" class="form-label">Frequency</label>
+                    <select id="{{ prefix }}_frequency" name="{{ prefix }}_frequency"
+                            class="form-select frequency-select" required>
+                        {% for value, label in [
+                            ("weekly", "Weekly"),
+                            ("fortnightly", "Fortnightly"),
+                            ("monthly", "Monthly — calendar month"),
+                            ("semi_monthly", "Semi-monthly — 1–15 and 16–month end")
+                        ] %}
+                        <option value="{{ value }}" {% if value == default_frequency %}selected{% endif %}>
+                            {{ label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="mb-3 anchor-date-group">
+                    <label for="{{ prefix }}_anchor_date" class="form-label">Anchor Date</label>
+                    <input id="{{ prefix }}_anchor_date" type="date"
+                           name="{{ prefix }}_anchor_date" value="{{ today }}"
+                           class="form-control">
+                    <div class="form-text">First day of a complete weekly or fortnightly period.</div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="{{ prefix }}_offset_days" class="form-label">
+                        Offset From Period End (calendar days)
+                    </label>
+                    <input id="{{ prefix }}_offset_days" type="number"
+                           name="{{ prefix }}_offset_days" value="{{ default_offset }}"
+                           min="-365" max="365" class="form-control" required>
+                </div>
+
+                {% if prefix == "invoice" %}
+                <div>
+                    <label for="invoice_payment_terms_days" class="form-label">
+                        Customer Payment Terms (calendar days)
+                    </label>
+                    <input id="invoice_payment_terms_days" type="number"
+                           name="invoice_payment_terms_days" value="14"
+                           min="0" max="365" class="form-control" required>
+                    <div class="form-text">Calculated from the invoice issue date.</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="d-flex gap-2 justify-content-end">
+        <a href="/ui/pbt-schedules" class="btn btn-outline-secondary">Cancel</a>
+        <button type="submit" class="btn btn-success">Create PBT Schedule</button>
+    </div>
+</form>
+
+<script>
+function updateAnchorField(frequencyField) {
+    const card = frequencyField.closest(".schedule-rule-card");
+    const anchorGroup = card.querySelector(".anchor-date-group");
+    const anchorInput = anchorGroup.querySelector("input");
+    const needsAnchor = ["weekly", "fortnightly"].includes(
+        frequencyField.value
+    );
+    anchorGroup.classList.toggle("d-none", !needsAnchor);
+    anchorInput.required = needsAnchor;
+}
+
+document.querySelectorAll(".frequency-select").forEach(field => {
+    field.addEventListener("change", () => updateAnchorField(field));
+    updateAnchorField(field);
+});
+</script>
+
+{% endblock %}

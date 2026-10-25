@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <a href="/ui/timesheet-runs" class="text-decoration-none">← Back to Timesheet Run</a>
+  <div class="d-flex justify-content-between align-items-start mt-3 mb-4">
+    <div><h2 class="mb-1">Scheduled Timesheet #{{ header.id }}</h2><p class="text-muted mb-0">{{ header.period_start | date_au }} – {{ header.period_end | date_au }}</p></div>
+    <span class="badge bg-warning text-dark fs-6">{{ header.status | title }}</span>
+  </div>
+  <div class="card card-body mb-4">
+    <div class="row"><div class="col-md-4"><strong>Worker</strong><div>{{ worker_name }}</div></div><div class="col-md-4"><strong>Assignment</strong><div>#{{ assignment.id }}</div></div><div class="col-md-4"><strong>Customer</strong><div>{{ customer_name }}</div></div></div>
+  </div>
+  <form id="scheduledForm" class="card card-body">
+    <div class="table-responsive">
+      <table class="table table-bordered align-middle">
+        <thead><tr><th>Date</th><th>Component</th><th>Hours</th><th>Actions</th></tr></thead>
+        <tbody id="entries"></tbody>
+        <tfoot><tr><th colspan="2">Total Hours</th><th id="totalHours">0.00</th><th></th></tr></tfoot>
+      </table>
+    </div>
+    <div><button class="btn btn-primary">Save Timesheet</button>{% if header.status == 'draft' %}<button type="button" id="approveButton" class="btn btn-success ms-2">Approve Timesheet</button>{% endif %}<a href="/ui/timesheet-runs" class="btn btn-outline-secondary ms-2">Cancel</a></div>
+    <div id="message" class="mt-3" role="status"></div>
+  </form>
+</div>
+<script>
+const headerId={{ header.id|tojson }}, assignmentId={{ assignment.id|tojson }}, csrfToken={{ csrf_token(request)|tojson }};
+const original=[{% for entry in entries %}{work_date:{{ entry.work_date.isoformat()|tojson }},component_definition_id:{{ entry.component_definition_id|tojson }},hours_worked:{{ entry.hours_worked|float|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}];
+const body=document.getElementById('entries'), message=document.getElementById('message');
+const formatDisplayDate=value=>{const [year,month,day]=value.split('-');return `${day}/${month}/${year}`;};
+async function loadComponents(row,selected){const select=row.querySelector('.component');select.disabled=true;const response=await fetch(`/api/assignments/${assignmentId}/timesheet-components?work_date=${row.dataset.date}`),items=response.ok?await response.json():[];select.innerHTML='<option value="">Ordinary / unspecified</option>'+items.map(item=>`<option value="${item.id}" ${String(item.id)===String(selected)?'selected':''}>${item.name} (${item.family})</option>`).join('');select.disabled=false;}
+function addRow(entry,after=null){const row=document.createElement('tr');row.dataset.date=entry.work_date;row.innerHTML=`<td><strong>${formatDisplayDate(entry.work_date)}</strong></td><td><select class="form-select component"></select></td><td><input class="form-control hours" type="number" min="0" max="24" step="0.25" value="${Number(entry.hours_worked||0).toFixed(2)}" required></td><td class="text-nowrap"><button type="button" class="btn btn-sm btn-outline-primary add">+ Add Line</button> <button type="button" class="btn btn-sm btn-outline-danger remove">Remove</button></td>`;if(after)after.after(row);else body.appendChild(row);loadComponents(row,entry.component_definition_id);calculate();}
+function calculate(){document.getElementById('totalHours').textContent=[...body.querySelectorAll('.hours')].reduce((sum,input)=>sum+Number(input.value||0),0).toFixed(2);}
+original.forEach(entry=>addRow(entry));
+body.addEventListener('input',calculate);
+body.addEventListener('click',event=>{const row=event.target.closest('tr');if(event.target.classList.contains('add'))addRow({work_date:row.dataset.date,hours_worked:0,component_definition_id:null},row);if(event.target.classList.contains('remove')){if(body.querySelectorAll(`tr[data-date="${row.dataset.date}"]`).length>1){row.remove();calculate();}}});
+async function saveTimesheet(){const entries=[...body.rows].map(row=>({work_date:row.dataset.date,component_definition_id:Number(row.querySelector('.component').value)||null,hours_worked:Number(row.querySelector('.hours').value)}));message.className='text-muted mt-3';message.textContent='Saving…';const response=await fetch(`/api/timesheets/scheduled/${headerId}`,{method:'PATCH',headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify({entries})});const result=await response.json();message.className=response.ok?'alert alert-success mt-3':'alert alert-danger mt-3';message.textContent=response.ok?'Timesheet saved successfully.':(result.detail||'Unable to save timesheet.');return response.ok;}
+document.getElementById('scheduledForm').addEventListener('submit',async event=>{event.preventDefault();await saveTimesheet();});
+const approveButton=document.getElementById('approveButton');if(approveButton)approveButton.addEventListener('click',async()=>{if(!confirm('Save and approve this timesheet? It can no longer be edited.'))return;approveButton.disabled=true;if(!await saveTimesheet()){approveButton.disabled=false;return;}const response=await fetch(`/api/timesheets/scheduled/${headerId}/approve`,{method:'POST',headers:{'X-CSRF-Token':csrfToken}});const result=await response.json();if(response.ok){window.location.href='/ui/timesheet-runs';return;}message.className='alert alert-danger mt-3';message.textContent=result.detail||'Unable to approve timesheet.';approveButton.disabled=false;});
+</script>
+{% endblock %}

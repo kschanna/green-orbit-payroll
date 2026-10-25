@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div>
+        <h2>PBT Schedules</h2>
+        <p class="text-muted mb-0">Pay, Bill & Time cycles by customer</p>
+    </div>
+    <a href="/ui/pbt-schedules/new" class="btn btn-success">
+        + New PBT Schedule
+    </a>
+</div>
+
+<div class="card p-3 p-md-4">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Customer</th>
+                    <th>Effective From</th>
+                    <th>Effective To</th>
+                    <th>Generated Through</th>
+                    <th>Status</th>
+                    <th>View</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for schedule in schedules %}
+                <tr>
+                    <td>#{{ schedule.id }}</td>
+                    <td class="fw-semibold">{{ schedule.name }}</td>
+                    <td>{{ schedule.customer_name }}</td>
+                    <td>{{ schedule.effective_from | date_au }}</td>
+                    <td>{{ schedule.effective_to | date_au if schedule.effective_to else "Ongoing" }}</td>
+                    <td>{{ schedule.generated_through | date_au }}</td>
+                    <td>
+                        <span class="badge {{ 'bg-success' if schedule.status == 'active' else 'bg-secondary' }}">
+                            {{ schedule.status | title }}
+                        </span>
+                    </td>
+                    <td>
+                        <a href="/ui/pbt-schedules/{{ schedule.id }}"
+                           class="btn btn-sm btn-outline-secondary">View</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" class="text-center text-muted">
+                        No PBT schedules configured.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}

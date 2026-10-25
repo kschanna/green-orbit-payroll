@@ -34,7 +34,10 @@ def test_preview_template_exists():
 def test_preview_links_in_timesheet_listing():
     source = LIST_TEMPLATE.read_text()
 
-    assert '/ui/timesheets/weekly/{{ timesheet.id }}/preview' in source
+    assert (
+        '/ui/timesheets/{{ timesheet.period_type }}/'
+        '{{ timesheet.id }}/preview'
+    ) in source
     assert '/ui/timesheets/daily/{{ timesheet.id }}/preview' in source
 
 

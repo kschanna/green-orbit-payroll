@@ -11,7 +11,7 @@
     <div class="col-md-4"><div class="card p-3"><small class="text-muted">ABA description</small><h4>{{ batch.description }}</h4></div></div>
 </div>
 <div class="card p-4 mb-4"><h5>Payment Instructions</h5><div class="table-responsive"><table class="table align-middle"><thead><tr><th>Source</th><th>Recipient</th><th>Payslip</th><th>Bank details</th><th>Reference</th><th class="text-end">Amount</th></tr></thead><tbody>
-{% for line in lines %}<tr><td><span class="badge bg-{{ 'primary' if line.source_type == 'payroll' else 'warning text-dark' }}">{{ line.source_type | title }}</span></td><td>{{ line.worker_name }}<div class="small text-muted">{{ line.account_name }}</div></td><td>{% if line.payslip_id %}<a href="/ui/payslips/{{ line.payslip_id }}/preview">#{{ line.payslip_id }}</a>{% else %}—{% endif %}</td><td>{{ line.bsb }} / {{ line.account_number }}</td><td>{{ line.reference }}{% if line.reason %}<div class="small text-muted">{{ line.reason }}</div>{% endif %}</td><td class="text-end fw-semibold">${{ "%.2f"|format(line.amount) }}</td></tr>
+{% for line in lines %}<tr><td><span class="badge bg-{{ 'primary' if line.source_type == 'payroll' else 'warning text-dark' }}">{{ line.source_type | title }}</span></td><td>{{ line.worker_name }}<div class="small text-muted">{{ line.account_name }}</div></td><td>{% if line.payslip_id %}<a href="/ui/payslips/{{ line.payslip_id }}/preview" data-bs-toggle="modal" data-bs-target="#payslipPreviewModal" data-preview-url="/ui/payslips/{{ line.payslip_id }}/preview?embed=1" data-preview-title="Payslip #{{ line.payslip_id }}">#{{ line.payslip_id }}</a>{% else %}—{% endif %}</td><td>{{ line.bsb }} / {{ line.account_number }}</td><td>{{ line.reference }}{% if line.reason %}<div class="small text-muted">{{ line.reason }}</div>{% endif %}</td><td class="text-end fw-semibold">${{ "%.2f"|format(line.amount) }}</td></tr>
 {% else %}<tr><td colspan="6" class="text-center text-muted">No payment instructions.</td></tr>{% endfor %}
 </tbody></table></div></div>
 {% if editable %}
@@ -22,4 +22,36 @@
 {% else %}
 <div class="alert alert-info">This batch was exported and its payment instructions are locked. {% if batch.file_checksum %}<div class="small mt-1">SHA-256: {{ batch.file_checksum }}</div>{% endif %}</div>
 {% endif %}
+
+<div class="modal fade" id="payslipPreviewModal" tabindex="-1" aria-labelledby="payslipPreviewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-fullscreen-md-down">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="payslipPreviewModalLabel">Payslip</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <iframe id="payslipPreviewFrame" title="Payslip preview" class="w-100 border-0" style="height: 82vh;"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const modal = document.getElementById("payslipPreviewModal");
+    const frame = document.getElementById("payslipPreviewFrame");
+    const title = document.getElementById("payslipPreviewModalLabel");
+
+    modal.addEventListener("show.bs.modal", (event) => {
+        const link = event.relatedTarget;
+        title.textContent = link.dataset.previewTitle || "Payslip";
+        frame.src = link.dataset.previewUrl;
+    });
+
+    modal.addEventListener("hidden.bs.modal", () => {
+        frame.removeAttribute("src");
+    });
+});
+</script>
 {% endblock %}

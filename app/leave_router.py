@@ -14,12 +14,14 @@ from app.models.engagement import Engagement
 from app.models.leave_plan import LeavePlan
 from app.models.leave_transaction import LeaveTransaction
 from app.models.worker import Worker
+from app.utils.dates import format_date_au
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["csrf_token"] = (
     lambda request: request.session.get("csrf_token", "")
 )
+templates.env.filters["date_au"] = format_date_au
 
 
 @router.get("/ui/workers/{worker_id}/leave", response_class=HTMLResponse)

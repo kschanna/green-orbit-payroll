@@ -209,6 +209,16 @@
                     <td>{{ engagement.end_date.strftime("%d/%m/%Y") if engagement.end_date else "Ongoing" }}</td>
                 
                     <td>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary me-2 edit-engagement"
+                                data-bs-toggle="modal"
+                                data-bs-target="#editEngagementModal"
+                                data-engagement-id="{{ engagement.id }}"
+                                data-organisation="{{ engagement.organisation }}"
+                                data-start-date="{{ engagement.start_date.isoformat() if engagement.start_date else '' }}"
+                                data-end-date="{{ engagement.end_date.isoformat() if engagement.end_date else '' }}">
+                            Edit Engagement
+                        </button>
                         {% if engagement.type in ("payg_employee", "employee") %}
                         <a
                             href="/ui/workers/{{ worker.id }}/engagements/{{ engagement.id }}/work-patterns"
@@ -237,7 +247,86 @@
     </div>
 </div>
 
+<div class="modal fade" id="editEngagementModal" tabindex="-1"
+     aria-labelledby="editEngagementModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editEngagementModalLabel">Edit Engagement</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="editEngagementForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Organisation</label>
+                        <input id="editEngagementOrganisation" class="form-control" readonly>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="editEngagementStartDate" class="form-label">Start Date</label>
+                            <input type="date" id="editEngagementStartDate" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="editEngagementEndDate" class="form-label">End Date</label>
+                            <input type="date" id="editEngagementEndDate" class="form-control">
+                            <div class="form-text">Leave blank for an ongoing engagement.</div>
+                        </div>
+                    </div>
+                    <div id="editEngagementError" class="alert alert-danger d-none mt-3 mb-0"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" id="saveEngagementButton" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
+let editingEngagementId = null;
+document.querySelectorAll(".edit-engagement").forEach(button => {
+    button.addEventListener("click", () => {
+        editingEngagementId = Number(button.dataset.engagementId);
+        document.getElementById("editEngagementOrganisation").value = button.dataset.organisation;
+        document.getElementById("editEngagementStartDate").value = button.dataset.startDate;
+        document.getElementById("editEngagementEndDate").value = button.dataset.endDate;
+        const error = document.getElementById("editEngagementError");
+        error.classList.add("d-none");
+        error.textContent = "";
+    });
+});
+
+document.getElementById("editEngagementForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    const saveButton = document.getElementById("saveEngagementButton");
+    const error = document.getElementById("editEngagementError");
+    saveButton.disabled = true;
+    error.classList.add("d-none");
+    const response = await fetch(
+        `/api/workers/{{ worker.id }}/engagements/${editingEngagementId}`,
+        {
+            method: "PATCH",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-Token": {{ csrf_token(request) | tojson }}
+            },
+            body: JSON.stringify({
+                start_date: document.getElementById("editEngagementStartDate").value,
+                end_date: document.getElementById("editEngagementEndDate").value || null
+            })
+        }
+    );
+    const result = await response.json();
+    if (response.ok) {
+        window.location.reload();
+        return;
+    }
+    error.textContent = result.detail || "Unable to update engagement.";
+    error.classList.remove("d-none");
+    saveButton.disabled = false;
+});
+
 async function changeStatus() {
     const button = document.getElementById("statusButton");
     const message = document.getElementById("message");

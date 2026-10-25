@@ -38,8 +38,8 @@
             <tbody>
                 {% for p in profiles %}
                 <tr>
-                    <td>{{ p.effective_from }}</td>
-                    <td>{{ p.effective_to or "Ongoing" }}</td>
+                    <td>{{ p.effective_from | date_au }}</td>
+                    <td>{{ (p.effective_to | date_au) if p.effective_to else "Ongoing" }}</td>
                     <td>{{ p.fund_name }}</td>
                     <td>{{ p.fund_usi }}</td>
                     <td>{{ p.member_number }}</td>

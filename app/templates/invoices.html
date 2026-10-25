@@ -30,6 +30,7 @@
                     <th class="text-center">Select</th>
                     <th>Invoice</th>
                     <th>Date</th>
+                    <th>Due</th>
                     <th>Customer</th>
                     <th>Worker</th>
                     <th>Total</th>
@@ -72,6 +73,7 @@
                         </a>
                     </td>
                     <td>{{ invoice.issue_date | date_au }}</td>
+                    <td>{{ invoice.due_date | date_au }}</td>
                     <td>{{ invoice.customer }}</td>
                     <td>{{ invoice.worker }}</td>
                     <td>

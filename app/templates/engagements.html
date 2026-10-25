@@ -24,6 +24,8 @@
                     <th>ID</th>
                     <th>Worker</th>
                     <th>Customer</th>
+                    <th>Host Organisation</th>
+                    <th>PBT Schedule</th>
                     <th>Billing Rate</th>
                     <th>Start Date</th>
                     <th>End Date</th>
@@ -46,6 +48,8 @@
                     </td>
                     <td>{{ engagement.employee_name }}</td>
                     <td>{{ engagement.customer_name }}</td>
+                    <td>{{ engagement.host_organisation_name }}</td>
+                    <td>{{ engagement.pbt_schedule_name }}</td>
                     <td>${{ engagement.billing_rate }}/hr</td>
                     <td>
                         {{ engagement.start_date_display }}
@@ -63,7 +67,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="7" class="text-center text-muted">
+                    <td colspan="9" class="text-center text-muted">
                         No assignments found.
                     </td>
                 </tr>
@@ -129,6 +133,32 @@
                 </div>
 
                 <div class="col-md-6">
+                    <label for="hostOrganisationId" class="form-label">
+                        Host Organisation
+                    </label>
+                    <select id="hostOrganisationId" class="form-select">
+                        <option value="">No host organisation</option>
+                        {% for organisation in customers %}
+                        <option value="{{ organisation.id }}">
+                            {{ organisation.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-6">
+                    <label for="pbtScheduleId" class="form-label">
+                        PBT Schedule
+                    </label>
+                    <select id="pbtScheduleId" class="form-select" disabled>
+                        <option value="">No PBT schedule</option>
+                    </select>
+                    <div class="form-text">
+                        Only schedules for the selected customer are shown.
+                    </div>
+                </div>
+
+                <div class="col-md-3">
                     <label for="assignmentStartDate" class="form-label">
                         Start Date
                     </label>
@@ -137,7 +167,7 @@
                            class="form-control">
                 </div>
 
-                <div class="col-md-6">
+                <div class="col-md-3">
                     <label for="assignmentEndDate" class="form-label">
                         End Date
                     </label>
@@ -173,6 +203,31 @@ const editor = document.getElementById("engagementEditor");
 const form = document.getElementById("engagementForm");
 const message = document.getElementById("formMessage");
 const saveButton = document.getElementById("saveButton");
+const customerId = document.getElementById("customerId");
+const pbtScheduleId = document.getElementById("pbtScheduleId");
+const pbtSchedules = {{ pbt_schedules | tojson }};
+
+function updatePbtScheduleOptions(selectedScheduleId = null) {
+    const selectedCustomerId = Number(customerId.value);
+    const matches = pbtSchedules.filter(
+        schedule => schedule.customer_id === selectedCustomerId
+    );
+
+    pbtScheduleId.replaceChildren();
+    pbtScheduleId.add(new Option("No PBT schedule", ""));
+    matches.forEach(schedule => {
+        const status = schedule.status === "active"
+            ? "Active"
+            : schedule.status.charAt(0).toUpperCase() + schedule.status.slice(1);
+        pbtScheduleId.add(
+            new Option(`${schedule.name} (${status})`, schedule.id)
+        );
+    });
+    pbtScheduleId.disabled = !selectedCustomerId || matches.length === 0;
+    pbtScheduleId.value = selectedScheduleId ?? "";
+}
+
+customerId.addEventListener("change", () => updatePbtScheduleOptions());
 
 function showEditor() {
     message.classList.add("d-none");
@@ -184,6 +239,7 @@ function newEngagement() {
     form.reset();
     document.getElementById("assignmentId").value = "";
     document.getElementById("formTitle").textContent = "New Assignment";
+    updatePbtScheduleOptions();
     showEditor();
 }
 
@@ -192,6 +248,9 @@ function editEngagement(engagement) {
     document.getElementById("assignmentId").value = engagement.id;
     document.getElementById("engagementId").value = engagement.engagement_id;
     document.getElementById("customerId").value = engagement.customer_id;
+    document.getElementById("hostOrganisationId").value =
+        engagement.host_organisation_id ?? "";
+    updatePbtScheduleOptions(engagement.pbt_schedule_id);
     document.getElementById("billingRate").value = engagement.billing_rate;
     document.getElementById("assignmentStartDate").value =
         engagement.start_date;
@@ -220,6 +279,14 @@ form.addEventListener("submit", async event => {
     const payload = {
         engagement_id: Number(document.getElementById("engagementId").value),
         customer_id: Number(document.getElementById("customerId").value),
+        pbt_schedule_id: pbtScheduleId.value
+            ? Number(pbtScheduleId.value)
+            : null,
+        host_organisation_id: document.getElementById(
+            "hostOrganisationId"
+        ).value
+            ? Number(document.getElementById("hostOrganisationId").value)
+            : null,
         billing_rate: document.getElementById("billingRate").value,
         start_date: document.getElementById("assignmentStartDate").value || null,
         end_date: document.getElementById("assignmentEndDate").value || null

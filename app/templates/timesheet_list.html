@@ -9,15 +9,15 @@
     <div class="mb-3">
         
 
-        <a href="/ui/timesheets/weekly"
+        <a href="/ui/timesheet-runs"
            class="btn btn-primary">
-            + New Weekly Timesheet
+            Timesheet Run
         </a>
     </div>
 
-    <!-- WEEKLY TIMESHEETS -->
+    <!-- PERIOD TIMESHEETS -->
 
-    <h4 class="mt-4">Weekly Timesheets</h4>
+    <h4 class="mt-4">Period Timesheets</h4>
 
     <div class="card p-4">
         <div class="table-responsive">
@@ -28,8 +28,9 @@
                     <tr>
                         <th>ID</th>
                         <th>Worker</th>
-                        <th>Week Commencing</th>
-                        <th>Week Ending</th>
+                        <th>Type</th>
+                        <th>Period Start</th>
+                        <th>Period End</th>
                         <th>Total Hours</th>
                         <th>Status</th>
                         <th>Actions</th>
@@ -38,22 +39,24 @@
 
                 <tbody>
 
-                    {% for timesheet in weekly_timesheets %}
+                    {% for timesheet in period_timesheets %}
 
                     <tr>
 
                         <td>
-                            <a href="/ui/timesheets/weekly/{{ timesheet.id }}/preview"
+                            <a href="/ui/timesheets/{{ timesheet.period_type }}/{{ timesheet.id }}/preview"
                                data-bs-toggle="modal"
                                data-bs-target="#timesheetPreviewModal"
                                data-timesheet-id="{{ timesheet.id }}"
-                               data-period-type="weekly"
+                               data-period-type="{{ timesheet.period_type }}"
                                class="text-decoration-none fw-semibold">
                                 #{{ timesheet.id }}
                             </a>
                         </td>
 
                         <td>{{ timesheet.employee_name }}</td>
+
+                        <td>{{ timesheet.type_label }}</td>
 
                         <td>{{ timesheet.period_start | date_au }}</td>
 
@@ -81,7 +84,8 @@
 
                         <td>
 
-                            {% if timesheet.status == "approved"
+                            {% if timesheet.period_type == "weekly"
+                                  and timesheet.status == "approved"
                                   and timesheet.engagement_id %}
                             <a
                                 href="/ui/timesheets/weekly/{{ timesheet.id }}/payroll/preview"
@@ -105,9 +109,10 @@
                                         type="button"
                                         class="btn btn-sm btn-outline-success"
                                         onclick="openInvoiceDialog(
-                                            'weekly',
+                                            '{{ timesheet.period_type }}',
                                             {{ timesheet.id }},
-                                            {{ timesheet.engagement_id }}
+                                            {{ timesheet.engagement_id }},
+                                            {{ timesheet.assignment_id or 'null' }}
                                         )">
                                         Generate Invoice
                                     </button>
@@ -126,7 +131,7 @@
                             {% if timesheet.status == "draft" %}
 
                                 <a
-                                    href="/ui/timesheets/weekly/{{ timesheet.id }}/edit"
+                                    href="/ui/timesheets/{{ timesheet.period_type }}/{{ timesheet.id }}/edit"
                                     class="btn btn-sm btn-outline-primary me-2">
                                     Edit
                                 </a>
@@ -134,7 +139,7 @@
                                 <button
                                     type="button"
                                     class="btn btn-sm btn-success"
-                                    onclick="approveWeeklyTimesheet({{ timesheet.id }})">
+                                    onclick="approvePeriodTimesheet('{{ timesheet.period_type }}', {{ timesheet.id }})">
                                     Approve
                                 </button>
 
@@ -147,8 +152,8 @@
                     {% else %}
 
                     <tr>
-                        <td colspan="7" class="text-muted">
-                            No weekly timesheets found.
+                        <td colspan="8" class="text-muted">
+                            No period timesheets found.
                         </td>
                     </tr>
 
@@ -164,8 +169,6 @@
 
     <!-- DAILY TIMESHEETS -->
 
-    
-{% if false %}
 <h4 class="mt-5">Daily Timesheets</h4>
 
     <div class="card p-4">
@@ -297,8 +300,6 @@
         </div>
     </div>
 
-
-{% endif %}
 </div>
 
 <!-- TIMESHEET PREVIEW MODAL -->
@@ -364,13 +365,16 @@ async function approveTimesheet(id) {
 }
 
 
-async function approveWeeklyTimesheet(id) {
+async function approvePeriodTimesheet(periodType, id) {
 
-    if (!confirm("Approve all seven days of this weekly timesheet?")) {
+    if (!confirm("Approve this complete timesheet period?")) {
         return;
     }
 
-    await submitApproval(`/api/timesheets/weekly/${id}/approve`);
+    const endpoint = periodType === "scheduled"
+        ? `/api/timesheets/scheduled/${id}/approve`
+        : `/api/timesheets/weekly/${id}/approve`;
+    await submitApproval(endpoint);
 }
 
 
@@ -500,7 +504,7 @@ const invoiceAssignments = {{ engagement_options | tojson }};
 let selectedInvoiceTimesheet = null;
 
 
-function openInvoiceDialog(periodType, timesheetId, engagementId) {
+function openInvoiceDialog(periodType, timesheetId, engagementId, assignmentId = null) {
 
     selectedInvoiceTimesheet = {
         periodType,
@@ -521,7 +525,8 @@ function openInvoiceDialog(periodType, timesheetId, engagementId) {
 
     const available = invoiceAssignments.filter(
         assignment =>
-            assignment.engagement_id === engagementId
+            assignment.engagement_id === engagementId &&
+            (!assignmentId || assignment.id === assignmentId)
     );
 
     if (!available.length) {

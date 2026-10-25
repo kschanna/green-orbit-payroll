@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import Date, ForeignKey, String
+from sqlalchemy import Date, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.organisation import Base
@@ -9,10 +9,25 @@ from app.models.organisation import Base
 class TimesheetHeader(Base):
 
     __tablename__ = "timesheet_headers"
+    __table_args__ = (
+        UniqueConstraint(
+            "assignment_id",
+            "pbt_schedule_period_id",
+            name="uq_timesheet_header_assignment_pbt_period",
+        ),
+    )
 
     engagement_id: Mapped[int | None] = mapped_column(
         ForeignKey("engagements.id"),
         index=True, nullable=True
+    )
+
+    assignment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("assignments.id"), index=True, nullable=True
+    )
+
+    pbt_schedule_period_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pbt_schedule_periods.id"), index=True, nullable=True
     )
 
 
@@ -42,6 +57,10 @@ class TimesheetHeader(Base):
         String(20),
         default="draft",
         nullable=False
+    )
+
+    source: Mapped[str] = mapped_column(
+        String(20), default="manual", nullable=False
     )
 
 

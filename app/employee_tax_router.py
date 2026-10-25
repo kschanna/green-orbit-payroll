@@ -10,6 +10,7 @@ from app.database import SessionLocal
 from app.models.employee_tax_profile import EmployeeTaxProfile
 from app.models.employee_tfn import EmployeeTFN
 from app.tfn_security import mask_tfn
+from app.utils.dates import format_date_au
 from app.employee_tfn_router import require_tfn_admin
 
 router = APIRouter()
@@ -17,6 +18,7 @@ templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["csrf_token"] = lambda request: request.session.get(
     "csrf_token", ""
 )
+templates.env.filters["date_au"] = format_date_au
 
 
 

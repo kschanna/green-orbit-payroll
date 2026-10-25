@@ -84,8 +84,8 @@
             <tbody>
                 {% for p in profiles %}
                 <tr>
-                    <td>{{ p.effective_from }}</td>
-                    <td>{{ p.effective_to or "Ongoing" }}</td>
+                    <td>{{ p.effective_from | date_au }}</td>
+                    <td>{{ (p.effective_to | date_au) if p.effective_to else "Ongoing" }}</td>
                     <td>{{ p.residency_status }}</td>
                     <td>{{ "Yes" if p.claims_tax_free_threshold else "No" }}</td>
                     <td>{{ "Yes" if p.has_study_loan else "No" }}</td>

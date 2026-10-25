@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block content %}
+
+<a href="/ui/pbt-schedules" class="btn btn-link mb-3">← Back to PBT Schedules</a>
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div>
+        <h2>{{ schedule.name }}</h2>
+        <p class="text-muted mb-2">
+            PBT Schedule #{{ schedule.id }} · {{ schedule.customer.name }}
+        </p>
+        <span class="badge {{ 'bg-success' if schedule.status == 'active' else 'bg-secondary' }}">
+            {{ schedule.status | title }}
+        </span>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="badge bg-secondary fs-6">{{ period_count }} Generated Periods</span>
+        {% if schedule.status != "active" %}
+        <form method="post" action="/ui/pbt-schedules/{{ schedule.id }}/status">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+            <input type="hidden" name="status" value="active">
+            <button class="btn btn-success">Activate</button>
+        </form>
+        {% else %}
+        <form method="post" action="/ui/pbt-schedules/{{ schedule.id }}/status">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+            <input type="hidden" name="status" value="inactive">
+            <button class="btn btn-outline-secondary">Deactivate</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card p-4 mb-4">
+    <div class="row g-3">
+        <div class="col-md-3"><div class="text-muted small">Customer</div><div class="fw-semibold">{{ schedule.customer.name }}</div></div>
+        <div class="col-md-3"><div class="text-muted small">Effective From</div><div class="fw-semibold">{{ schedule.effective_from | date_au }}</div></div>
+        <div class="col-md-3"><div class="text-muted small">Effective To</div><div class="fw-semibold">{{ schedule.effective_to | date_au if schedule.effective_to else "Ongoing" }}</div></div>
+        <div class="col-md-3"><div class="text-muted small">Generated Through</div><div class="fw-semibold">{{ schedule.generated_through | date_au }}</div></div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    {% for schedule_type, title, event_label in [
+        ("timesheet", "Timesheet", "Due Date"),
+        ("invoice", "Invoice", "Issue Date"),
+        ("payment", "Payment", "Payment Date")
+    ] %}
+    {% set rule = rules[schedule_type] %}
+    <div class="col-12 col-lg-4">
+        <div class="card p-4 h-100">
+            <h5>{{ title }} Schedule</h5>
+            <div class="row g-2 mt-1">
+                <div class="col-6"><div class="text-muted small">Frequency</div><div class="fw-semibold">{{ rule.frequency | replace("_", " ") | title }}</div></div>
+                <div class="col-6"><div class="text-muted small">Offset</div><div class="fw-semibold">{{ "%+d"|format(rule.offset_days) }} days</div></div>
+                {% if schedule_type == "invoice" %}
+                <div class="col-12"><div class="text-muted small">Customer Payment Terms</div><div class="fw-semibold">{{ rule.invoice_payment_terms_days }} calendar days from issue</div></div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% for schedule_type, title, event_label in [
+    ("timesheet", "Timesheet Periods", "Due Date"),
+    ("invoice", "Invoice Periods", "Issue Date"),
+    ("payment", "Payment Periods", "Payment Date")
+] %}
+<div class="card p-4 mb-4">
+    <h5>{{ title }}</h5>
+    <div class="table-responsive" style="max-height: 420px; overflow-y: auto;">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="sticky-top bg-white">
+                <tr><th>Period Start</th><th>Period End</th><th>{{ event_label }}</th>{% if schedule_type == "invoice" %}<th>Customer Due Date</th>{% endif %}<th>Status</th></tr>
+            </thead>
+            <tbody>
+                {% for period in period_groups[schedule_type] %}
+                <tr>
+                    <td>{{ period.period_start | date_au }}</td>
+                    <td>{{ period.period_end | date_au }}</td>
+                    <td>{{ period.event_date | date_au }}</td>
+                    {% if schedule_type == "invoice" %}<td>{{ period.customer_payment_due_date | date_au }}</td>{% endif %}
+                    <td><span class="badge bg-secondary">{{ period.status | title }}</span></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="{{ 5 if schedule_type == 'invoice' else 4 }}" class="text-center text-muted">No generated periods.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endfor %}
+
+{% endblock %}

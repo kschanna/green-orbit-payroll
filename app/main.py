@@ -9,6 +9,8 @@ from app.employee_tfn_router import router as employee_tfn_router
 from app.components_router import router as components_router
 from app.leave_router import router as leave_router
 from app.payments_router import router as payments_router
+from app.pbt_router import router as pbt_router
+from app.timesheet_run_router import router as timesheet_run_router
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -50,6 +52,8 @@ from app.models.assignment_component import AssignmentComponent
 from app.reports.invoice_pdf import InvoicePDFGenerator
 from app.invoicing.engine import generate_invoice
 from app.models.timesheet_header import TimesheetHeader
+from app.models.pbt_schedule import PBTSchedule
+from app.models.pbt_schedule_period import PBTSchedulePeriod
 
 
 # ============================================================
@@ -65,7 +69,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 app = FastAPI(
     title="Green Orbit Payroll API",
     description="Australian Payroll Engine",
-    version="0.2.0"
+    version="0.4.0"
 )
 
 app.router.include_router(components_router)
@@ -77,6 +81,8 @@ app.router.include_router(assignment_components_router)
 app.router.include_router(employee_tfn_router)
 app.router.include_router(leave_router)
 app.router.include_router(payments_router)
+app.router.include_router(pbt_router)
+app.router.include_router(timesheet_run_router)
 
 session_secret = os.environ.get("SESSION_SECRET")
 
@@ -98,6 +104,11 @@ class NewEngagementInput(BaseModel):
     engagement_type: Literal["payg_employee", "payg_contractor", "company_contractor"]
     status: str = Field(default="active", min_length=1, max_length=20)
     start_date: date = Field(default_factory=date.today)
+    end_date: date | None = None
+
+
+class EngagementDatesInput(BaseModel):
+    start_date: date
     end_date: date | None = None
 
 
@@ -145,6 +156,29 @@ def create_worker_engagement(worker_id: int, data: NewEngagementInput):
         db.commit()
         db.refresh(engagement)
         return {"id": engagement.id, "worker_id": worker_id}
+
+
+@app.patch("/api/workers/{worker_id}/engagements/{engagement_id}")
+def update_worker_engagement_dates(
+    worker_id: int,
+    engagement_id: int,
+    data: EngagementDatesInput,
+):
+    with SessionLocal() as db:
+        engagement = db.get(Engagement, engagement_id)
+        if engagement is None or engagement.worker_id != worker_id:
+            raise HTTPException(404, "Engagement not found")
+        if data.end_date is not None and data.end_date < data.start_date:
+            raise HTTPException(422, "End date cannot precede start date")
+        engagement.start_date = data.start_date
+        engagement.end_date = data.end_date
+        db.commit()
+        return {
+            "id": engagement.id,
+            "worker_id": worker_id,
+            "start_date": engagement.start_date,
+            "end_date": engagement.end_date,
+        }
 
 
 @app.middleware("http")
@@ -283,7 +317,7 @@ class PayRunCreate(BaseModel):
 def home():
     return {
         "application": "Green Orbit Payroll Engine",
-        "version": "0.2.0",
+        "version": "0.4.0",
         "status": "running"
     }
 
@@ -386,7 +420,7 @@ def dashboard(request: Request):
                 },
                 "completed_value_chart": {
                     "labels": [
-                        f"Run #{run_id} · {payment_date.strftime('%d/%m/%y')}"
+                        f"Run #{run_id} · {payment_date.strftime('%d/%m/%Y')}"
                         for run_id, payment_date, _, _
                         in completed_value_rows
                     ],
@@ -637,6 +671,58 @@ def create_invoice_from_timesheet(data: TimesheetInvoiceInput):
 
             timesheet_ids = [entry.id for entry in entries]
 
+        elif data.period_type == "scheduled":
+            header = db.get(TimesheetHeader, data.timesheet_id)
+            if header is None or header.period_type != "scheduled":
+                raise HTTPException(404, "Scheduled timesheet not found")
+            if header.status != "approved":
+                raise HTTPException(409, "Scheduled timesheet must be approved")
+            if header.assignment_id != data.engagement_id:
+                raise HTTPException(409, "Scheduled timesheet assignment mismatch")
+
+            entries = db.scalars(
+                select(Timesheet)
+                .where(Timesheet.timesheet_header_id == header.id)
+                .order_by(Timesheet.work_date, Timesheet.id)
+            ).all()
+            expected_dates = {
+                header.period_start + timedelta(days=offset)
+                for offset in range(
+                    (header.period_end - header.period_start).days + 1
+                )
+            }
+            if {entry.work_date for entry in entries} != expected_dates:
+                raise HTTPException(
+                    409, "Scheduled timesheet must cover its complete PBT period"
+                )
+            if any(entry.status != "approved" for entry in entries):
+                raise HTTPException(409, "All timesheet entries must be approved")
+
+            assignment = db.get(Assignment, header.assignment_id)
+            invoice_period = db.scalar(
+                select(PBTSchedulePeriod)
+                .where(
+                    PBTSchedulePeriod.pbt_schedule_id
+                    == assignment.pbt_schedule_id,
+                    PBTSchedulePeriod.schedule_type == "invoice",
+                    PBTSchedulePeriod.period_start <= header.period_end,
+                    PBTSchedulePeriod.period_end >= header.period_end,
+                )
+                .order_by(PBTSchedulePeriod.period_start)
+                .limit(1)
+            )
+            if invoice_period is None:
+                raise HTTPException(
+                    409,
+                    "No PBT invoice period covers this timesheet period end date",
+                )
+            timesheet_ids = [entry.id for entry in entries]
+            scheduled_invoice_dates = {
+                "issue_date": invoice_period.event_date,
+                "due_date": invoice_period.customer_payment_due_date,
+                "pbt_schedule_period_id": invoice_period.id,
+            }
+
         else:
             raise HTTPException(
                 status_code=422,
@@ -648,7 +734,11 @@ def create_invoice_from_timesheet(data: TimesheetInvoiceInput):
     try:
         return generate_invoice_for_timesheet(
             engagement_id=data.engagement_id,
-            timesheet_ids=timesheet_ids
+            timesheet_ids=timesheet_ids,
+            **(
+                scheduled_invoice_dates
+                if data.period_type == "scheduled" else {}
+            ),
         )
     except ValueError as error:
         raise HTTPException(
@@ -1082,36 +1172,56 @@ def list_timesheets(request: Request):
 
     with SessionLocal() as db:
 
-        # Retrieve weekly timesheet headers
-        weekly_headers = db.scalars(
+        # Retrieve every header-based timesheet, including PBT-scheduled
+        # weekly, fortnightly, monthly and semi-monthly periods.
+        period_headers = db.scalars(
             select(TimesheetHeader)
-            .where(TimesheetHeader.period_type == "weekly")
             .order_by(TimesheetHeader.id.desc())
         ).all()
 
-        # Prepare weekly timesheet records
-        weekly_timesheets = []
+        period_timesheets = []
 
-        for header in weekly_headers:
+        for header in period_headers:
 
             entries = db.scalars(
                 select(Timesheet)
                 .where(Timesheet.timesheet_header_id == header.id)
             ).all()
 
-            weekly_timesheets.append({
+            entry_ids = [entry.id for entry in entries]
+            is_invoiced = bool(entry_ids and db.scalar(
+                select(InvoiceTimesheet.id)
+                .where(InvoiceTimesheet.timesheet_id.in_(entry_ids))
+                .limit(1)
+            ))
+            type_label = header.period_type.replace("_", " ").title()
+            if header.period_type == "scheduled":
+                pbt_period = db.get(
+                    PBTSchedulePeriod, header.pbt_schedule_period_id
+                )
+                frequency = (
+                    pbt_period.rule.frequency.replace("_", " ").title()
+                    if pbt_period is not None else "Scheduled"
+                )
+                type_label = f"PBT {frequency}"
+
+            period_timesheets.append({
                 "id": header.id,
                 "engagement_id": header.engagement_id,
+                "assignment_id": header.assignment_id,
                 "employee_name": (
                     (timesheet_worker_name(db, header.engagement_id))
                 ),
+                "period_type": header.period_type,
+                "type_label": type_label,
                 "period_start": header.period_start,
                 "period_end": header.period_end,
                 "total_hours": sum(
                     (entry.hours_worked for entry in entries),
                     Decimal("0.00")
                 ),
-                "status": header.status
+                "status": header.status,
+                "is_invoiced": is_invoiced,
             })
 
         # Retrieve standalone daily timesheets only
@@ -1130,7 +1240,12 @@ def list_timesheets(request: Request):
                 ),
                 "work_date": timesheet.work_date,
                 "hours": timesheet.hours_worked,
-                "status": timesheet.status
+                "status": timesheet.status,
+                "is_invoiced": db.scalar(
+                    select(InvoiceTimesheet.id)
+                    .where(InvoiceTimesheet.timesheet_id == timesheet.id)
+                    .limit(1)
+                ) is not None,
             }
             for timesheet in daily_timesheets
         ]
@@ -1139,7 +1254,7 @@ def list_timesheets(request: Request):
             request=request,
             name="timesheet_list.html",
             context={
-                "weekly_timesheets": weekly_timesheets,
+                "period_timesheets": period_timesheets,
                 "daily_timesheets": daily_data,
                 "engagement_options": [
                     {
@@ -3696,6 +3811,8 @@ def payslips_page(request: Request):
 class AssignmentInput(BaseModel):
     engagement_id: int
     customer_id: int
+    pbt_schedule_id: int | None = None
+    host_organisation_id: int | None = None
     billing_rate: Decimal
     start_date: date | None = None
     end_date: date | None = None
@@ -3744,6 +3861,15 @@ def worker_engagement_assignments_page(
                     {
                         "id": assignment.id,
                         "customer": assignment.customer.name,
+                        "host_organisation": (
+                            assignment.host_organisation.name
+                            if assignment.host_organisation
+                            else "Not assigned"
+                        ),
+                        "pbt_schedule": (
+                            assignment.pbt_schedule.name
+                            if assignment.pbt_schedule else "Not assigned"
+                        ),
                         "billing_rate": assignment.billing_rate,
                     }
                     for assignment in assignments
@@ -3800,6 +3926,9 @@ def assignment_preview_page(
         customer = assignment.customer
         customer_options = db.scalars(
             select(Organisation).order_by(Organisation.name)
+        ).all()
+        pbt_schedule_options = db.scalars(
+            select(PBTSchedule).order_by(PBTSchedule.name, PBTSchedule.id)
         ).all()
 
         definitions = db.scalars(
@@ -3951,6 +4080,7 @@ def assignment_preview_page(
                 "id": invoice.id,
                 "invoice_number": invoice.invoice_number,
                 "issue_date": invoice.issue_date,
+                "due_date": invoice.due_date,
                 "subtotal": invoice.subtotal,
                 "gst": invoice.gst,
                 "total": invoice.total,
@@ -4023,9 +4153,30 @@ def assignment_preview_page(
                 "assignment_start_date": assignment.start_date,
                 "assignment_end_date": assignment.end_date,
                 "assignment_customer_id": assignment.customer_id,
+                "assignment_pbt_schedule_id": assignment.pbt_schedule_id,
+                "assignment_pbt_schedule_name": (
+                    assignment.pbt_schedule.name
+                    if assignment.pbt_schedule else None
+                ),
+                "assignment_host_organisation_id": (
+                    assignment.host_organisation_id
+                ),
+                "assignment_host_organisation_name": (
+                    assignment.host_organisation.name
+                    if assignment.host_organisation else None
+                ),
                 "customer_options": [
                     {"id": option.id, "name": option.name}
                     for option in customer_options
+                ],
+                "pbt_schedule_options": [
+                    {
+                        "id": option.id,
+                        "customer_id": option.customer_organisation_id,
+                        "name": option.name,
+                        "status": option.status,
+                    }
+                    for option in pbt_schedule_options
                 ],
                 "component_groups": component_groups,
                 "component_history": component_history,
@@ -4052,6 +4203,16 @@ def assignments_page(request: Request):
                     else None
                 ),
                 "customer_id": assignment.customer_id,
+                "pbt_schedule_id": assignment.pbt_schedule_id,
+                "pbt_schedule_name": (
+                    assignment.pbt_schedule.name
+                    if assignment.pbt_schedule else "Not assigned"
+                ),
+                "host_organisation_id": assignment.host_organisation_id,
+                "host_organisation_name": (
+                    assignment.host_organisation.name
+                    if assignment.host_organisation else "Not assigned"
+                ),
                 "employee_name": (
                     f"{assignment.engagement.worker.first_name} "
                     f"{assignment.engagement.worker.last_name}"
@@ -4096,6 +4257,9 @@ def assignments_page(request: Request):
         customers = db.scalars(
             select(Organisation).order_by(Organisation.name)
         ).all()
+        pbt_schedules = db.scalars(
+            select(PBTSchedule).order_by(PBTSchedule.name, PBTSchedule.id)
+        ).all()
 
     return templates.TemplateResponse(
         request=request,
@@ -4106,6 +4270,15 @@ def assignments_page(request: Request):
             "customers": [
                 {"id": customer.id, "name": customer.name}
                 for customer in customers
+            ],
+            "pbt_schedules": [
+                {
+                    "id": schedule.id,
+                    "customer_id": schedule.customer_organisation_id,
+                    "name": schedule.name,
+                    "status": schedule.status,
+                }
+                for schedule in pbt_schedules
             ],
         },
     )
@@ -4128,6 +4301,20 @@ def validate_engagement_input(db, data):
         raise HTTPException(404, "Engagement not found")
     if db.get(Organisation, data.customer_id) is None:
         raise HTTPException(404, "Customer organisation not found")
+    if data.pbt_schedule_id is not None:
+        pbt_schedule = db.get(PBTSchedule, data.pbt_schedule_id)
+        if pbt_schedule is None:
+            raise HTTPException(404, "PBT schedule not found")
+        if pbt_schedule.customer_organisation_id != data.customer_id:
+            raise HTTPException(
+                422,
+                "PBT schedule must belong to the assignment customer",
+            )
+    if (
+        data.host_organisation_id is not None
+        and db.get(Organisation, data.host_organisation_id) is None
+    ):
+        raise HTTPException(404, "Host organisation not found")
 
 
 @app.post("/api/engagements")
@@ -4139,6 +4326,8 @@ def create_engagement(data: AssignmentInput):
             engagement_id=data.engagement_id,
             employee_id=None,
             customer_id=data.customer_id,
+            pbt_schedule_id=data.pbt_schedule_id,
+            host_organisation_id=data.host_organisation_id,
             billing_rate=data.billing_rate,
             start_date=data.start_date,
             end_date=data.end_date,
@@ -4160,6 +4349,8 @@ def update_engagement(engagement_id: int, data: AssignmentInput):
         assignment.engagement_id = data.engagement_id
         assignment.employee_id = None
         assignment.customer_id = data.customer_id
+        assignment.pbt_schedule_id = data.pbt_schedule_id
+        assignment.host_organisation_id = data.host_organisation_id
         assignment.billing_rate = data.billing_rate
         assignment.start_date = data.start_date
         assignment.end_date = data.end_date
@@ -4171,6 +4362,8 @@ def update_engagement(engagement_id: int, data: AssignmentInput):
 def create_assignment(
     engagement_id: int = Form(...),
     customer_id: int = Form(...),
+    pbt_schedule_id: int | None = Form(None),
+    host_organisation_id: int | None = Form(None),
     billing_rate: Decimal = Form(...),
     start_date: date | None = Form(None),
     end_date: date | None = Form(None),
@@ -4178,6 +4371,8 @@ def create_assignment(
     data = AssignmentInput(
         engagement_id=engagement_id,
         customer_id=customer_id,
+        pbt_schedule_id=pbt_schedule_id,
+        host_organisation_id=host_organisation_id,
         billing_rate=billing_rate,
         start_date=start_date,
         end_date=end_date,
@@ -4188,6 +4383,8 @@ def create_assignment(
             engagement_id=data.engagement_id,
             employee_id=None,
             customer_id=data.customer_id,
+            pbt_schedule_id=data.pbt_schedule_id,
+            host_organisation_id=data.host_organisation_id,
             billing_rate=data.billing_rate,
             start_date=data.start_date,
             end_date=data.end_date,
@@ -4322,6 +4519,7 @@ def invoices_page(request: Request):
                 "id": invoice.id,
                 "invoice_number": invoice.invoice_number,
                 "issue_date": invoice.issue_date,
+                "due_date": invoice.due_date,
                 "customer": assignment.customer.name,
                 "worker": (
                     f"{worker.first_name} {worker.last_name}"
@@ -4511,66 +4709,66 @@ def _prepare_invoice_contractor_payroll(db, invoice_id):
             "Invoice has no linked Timesheets",
         )
 
-    # This prototype supports exactly one approved weekly
-    # Timesheet, with seven daily entries.
     header_ids = {
         entry.timesheet_header_id
         for entry in invoice_entries
     }
 
-    if len(header_ids) != 1 or None in header_ids:
+    if not header_ids or None in header_ids:
         raise HTTPException(
             409,
-            "Invoice must reference one weekly Timesheet",
+            "Invoice must reference header-based Timesheets",
         )
 
-    header_id = next(iter(header_ids))
-
-    header = db.get(TimesheetHeader, header_id)
-
-    if header is None or header.period_type != "weekly":
+    headers = db.scalars(
+        select(TimesheetHeader)
+        .where(TimesheetHeader.id.in_(header_ids))
+        .order_by(TimesheetHeader.period_start, TimesheetHeader.id)
+    ).all()
+    if len(headers) != len(header_ids):
         raise HTTPException(
             409,
-            "Linked weekly Timesheet header is invalid",
+            "One or more linked Timesheet headers are invalid",
         )
-
-    if header.status != "approved":
+    if any(header.period_type not in {"weekly", "scheduled"} for header in headers):
         raise HTTPException(
             409,
-            "Linked weekly Timesheet must be approved",
+            "Invoice contains an unsupported Timesheet type",
         )
-
-    if header.engagement_id != engagement.id:
+    if any(header.status != "approved" for header in headers):
         raise HTTPException(
             409,
-            "Weekly Timesheet Engagement mismatch",
+            "All linked Timesheets must be approved",
         )
+    if any(header.engagement_id != engagement.id for header in headers):
+        raise HTTPException(409, "Timesheet Engagement mismatch")
 
-    # The customer invoice intentionally excludes LEAVE-family rows. Use the
-    # invoice to identify the approved weekly timesheet, then calculate payroll
-    # from the complete timesheet so paid leave is not omitted.
+    # Customer invoices exclude leave-family rows. Once their headers are
+    # identified, payroll reloads every row so paid leave remains included.
     entries = db.scalars(
         select(Timesheet)
-        .where(Timesheet.timesheet_header_id == header.id)
+        .where(Timesheet.timesheet_header_id.in_(header_ids))
         .order_by(Timesheet.work_date, Timesheet.id)
     ).all()
+    for header in headers:
+        header_entries = [
+            entry for entry in entries
+            if entry.timesheet_header_id == header.id
+        ]
+        expected_dates = {
+            header.period_start + timedelta(days=offset)
+            for offset in range(
+                (header.period_end - header.period_start).days + 1
+            )
+        }
+        if {entry.work_date for entry in header_entries} != expected_dates:
+            raise HTTPException(
+                409,
+                f"Timesheet #{header.id} does not cover its complete period",
+            )
 
-    from datetime import timedelta
-
-    expected_dates = [
-        header.period_start + timedelta(days=i)
-        for i in range(7)
-    ]
-
-    if (
-        header.period_start.weekday() != 0
-        or header.period_end != header.period_start + timedelta(days=6)
-        or {entry.work_date for entry in entries} != set(expected_dates)
-    ):
-        raise HTTPException(
-            409,
-            "Invoice must reference a complete Monday–Sunday Timesheet",
-        )
+    payroll_period_start = min(header.period_start for header in headers)
+    payroll_period_end = max(header.period_end for header in headers)
 
     for entry in entries:
 
@@ -4592,24 +4790,6 @@ def _prepare_invoice_contractor_payroll(db, invoice_id):
                 "Timesheet Engagement mismatch",
             )
 
-    if (
-        engagement.start_date is not None
-        and engagement.start_date > header.period_start
-    ):
-        raise HTTPException(
-            409,
-            "Partial commencement-period payroll is not supported",
-        )
-
-    if (
-        engagement.end_date is not None
-        and engagement.end_date < header.period_end
-    ):
-        raise HTTPException(
-            409,
-            "Partial final-period payroll is not supported",
-        )
-
     # Prevent an overlapping payslip, including one created
     # by the separate weekly Timesheet payroll workflow.
     overlapping = db.scalar(
@@ -4617,8 +4797,8 @@ def _prepare_invoice_contractor_payroll(db, invoice_id):
         .join(PayRun, Payslip.pay_run_id == PayRun.id)
         .where(
             Payslip.engagement_id == engagement.id,
-            PayRun.period_start <= header.period_end,
-            PayRun.period_end >= header.period_start,
+            PayRun.period_start <= payroll_period_end,
+            PayRun.period_end >= payroll_period_start,
         )
         .limit(1)
     )
@@ -4663,7 +4843,30 @@ def _prepare_invoice_contractor_payroll(db, invoice_id):
             "Calculated gross earnings must be positive",
         )
 
-    payment_date = header.period_end + timedelta(days=1)
+    payment_period = None
+    pay_frequency = "weekly"
+    if assignment.pbt_schedule_id is not None:
+        payment_period = db.scalar(
+            select(PBTSchedulePeriod)
+            .where(
+                PBTSchedulePeriod.pbt_schedule_id == assignment.pbt_schedule_id,
+                PBTSchedulePeriod.schedule_type == "payment",
+                PBTSchedulePeriod.period_start <= payroll_period_end,
+                PBTSchedulePeriod.period_end >= payroll_period_end,
+            )
+            .order_by(PBTSchedulePeriod.period_start)
+            .limit(1)
+        )
+    if payment_period is not None:
+        payment_date = payment_period.event_date
+        payment_rule = payment_period.rule
+        pay_frequency = (
+            "fortnightly"
+            if payment_rule.frequency == "semi_monthly"
+            else payment_rule.frequency
+        )
+    else:
+        payment_date = payroll_period_end + timedelta(days=1)
 
     # Tax profile
     tax_profiles = db.scalars(
@@ -4701,7 +4904,7 @@ def _prepare_invoice_contractor_payroll(db, invoice_id):
         payg = PAYGWithholdingCalculator().calculate(
             session=db,
             gross_pay=gross,
-            pay_frequency="weekly",
+            pay_frequency=pay_frequency,
             claims_tax_free_threshold=tax.claims_tax_free_threshold,
             payment_date=payment_date,
         )
@@ -4856,10 +5059,20 @@ def _prepare_invoice_contractor_payroll(db, invoice_id):
         "engagement_id": engagement.id,
         "assignment_id": assignment.id,
         "organisation_id": engagement.organisation_id,
-        "header_id": header.id,
-        "period_start": header.period_start,
-        "period_end": header.period_end,
+        "header_id": headers[0].id,
+        "timesheet_headers": [
+            {
+                "id": header.id,
+                "period_type": header.period_type,
+                "period_start": header.period_start,
+                "period_end": header.period_end,
+            }
+            for header in headers
+        ],
+        "period_start": payroll_period_start,
+        "period_end": payroll_period_end,
         "payment_date": payment_date,
+        "pay_frequency": pay_frequency,
         "hours": hours,
         "gross": gross,
         "payg": payg,

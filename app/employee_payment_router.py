@@ -9,12 +9,14 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models.employee_payment_detail import EmployeePaymentDetail
+from app.utils.dates import format_date_au
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["csrf_token"] = (
     lambda request: request.session.get("csrf_token", "")
 )
+templates.env.filters["date_au"] = format_date_au
 
 
 

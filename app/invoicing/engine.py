@@ -314,6 +314,9 @@ def generate_invoice(engagement_id: int, start_date: date, end_date: date):
 def generate_invoice_for_timesheet(
     engagement_id: int,
     timesheet_ids: list[int],
+    issue_date: date | None = None,
+    due_date: date | None = None,
+    pbt_schedule_period_id: int | None = None,
 ):
     """Generate one invoice from explicitly selected timesheet entries."""
 
@@ -381,7 +384,9 @@ def generate_invoice_for_timesheet(
         invoice = Invoice(
             engagement_id=assignment.id,
             invoice_number=f"INV-{uuid4().hex[:12].upper()}",
-            issue_date=date.today(),
+            issue_date=issue_date or date.today(),
+            due_date=due_date,
+            pbt_schedule_period_id=pbt_schedule_period_id,
             subtotal=amounts["subtotal"],
             gst=amounts["gst"],
             total=amounts["total"],

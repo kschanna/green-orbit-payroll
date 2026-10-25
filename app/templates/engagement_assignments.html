@@ -38,6 +38,8 @@
                     <tr>
                         <th>Assignment ID</th>
                         <th>Customer</th>
+                        <th>Host Organisation</th>
+                        <th>PBT Schedule</th>
                         <th>Billing Rate</th>
                         <th>Actions</th>
                     </tr>
@@ -58,6 +60,10 @@
 
                         <td>{{ assignment.customer }}</td>
 
+                        <td>{{ assignment.host_organisation }}</td>
+
+                        <td>{{ assignment.pbt_schedule }}</td>
+
                         <td>
                             ${{ "%.2f"|format(assignment.billing_rate) }}/hour
                         </td>
@@ -74,7 +80,7 @@
                     {% else %}
 
                     <tr>
-                        <td colspan="4" class="text-center text-muted py-4">
+                        <td colspan="6" class="text-center text-muted py-4">
                             No Assignments found for this Engagement.
                         </td>
                     </tr>
