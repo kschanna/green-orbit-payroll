@@ -98,7 +98,7 @@
                 <div>
                     <strong>Billing Rate</strong>
                     <div>
-                        ${{ "%.2f"|format(billing_rate) }}/hour
+                        ${{ "{:,.2f}".format(billing_rate) }}/hour
                     </div>
                 </div>
             </div>
@@ -217,12 +217,10 @@
     <div class="card p-4 mb-4" style="min-width: 0;">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
             <h5 class="mb-0">Components</h5>
-            <button type="button"
-                    class="btn btn-success"
-                    data-bs-toggle="modal"
-                    data-bs-target="#newAssignmentComponentModal">
-                + Add New Component
-            </button>
+            <a class="btn btn-success"
+               href="/ui/assignments/{{ assignment_id }}/components">
+                Configure Components
+            </a>
         </div>
 
         <div class="table-responsive">
@@ -261,20 +259,10 @@
                             {{ (component.effective_to | date_au) if component.effective_to else "Ongoing" }}
                         </td>
                         <td>
-                            <button type="button"
-                                    class="btn btn-sm btn-outline-primary"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#editAssignmentComponentModal"
-                                    data-component-id="{{ component.id }}"
-                                    data-component-definition-id="{{ component.component_definition_id }}"
-                                    data-component-name="{{ component.name | e }}"
-                                    data-applies-to="{{ component.applies_to }}"
-                                    data-pay-rate="{{ component.pay_rate if component.pay_rate is not none else '' }}"
-                                    data-bill-rate="{{ component.bill_rate if component.bill_rate is not none else '' }}"
-                                    data-effective-from="{{ component.effective_from.isoformat() }}"
-                                    data-effective-to="{{ component.effective_to.isoformat() if component.effective_to else '' }}">
+                            <a class="btn btn-sm btn-outline-primary"
+                               href="/ui/assignments/{{ assignment_id }}/components">
                                 Edit
-                            </button>
+                            </a>
                         </td>
                     </tr>
                     {% else %}
@@ -611,16 +599,16 @@
                         </td>
 
                         <td>
-                            ${{ "%.2f"|format(invoice.subtotal) }}
+                            ${{ "{:,.2f}".format(invoice.subtotal) }}
                         </td>
 
                         <td>
-                            ${{ "%.2f"|format(invoice.gst) }}
+                            ${{ "{:,.2f}".format(invoice.gst) }}
                         </td>
 
                         <td>
                             <strong>
-                                ${{ "%.2f"|format(invoice.total) }}
+                                ${{ "{:,.2f}".format(invoice.total) }}
                             </strong>
                         </td>
 
@@ -718,21 +706,21 @@
                         </td>
 
                         <td>
-                            ${{ "%.2f"|format(payslip.gross_pay) }}
+                            ${{ "{:,.2f}".format(payslip.gross_pay) }}
                         </td>
 
                         <td>
-                            ${{ "%.2f"|format(payslip.payg_withholding) }}
+                            ${{ "{:,.2f}".format(payslip.payg_withholding) }}
                         </td>
 
                         <td>
                             <strong>
-                                ${{ "%.2f"|format(payslip.net_pay) }}
+                                ${{ "{:,.2f}".format(payslip.net_pay) }}
                             </strong>
                         </td>
 
                         <td>
-                            ${{ "%.2f"|format(payslip.superannuation) }}
+                            ${{ "{:,.2f}".format(payslip.superannuation) }}
                         </td>
 
                         <td>

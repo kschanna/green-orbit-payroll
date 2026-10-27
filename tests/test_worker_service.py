@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models.worker import Worker
 from app.worker_service import WorkerError, WorkerService
+from app.workers_router import engagement_type_data
 
 
 @pytest.fixture
@@ -106,3 +107,27 @@ def test_delete_worker_with_dependent_records_is_rejected():
 
     db.delete.assert_called_once_with(worker)
     db.rollback.assert_called_once_with()
+
+
+def test_engagement_types_are_deduplicated_and_active_takes_precedence():
+    engagements = [
+        Mock(engagement_type="payg_contractor", status="ended"),
+        Mock(engagement_type="payg_employee", status="ended"),
+        Mock(engagement_type="payg_employee", status="active"),
+        Mock(engagement_type="payg_employee", status="active"),
+    ]
+
+    assert engagement_type_data(engagements) == [
+        {
+            "type": "payg_employee",
+            "label": "PAYG Employee",
+            "badge_class": "badge-engagement-employee",
+            "status": "active",
+        },
+        {
+            "type": "payg_contractor",
+            "label": "PAYG Contractor",
+            "badge_class": "badge-engagement-payg-contractor",
+            "status": "ended",
+        },
+    ]

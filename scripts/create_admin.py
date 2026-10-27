@@ -21,6 +21,7 @@ with SessionLocal() as db:
         email=email,
         password_hash=hash_password(password),
         is_active=True,
+        role="admin",
     ))
     db.commit()
 

@@ -60,13 +60,22 @@ class InvoicePDFGenerator:
         if line_items:
             for item in line_items:
                 if item["calculation_type"] == "percentage":
-                    description = (
-                        f'{item["description"]} ({item["rate"]:.2f}%)'
+                    explanation = (
+                        f'{item["rate"]:.2f}% of ${item["base_amount"]:,.2f}'
+                        if item.get("base_amount") is not None
+                        else item.get("explanation")
                     )
+                    description = (
+                        f'{item["description"]} ({explanation})'
+                        if explanation
+                        else f'{item["description"]} ({item["rate"]:.2f}%)'
+                    )
+                elif item.get("calculation_method", "").startswith("fixed_per_"):
+                    description = item.get("explanation") or item["description"]
                 else:
                     description = (
                         f'{item["description"]}: {item["quantity"]:.2f} '
-                        f'hours @ ${item["rate"]:.2f}'
+                        f'{item.get("unit_type", "hours")} @ ${item["rate"]:.2f}'
                     )
                 data.append([description, f'${item["amount"]:,.2f}'])
         else:

@@ -30,7 +30,7 @@
 
   <form method="get" class="card card-body mb-3">
     <div class="row g-3 align-items-end">
-      <div class="col-md-5">
+      <div class="col-md-4">
         <label class="form-label" for="customerFilter">Customer</label>
         <select class="form-select" id="customerFilter" name="customer_id">
           <option value="">All customers</option>
@@ -39,7 +39,7 @@
           {% endfor %}
         </select>
       </div>
-      <div class="col-md-4">
+      <div class="col-md-3">
         <label class="form-label" for="statusFilter">Status</label>
         <select class="form-select" id="statusFilter" name="status">
           {% for value, label in [('all','All'),('missing','Missing only'),('overdue','Overdue'),('due_today','Due today'),('upcoming','Upcoming'),('draft','Draft'),('approved','Approved')] %}
@@ -47,9 +47,16 @@
           {% endfor %}
         </select>
       </div>
-      <div class="col-md-3 d-flex gap-2">
+      <div class="col-md-2">
+        <label class="form-label" for="dateFrom">From</label>
+        <input class="form-control" id="dateFrom" name="date_from" type="date" value="{{ selected_date_from }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label" for="dateTo">To</label>
+        <input class="form-control" id="dateTo" name="date_to" type="date" value="{{ selected_date_to }}">
+      </div>
+      <div class="col-md-1 d-flex gap-2">
         <button class="btn btn-outline-primary">Apply</button>
-        <a href="/ui/timesheet-runs" class="btn btn-outline-secondary">Clear</a>
       </div>
     </div>
   </form>
@@ -108,6 +115,7 @@
       </table>
     </div>
   </div>
+  {% include "_pagination.html" %}
 </div>
 <script>
 const csrfToken={{ csrf_token(request)|tojson }};

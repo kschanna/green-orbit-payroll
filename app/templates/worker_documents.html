@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+{% block content %}
+
+<a href="/ui/workers/{{ worker.id }}" class="btn btn-link mb-3">
+    ← Back to {{ worker.first_name }} {{ worker.last_name }}
+</a>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div>
+        <h2>Worker Documents</h2>
+        <p class="text-muted mb-0">
+            {{ worker.first_name }} {{ worker.last_name }} · Worker #{{ worker.id }}
+        </p>
+    </div>
+    <button type="button"
+            class="btn btn-primary"
+            data-bs-toggle="modal"
+            data-bs-target="#newDocumentModal">
+        + New Document
+    </button>
+</div>
+
+<div class="card p-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0">Documents</h5>
+        <span class="text-muted small">
+            {{ documents | length }} document{{ "" if documents | length == 1 else "s" }}
+        </span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 worker-documents-table">
+                    <thead>
+                        <tr>
+                            <th>Document</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Uploaded</th>
+                            <th>Issued</th>
+                            <th>Expiry</th>
+                            <th class="text-end worker-documents-actions-column">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for document in documents %}
+                        <tr>
+                            <td>
+                                <span title="{{ document.original_filename }}">
+                                    {{ document.original_filename | middle_ellipsis }}
+                                </span>
+                            </td>
+                            <td>{{ document_types.get(document.document_type, document.document_type | replace("_", " ") | title) }}</td>
+                            <td>
+                                {% if document.status == "approved" %}
+                                <span class="badge bg-success">Approved</span>
+                                {% elif document.status == "failed" %}
+                                <span class="badge bg-danger">Failed</span>
+                                {% elif document.status == "rejected" %}
+                                <span class="badge bg-danger">Rejected</span>
+                                {% elif document.status == "ready_for_review" %}
+                                <span class="badge bg-warning text-dark">Ready for review</span>
+                                {% else %}
+                                <span class="badge bg-secondary">{{ document.status | replace("_", " ") | title }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ document.created_at.strftime("%d/%m/%Y") }}</td>
+                            <td>{{ document.issued_on.strftime("%d/%m/%Y") if document.issued_on else "—" }}</td>
+                            <td>{{ document.expires_on.strftime("%d/%m/%Y") if document.expires_on else "—" }}</td>
+                            <td class="text-end worker-documents-actions-column">
+                                <div class="d-inline-flex flex-nowrap gap-2">
+                                {% if document.status in ("ready_for_review", "approved", "rejected") %}
+                                <a class="btn btn-sm btn-primary"
+                                   href="/ui/workers/{{ worker.id }}/documents/{{ document.id }}/review">
+                                    {{ "View review" if document.status in ("approved", "rejected") else "Review" }}
+                                </a>
+                                {% endif %}
+                                <button type="button"
+                                   class="btn btn-sm btn-outline-primary document-preview-button"
+                                   data-bs-toggle="modal"
+                                   data-bs-target="#documentPreviewModal"
+                                   data-document-name="{{ document.original_filename }}"
+                                   data-document-url="/ui/workers/{{ worker.id }}/documents/{{ document.id }}/download">
+                                    View
+                                </button>
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-danger document-delete-button"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#deleteDocumentModal"
+                                        data-document-name="{{ document.original_filename }}"
+                                        data-delete-url="/ui/workers/{{ worker.id }}/documents/{{ document.id }}/delete">
+                                    Delete
+                                </button>
+                                </div>
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center py-5">
+                                <div class="text-muted mb-3">No documents uploaded yet.</div>
+                                <button type="button"
+                                        class="btn btn-outline-primary btn-sm"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#newDocumentModal">
+                                    Upload the first document
+                                </button>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="deleteDocumentModal" tabindex="-1"
+     aria-labelledby="deleteDocumentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteDocumentModalLabel">Delete Document</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to permanently delete this document?</p>
+                <div id="deleteDocumentName" class="fw-semibold text-break"></div>
+                <div class="alert alert-warning mt-3 mb-0">
+                    The uploaded file, extraction and review history will be removed. This cannot be undone.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    Cancel
+                </button>
+                <form id="deleteDocumentForm" method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+                    <button type="submit" class="btn btn-danger">Delete Document</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="documentPreviewModal" tabindex="-1"
+     aria-labelledby="documentPreviewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-md-down">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title" id="documentPreviewModalLabel">Document Preview</h5>
+                    <div id="documentPreviewName" class="small text-muted mt-1"></div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <iframe id="documentPreviewFrame"
+                        title="Document preview"
+                        style="width:100%; height:78vh; border:0;"></iframe>
+            </div>
+            <div class="modal-footer">
+                <a id="documentPreviewOpen" class="btn btn-outline-primary"
+                   target="_blank" rel="noopener">Open in new tab</a>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="newDocumentModal" tabindex="-1"
+     aria-labelledby="newDocumentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title" id="newDocumentModalLabel">New Document</h5>
+                    <div class="small text-muted mt-1">
+                        Upload a document for {{ worker.first_name }} {{ worker.last_name }}
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div id="uploadError"
+                     class="alert alert-danger{% if not error %} d-none{% endif %}"
+                     role="alert">{{ error or "" }}</div>
+                <div class="alert alert-light border small">
+                    PDF only, up to 10 MB. Uploaded documents are processed and remain subject to administrator review.
+                </div>
+
+                <form id="documentUploadForm"
+                      action="/ui/workers/{{ worker.id }}/documents"
+                      method="post"
+                      enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="document_type" class="form-label">Document type</label>
+                        <select id="document_type" name="document_type" class="form-select" required>
+                            {% for value, label in document_types.items() %}
+                            <option value="{{ value }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="document" class="form-label">PDF file</label>
+                        <input id="document" name="document" type="file"
+                               class="form-control" accept="application/pdf,.pdf" required>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-12 col-md-6">
+                            <label for="issued_on" class="form-label">Issue date</label>
+                            <input id="issued_on" name="issued_on" type="date" class="form-control">
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label for="expires_on" class="form-label">Expiry date</label>
+                            <input id="expires_on" name="expires_on" type="date" class="form-control">
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    Cancel
+                </button>
+                <button id="uploadButton" type="submit" form="documentUploadForm" class="btn btn-primary">
+                    Upload Document
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const deleteDocumentModal = document.getElementById("deleteDocumentModal");
+const deleteDocumentForm = document.getElementById("deleteDocumentForm");
+const deleteDocumentName = document.getElementById("deleteDocumentName");
+
+deleteDocumentModal.addEventListener("show.bs.modal", (event) => {
+    const button = event.relatedTarget;
+    deleteDocumentName.textContent = button.dataset.documentName;
+    deleteDocumentForm.action = button.dataset.deleteUrl;
+});
+
+deleteDocumentModal.addEventListener("hidden.bs.modal", () => {
+    deleteDocumentName.textContent = "";
+    deleteDocumentForm.removeAttribute("action");
+});
+
+const documentPreviewModal = document.getElementById("documentPreviewModal");
+const documentPreviewFrame = document.getElementById("documentPreviewFrame");
+const documentPreviewName = document.getElementById("documentPreviewName");
+const documentPreviewOpen = document.getElementById("documentPreviewOpen");
+
+documentPreviewModal.addEventListener("show.bs.modal", (event) => {
+    const button = event.relatedTarget;
+    const url = button.dataset.documentUrl;
+    documentPreviewName.textContent = button.dataset.documentName;
+    documentPreviewFrame.src = url;
+    documentPreviewOpen.href = url;
+});
+
+documentPreviewModal.addEventListener("hidden.bs.modal", () => {
+    documentPreviewFrame.removeAttribute("src");
+    documentPreviewOpen.removeAttribute("href");
+    documentPreviewName.textContent = "";
+});
+
+document.getElementById("documentUploadForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = document.getElementById("uploadButton");
+    const errorBox = document.getElementById("uploadError");
+    button.disabled = true;
+    button.textContent = "Uploading…";
+    errorBox.classList.add("d-none");
+
+    try {
+        const response = await fetch(form.action, {
+            method: "POST",
+            headers: {"X-CSRF-Token": {{ csrf_token(request) | tojson }}},
+            body: new FormData(form),
+        });
+        if (!response.ok) {
+            throw new Error(`Upload failed with status ${response.status}`);
+        }
+        window.location.assign(response.url);
+    } catch (error) {
+        errorBox.textContent = "The document could not be uploaded. Please try again.";
+        errorBox.classList.remove("d-none");
+        button.disabled = false;
+        button.textContent = "Upload Document";
+    }
+});
+
+{% if error %}
+document.addEventListener("DOMContentLoaded", () => {
+    bootstrap.Modal.getOrCreateInstance(document.getElementById("newDocumentModal")).show();
+});
+{% endif %}
+</script>
+
+{% endblock %}

@@ -5,6 +5,21 @@ body {
     font-family: Arial, sans-serif;
 }
 
+.badge-engagement-employee {
+    color: #fff;
+    background-color: #2563eb;
+}
+
+.badge-engagement-payg-contractor {
+    color: #fff;
+    background-color: #0f766e;
+}
+
+.badge-engagement-company-contractor {
+    color: #fff;
+    background-color: #7c3aed;
+}
+
 /* Application layout */
 
 .app-layout {
@@ -249,4 +264,327 @@ body {
 .dashboard-chart {
     height: 260px;
     position: relative;
+}
+
+/* AI Assistant */
+
+.ai-page {
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.ai-chat-card {
+    display: flex;
+    flex-direction: column;
+    height: min(720px, calc(100vh - 190px));
+    min-height: 520px;
+    overflow: hidden;
+}
+
+.ai-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+    background: #f8faf9;
+}
+
+.ai-message-row {
+    display: flex;
+    margin-bottom: 16px;
+}
+
+.ai-message-user {
+    justify-content: flex-end;
+}
+
+.ai-message-bubble {
+    max-width: min(75%, 680px);
+    padding: 12px 16px;
+    border-radius: 16px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    line-height: 1.5;
+    background: #fff;
+    border: 1px solid #dfe7e3;
+}
+
+.ai-message-user .ai-message-bubble {
+    color: #fff;
+    background: #176b52;
+    border-color: #176b52;
+    border-bottom-right-radius: 4px;
+}
+
+.ai-message-assistant .ai-message-bubble {
+    border-bottom-left-radius: 4px;
+    white-space: normal;
+}
+
+.ai-message-assistant .ai-message-with-chart {
+    width: min(100%, 800px);
+    max-width: 100%;
+}
+
+.ai-message-assistant .ai-message-bubble > :first-child {
+    margin-top: 0;
+}
+
+.ai-message-assistant .ai-message-bubble > :last-child {
+    margin-bottom: 0;
+}
+
+.ai-message-assistant h1,
+.ai-message-assistant h2,
+.ai-message-assistant h3,
+.ai-message-assistant h4,
+.ai-message-assistant h5,
+.ai-message-assistant h6 {
+    margin: 1rem 0 0.5rem;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.ai-message-assistant p,
+.ai-message-assistant ul,
+.ai-message-assistant ol,
+.ai-message-assistant blockquote,
+.ai-message-assistant pre {
+    margin: 0 0 0.75rem;
+}
+
+.ai-message-assistant ul,
+.ai-message-assistant ol {
+    padding-left: 1.4rem;
+}
+
+.ai-message-assistant li + li {
+    margin-top: 0.35rem;
+}
+
+.ai-message-assistant code {
+    padding: 0.1rem 0.3rem;
+    border-radius: 4px;
+    color: #183c32;
+    background: #e8f0ec;
+}
+
+.ai-message-assistant pre {
+    overflow-x: auto;
+    padding: 12px;
+    border-radius: 8px;
+    background: #e8f0ec;
+}
+
+.ai-message-assistant pre code {
+    padding: 0;
+    background: transparent;
+}
+
+.ai-message-assistant blockquote {
+    padding-left: 12px;
+    color: #52635d;
+    border-left: 3px solid #8ab5a6;
+}
+
+.ai-markdown-table {
+    margin: 0 0 0.75rem;
+    border: 1px solid #dfe7e3;
+    border-radius: 8px;
+}
+
+.ai-markdown-table .table {
+    min-width: 560px;
+    font-size: 0.9rem;
+}
+
+.ai-markdown-table thead th {
+    white-space: nowrap;
+    color: #24483e;
+    background: #e8f0ec;
+    border-bottom-color: #b8ccc4;
+}
+
+.ai-markdown-table td,
+.ai-markdown-table th {
+    padding: 0.55rem 0.7rem;
+}
+
+.ai-markdown-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.ai-chart {
+    height: 280px;
+    margin: 1rem 0 0.5rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #dfe7e3;
+}
+
+.ai-chart figcaption {
+    margin-bottom: 0.5rem;
+    color: #24483e;
+    font-weight: 700;
+}
+
+.ai-chart canvas {
+    max-height: 240px;
+}
+
+.ai-status {
+    min-height: 28px;
+    padding-top: 4px;
+}
+
+.ai-composer {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    border-top: 1px solid #e1e7e4;
+}
+
+.ai-composer textarea {
+    resize: none;
+    max-height: 160px;
+}
+
+@media (max-width: 576px) {
+    .ai-chat-card {
+        height: calc(100vh - 230px);
+        min-height: 430px;
+    }
+
+    .ai-messages {
+        padding: 16px;
+    }
+
+    .ai-message-bubble {
+        max-width: 88%;
+    }
+
+    .ai-composer {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .ai-chart {
+        height: 240px;
+    }
+}
+.worker-documents-table {
+    min-width: 980px;
+    table-layout: auto;
+}
+
+.worker-documents-table th,
+.worker-documents-table td {
+    white-space: nowrap;
+}
+
+.worker-documents-table th:first-child,
+.worker-documents-table td:first-child {
+    min-width: 190px;
+    width: 210px;
+    max-width: 210px;
+}
+
+.worker-documents-actions-column {
+    min-width: 250px;
+    width: 250px;
+}
+
+.worker-documents-actions-column .btn {
+    white-space: nowrap;
+}
+
+/* Dashboard floating AI Assistant */
+
+.dashboard-ai-launcher {
+    position: fixed;
+    right: 28px;
+    bottom: 24px;
+    z-index: 1040;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 18px;
+    border-radius: 999px;
+    box-shadow: 0 8px 24px rgba(18, 60, 50, 0.28);
+}
+
+.dashboard-ai-panel {
+    position: fixed;
+    right: 28px;
+    bottom: 24px;
+    z-index: 1050;
+    display: flex;
+    flex-direction: column;
+    width: min(520px, calc(100vw - 40px));
+    height: min(720px, calc(100vh - 48px));
+    min-width: 360px;
+    min-height: 480px;
+    overflow: hidden;
+    resize: both;
+    border: 1px solid #b8ccc4;
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 18px 55px rgba(18, 60, 50, 0.3);
+}
+
+.dashboard-ai-panel[hidden] {
+    display: none;
+}
+
+.dashboard-ai-panel-header {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 14px;
+    color: #fff;
+    background: #123c32;
+}
+
+.dashboard-ai-panel-header .btn {
+    min-width: 34px;
+}
+
+.dashboard-ai-frame {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    border: 0;
+    background: #f8faf9;
+}
+
+.ai-page-embedded {
+    max-width: none;
+}
+
+.ai-page-embedded .ai-chat-card {
+    height: calc(100vh - 145px);
+    min-height: 300px;
+}
+
+@media (max-width: 576px) {
+    .dashboard-ai-launcher {
+        right: 16px;
+        bottom: 16px;
+    }
+
+    .dashboard-ai-panel {
+        inset: 0;
+        width: 100vw;
+        height: 100dvh;
+        min-width: 0;
+        min-height: 0;
+        resize: none;
+        border: 0;
+        border-radius: 0;
+    }
+
+    .ai-page-embedded .ai-chat-card {
+        height: calc(100dvh - 155px);
+        min-height: 300px;
+    }
 }

@@ -151,7 +151,7 @@
         <div class="card p-3 p-md-4 h-100">
             <small class="text-muted">Gross Pay</small>
             <h4 class="mb-0">
-                ${{ "%.2f" | format(totals.gross_pay) }}
+                ${{ "{:,.2f}".format(totals.gross_pay) }}
             </h4>
         </div>
     </div>
@@ -160,7 +160,7 @@
         <div class="card p-3 p-md-4 h-100">
             <small class="text-muted">PAYG Withholding</small>
             <h4 class="mb-0">
-                ${{ "%.2f" | format(totals.payg_withholding) }}
+                ${{ "{:,.2f}".format(totals.payg_withholding) }}
             </h4>
         </div>
     </div>
@@ -169,7 +169,7 @@
         <div class="card p-3 p-md-4 h-100">
             <small class="text-muted">Net Pay</small>
             <h4 class="mb-0">
-                ${{ "%.2f" | format(totals.net_pay) }}
+                ${{ "{:,.2f}".format(totals.net_pay) }}
             </h4>
         </div>
     </div>
@@ -178,7 +178,7 @@
         <div class="card p-3 p-md-4 h-100">
             <small class="text-muted">Superannuation</small>
             <h4 class="mb-0">
-                ${{ "%.2f" | format(totals.superannuation) }}
+                ${{ "{:,.2f}".format(totals.superannuation) }}
             </h4>
         </div>
     </div>
@@ -223,21 +223,21 @@
                     </td>
 
                     <td>
-                        ${{ "%.2f" | format(payslip.gross_pay) }}
+                        ${{ "{:,.2f}".format(payslip.gross_pay) }}
                     </td>
 
                     <td>
-                        ${{ "%.2f" | format(payslip.payg_withholding) }}
+                        ${{ "{:,.2f}".format(payslip.payg_withholding) }}
                     </td>
 
                     <td>
                         <strong>
-                            ${{ "%.2f" | format(payslip.net_pay) }}
+                            ${{ "{:,.2f}".format(payslip.net_pay) }}
                         </strong>
                     </td>
 
                     <td>
-                        ${{ "%.2f" | format(payslip.superannuation) }}
+                        ${{ "{:,.2f}".format(payslip.superannuation) }}
                     </td>
 
                     <td>
@@ -288,28 +288,28 @@
             <div class="col-6">
                 <small class="text-muted">Gross Pay</small>
                 <div class="fw-semibold">
-                    ${{ "%.2f" | format(payslip.gross_pay) }}
+                    ${{ "{:,.2f}".format(payslip.gross_pay) }}
                 </div>
             </div>
 
             <div class="col-6">
                 <small class="text-muted">PAYG</small>
                 <div class="fw-semibold">
-                    ${{ "%.2f" | format(payslip.payg_withholding) }}
+                    ${{ "{:,.2f}".format(payslip.payg_withholding) }}
                 </div>
             </div>
 
             <div class="col-6">
                 <small class="text-muted">Net Pay</small>
                 <div class="fw-bold text-success">
-                    ${{ "%.2f" | format(payslip.net_pay) }}
+                    ${{ "{:,.2f}".format(payslip.net_pay) }}
                 </div>
             </div>
 
             <div class="col-6">
                 <small class="text-muted">Superannuation</small>
                 <div class="fw-semibold">
-                    ${{ "%.2f" | format(payslip.superannuation) }}
+                    ${{ "{:,.2f}".format(payslip.superannuation) }}
                 </div>
             </div>
 

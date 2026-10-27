@@ -56,6 +56,14 @@
                 Download PDF
             </a>
 
+            {% if invoice.status == "draft" %}
+            <button type="button"
+                    class="btn btn-outline-danger me-2"
+                    data-bs-toggle="modal"
+                    data-bs-target="#deleteInvoiceModal">
+                Delete Invoice
+            </button>
+            {% endif %}
             {% if request.query_params.get("embed") != "1" %}
             <button type="button"
                     onclick="window.print()"
@@ -178,7 +186,7 @@
                     <thead class="table-light">
                         <tr>
                             <th>Description</th>
-                            <th class="text-end">Hours</th>
+                            <th class="text-end">Units</th>
                             <th class="text-end">Rate</th>
                             <th class="text-end">Amount</th>
                         </tr>
@@ -190,35 +198,40 @@
                         <tr>
                             <td>
                                 {{ item.description }}
+                                {% if item.calculation_type == "percentage" and item.base_amount is not none %}
+                                <div class="small text-muted">{{ "%.2f"|format(item.rate) }}% of ${{ "{:,.2f}".format(item.base_amount) }}</div>
+                                {% endif %}
                             </td>
 
                             <td class="text-end">
-                                {% if item.calculation_type == "percentage" %}
+                                {% if item.calculation_type == "percentage" or (item.calculation_method or "").startswith("fixed_per_") %}
                                     —
                                 {% else %}
-                                    {{ "%.2f"|format(item.quantity) }}
+                                    {{ "%.2f"|format(item.quantity) }} {{ item.unit_type or "units" }}
                                 {% endif %}
                             </td>
 
                             <td class="text-end">
                                 {% if item.calculation_type == "percentage" %}
                                     {{ "%.2f"|format(item.rate) }}%
+                                {% elif (item.calculation_method or "").startswith("fixed_per_") %}
+                                    Fixed
                                 {% else %}
-                                    ${{ "%.2f"|format(item.rate) }}
+                                    ${{ "{:,.2f}".format(item.rate) }}
                                 {% endif %}
                             </td>
 
                             <td class="text-end">
-                                ${{ "%.2f"|format(item.amount) }}
+                                ${{ "{:,.2f}".format(item.amount) }}
                             </td>
                         </tr>
                         {% endfor %}
                         {% else %}
                         <tr>
                             <td>Services provided</td>
-                            <td class="text-end">{{ "%.2f"|format(hours) }}</td>
-                            <td class="text-end">${{ "%.2f"|format(assignment.billing_rate) }}</td>
-                            <td class="text-end">${{ "%.2f"|format(invoice.subtotal) }}</td>
+                            <td class="text-end">{{ "%.2f"|format(hours) }} hours</td>
+                            <td class="text-end">${{ "{:,.2f}".format(assignment.billing_rate) }}</td>
+                            <td class="text-end">${{ "{:,.2f}".format(invoice.subtotal) }}</td>
                         </tr>
                         {% endif %}
                     </tbody>
@@ -238,21 +251,21 @@
                         <tr>
                             <td>Subtotal</td>
                             <td class="text-end">
-                                ${{ "%.2f"|format(invoice.subtotal) }}
+                                ${{ "{:,.2f}".format(invoice.subtotal) }}
                             </td>
                         </tr>
 
                         <tr>
                             <td>GST</td>
                             <td class="text-end">
-                                ${{ "%.2f"|format(invoice.gst) }}
+                                ${{ "{:,.2f}".format(invoice.gst) }}
                             </td>
                         </tr>
 
                         <tr class="table-light fw-bold">
                             <td>TOTAL</td>
                             <td class="text-end">
-                                ${{ "%.2f"|format(invoice.total) }}
+                                ${{ "{:,.2f}".format(invoice.total) }}
                             </td>
                         </tr>
 
@@ -275,5 +288,31 @@
     </div>
 
 </div>
+
+{% if invoice.status == "draft" %}
+<div class="modal fade" id="deleteInvoiceModal" tabindex="-1"
+     aria-labelledby="deleteInvoiceModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteInvoiceModalLabel">Delete Draft Invoice</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Delete invoice <strong>{{ invoice.invoice_number }}</strong>?</p>
+                <p class="text-muted mb-0">Its invoice lines will be removed and the linked timesheets will become available for invoicing again. This cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form action="/ui/invoices/{{ invoice.id }}/delete" method="post"
+                      {% if request.query_params.get('embed') == '1' %}target="_top"{% endif %}>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+                    <button type="submit" class="btn btn-danger">Delete Invoice</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 {% endblock %}

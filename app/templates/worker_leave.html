@@ -21,7 +21,7 @@
         <tr>
           <td>{{ p.leave_type }}</td><td>{{ p.plan_basis | title }}</td><td>#{{ p.engagement_id }}</td>
           <td>{{ p.annual_entitlement_hours }}</td><td>{{ p.accrual_rate_per_hour }}</td>
-          <td>{{ "$%.2f"|format(p.paid_leave_rate) if p.paid_leave_rate is not none else "Ordinary rate" }}</td>
+          <td>{{ "${:,.2f}".format(p.paid_leave_rate) if p.paid_leave_rate is not none else "Ordinary rate" }}</td>
           <td><strong>{{ p.balance }}</strong> hours</td>
           <td>{{ p.effective_from | date_au }} – {{ (p.effective_to | date_au) if p.effective_to else "Ongoing" }}</td>
           <td><button type="button" class="btn btn-sm btn-outline-secondary"

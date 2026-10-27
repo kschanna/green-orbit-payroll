@@ -10,7 +10,7 @@
 
     <div class="d-flex align-items-center gap-2">
         <span class="badge bg-success fs-6">
-            {{ invoices | length }} Invoices
+            {{ pagination.total }} Invoices
         </span>
         <button type="button"
                 id="generatePayrollButton"
@@ -78,7 +78,7 @@
                     <td>{{ invoice.worker }}</td>
                     <td>
                         <strong>
-                            ${{ "%.2f" | format(invoice.total) }}
+                            ${{ "{:,.2f}".format(invoice.total) }}
                         </strong>
                     </td>
                     <td>
@@ -134,6 +134,8 @@
         </table>
     </div>
 </div>
+
+{% include "_pagination.html" %}
 
 <div class="modal fade"
      id="invoicePreviewModal"

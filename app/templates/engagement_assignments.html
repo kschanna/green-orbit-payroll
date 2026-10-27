@@ -65,7 +65,7 @@
                         <td>{{ assignment.pbt_schedule }}</td>
 
                         <td>
-                            ${{ "%.2f"|format(assignment.billing_rate) }}/hour
+                            ${{ "{:,.2f}".format(assignment.billing_rate) }}/hour
                         </td>
 
                         <td>

@@ -165,6 +165,7 @@
 
         </div>
     </div>
+    {% include "_pagination.html" %}
 
 
     <!-- DAILY TIMESHEETS -->
@@ -547,7 +548,7 @@ function openInvoiceDialog(periodType, timesheetId, engagementId, assignmentId =
 
             option.textContent =
                 assignment.customer_name +
-                " — $" + assignment.billing_rate + "/hr";
+                " — $" + Number(assignment.billing_rate).toLocaleString("en-AU", {minimumFractionDigits: 2, maximumFractionDigits: 2}) + "/hr";
 
             select.appendChild(option);
         }

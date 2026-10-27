@@ -77,7 +77,7 @@
                         </td>
 
                         <td>
-                            ${{ "%.2f"|format(pattern.hourly_rate) }}
+                            ${{ "{:,.2f}".format(pattern.hourly_rate) }}
                         </td>
 
                         <td>
@@ -181,21 +181,21 @@
                         </td>
 
                         <td>
-                            ${{ "%.2f"|format(payslip.gross_pay) }}
+                            ${{ "{:,.2f}".format(payslip.gross_pay) }}
                         </td>
 
                         <td>
-                            ${{ "%.2f"|format(payslip.payg_withholding) }}
+                            ${{ "{:,.2f}".format(payslip.payg_withholding) }}
                         </td>
 
                         <td>
                             <strong>
-                                ${{ "%.2f"|format(payslip.net_pay) }}
+                                ${{ "{:,.2f}".format(payslip.net_pay) }}
                             </strong>
                         </td>
 
                         <td>
-                            ${{ "%.2f"|format(payslip.superannuation) }}
+                            ${{ "{:,.2f}".format(payslip.superannuation) }}
                         </td>
 
                         <td>

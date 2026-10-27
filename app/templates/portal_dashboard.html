@@ -1,0 +1,13 @@
+{% extends "portal_base.html" %}
+{% block title %}Home{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-4"><div><h1 class="h2 mb-1">Hello, {{ worker.first_name }}</h1><p class="text-muted mb-0">Here’s what’s happening with your work and pay.</p></div><a href="/portal/help" class="btn btn-outline-primary">Ask payroll</a></div>
+<div class="row g-3 mb-4">
+ <div class="col-md-3"><div class="card h-100 p-3"><small class="text-muted">Latest net pay</small><h3 class="mt-2 mb-1">{% if latest_payslip %}${{ "{:,.2f}".format(latest_payslip.net_pay) }}{% else %}—{% endif %}</h3><a href="/portal/payslips" class="stretched-link">View payslips</a></div></div>
+ <div class="col-md-3"><div class="card h-100 p-3"><small class="text-muted">Unread updates</small><h3 class="mt-2 mb-1">{{ unread_count }}</h3><a href="/portal/notifications" class="stretched-link">View notifications</a></div></div>
+ <div class="col-md-3"><div class="card h-100 p-3"><small class="text-muted">Recent timesheets</small><h3 class="mt-2 mb-1">{{ recent_timesheets|length }}</h3><a href="/portal/timesheets" class="stretched-link">View timesheets</a></div></div>
+ <div class="col-md-3"><div class="card h-100 p-3"><small class="text-muted">Items needing attention</small><h3 class="mt-2 mb-1">{{ action_documents|length }}</h3><a href="/portal/documents" class="stretched-link">Review documents</a></div></div>
+</div>
+<div class="row g-4"><div class="col-lg-7"><div class="card p-4"><h2 class="h5">Recent timesheets</h2>{% for item in recent_timesheets %}<div class="d-flex justify-content-between border-top py-3"><span>{{ item.period_start|date_au }} – {{ item.period_end|date_au }}</span><span class="badge bg-{{ 'success' if item.status == 'approved' else 'warning text-dark' }}">{{ item.status|title }}</span></div>{% else %}<p class="text-muted mb-0">No timesheets yet.</p>{% endfor %}</div></div>
+<div class="col-lg-5"><div class="card p-4"><h2 class="h5">Leave balances</h2>{% for item in leave_balances %}<div class="d-flex justify-content-between border-top py-3"><span>{{ item.name }}</span><strong>{{ "{:,.2f}".format(item.hours) }} hrs</strong></div>{% else %}<p class="text-muted mb-0">No active leave plans.</p>{% endfor %}<a href="/portal/leave" class="btn btn-outline-primary mt-3">Request leave</a></div></div></div>
+{% endblock %}

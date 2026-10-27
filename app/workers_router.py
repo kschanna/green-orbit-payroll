@@ -1,4 +1,6 @@
 
+from collections import defaultdict
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -8,6 +10,7 @@ from sqlalchemy import select
 from app.models.engagement import Engagement
 from app.database import SessionLocal
 from app.worker_service import WorkerError, WorkerService
+from app.pagination import build_pagination
 
 
 router = APIRouter()
@@ -24,8 +27,54 @@ class WorkerInput(BaseModel):
     phone: str | None = Field(default=None, max_length=30)
 
 
-def worker_data(worker):
-    return {
+ENGAGEMENT_TYPE_LABELS = {
+    "payg_employee": "PAYG Employee",
+    "payg_contractor": "PAYG Contractor",
+    "company_contractor": "Company Contractor",
+}
+ENGAGEMENT_TYPE_BADGE_CLASSES = {
+    "payg_employee": "badge-engagement-employee",
+    "payg_contractor": "badge-engagement-payg-contractor",
+    "company_contractor": "badge-engagement-company-contractor",
+}
+ENGAGEMENT_TYPE_ORDER = tuple(ENGAGEMENT_TYPE_LABELS)
+
+
+def engagement_type_data(engagements):
+    statuses_by_type = defaultdict(set)
+    for engagement in engagements:
+        statuses_by_type[engagement.engagement_type].add(engagement.status)
+
+    types = []
+    for engagement_type in sorted(
+        statuses_by_type,
+        key=lambda value: (
+            ENGAGEMENT_TYPE_ORDER.index(value)
+            if value in ENGAGEMENT_TYPE_ORDER else len(ENGAGEMENT_TYPE_ORDER),
+            value,
+        ),
+    ):
+        statuses = statuses_by_type[engagement_type]
+        status = (
+            "active" if "active" in statuses
+            else "draft" if "draft" in statuses
+            else "ended"
+        )
+        types.append({
+            "type": engagement_type,
+            "label": ENGAGEMENT_TYPE_LABELS.get(
+                engagement_type, engagement_type.replace("_", " ").title()
+            ),
+            "badge_class": ENGAGEMENT_TYPE_BADGE_CLASSES.get(
+                engagement_type, "bg-secondary"
+            ),
+            "status": status,
+        })
+    return types
+
+
+def worker_data(worker, engagement_types=None):
+    data = {
         "id": worker.id,
         "first_name": worker.first_name,
         "last_name": worker.last_name,
@@ -33,14 +82,49 @@ def worker_data(worker):
         "phone": worker.phone,
         "active": worker.active,
     }
+    if engagement_types is not None:
+        data["engagement_types"] = engagement_types
+    return data
 
 
 @router.get("/ui/workers", response_class=HTMLResponse)
-def workers_page(request: Request, search: str = ""):
+def workers_page(
+    request: Request, search: str = "", active_status: str = "all",
+    tax_free: str = "all", engagement_type: str = "all",
+    page: int = 1, page_size: int = 25,
+):
     with SessionLocal() as db:
+        pagination = build_pagination(
+            total=WorkerService.count(
+                db, search, active_status, tax_free, engagement_type
+            ),
+            page=page, page_size=page_size, path="/ui/workers",
+            params={
+                "search": search,
+                "active_status": active_status,
+                "tax_free": tax_free,
+                "engagement_type": engagement_type,
+            },
+        )
+        worker_rows = WorkerService.list(
+            db, search, pagination.offset, pagination.page_size,
+            active_status, tax_free, engagement_type,
+        )
+        engagements_by_worker = defaultdict(list)
+        worker_ids = [worker.id for worker in worker_rows]
+        if worker_ids:
+            for engagement in db.scalars(
+                select(Engagement)
+                .where(Engagement.worker_id.in_(worker_ids))
+                .order_by(Engagement.worker_id, Engagement.id)
+            ).all():
+                engagements_by_worker[engagement.worker_id].append(engagement)
         workers = [
-            worker_data(w)
-            for w in WorkerService.list(db, search)
+            worker_data(
+                worker,
+                engagement_type_data(engagements_by_worker[worker.id]),
+            )
+            for worker in worker_rows
         ]
 
     return templates.TemplateResponse(
@@ -49,6 +133,10 @@ def workers_page(request: Request, search: str = ""):
         context={
             "workers": workers,
             "search": search,
+            "active_status": active_status,
+            "tax_free": tax_free,
+            "engagement_type": engagement_type,
+            "pagination": pagination,
         },
     )
 

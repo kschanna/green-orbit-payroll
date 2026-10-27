@@ -85,9 +85,15 @@ jobs:
       REGION: australia-southeast2
       REPOSITORY: green-orbit-payroll
       SERVICE: green-orbit-payroll
+      DOCUMENT_LISTENER_SERVICE: green-orbit-document-listener
       MIGRATION_JOB: green-orbit-payroll-migrate
       CLOUD_SQL_CONNECTION_NAME: green-orbit-payroll-demo:australia-southeast2:green-orbit-postgres
       RUNTIME_SERVICE_ACCOUNT: green-orbit-app@green-orbit-payroll-demo.iam.gserviceaccount.com
+      DOCUMENT_BUCKET: green-orbit-payroll-demo-dev-worker-documents
+      DOCUMENT_AI_LOCATION: australia-southeast1
+      DOCUMENT_AI_PROCESSOR_ID: ${{ vars.DOCUMENT_AI_PROCESSOR_ID }}
+      DOCUMENT_PROCESSING_SUBSCRIPTION: green-orbit-dev-document-processing-local
+      GEMINI_MODEL: gemini-3.8-flash
 
     steps:
       - name: Checkout repository
@@ -144,6 +150,39 @@ jobs:
             --project=$PROJECT_ID \
             --region=$REGION \
             --image=$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/app:${{ github.sha }} \
+            --service-account=$RUNTIME_SERVICE_ACCOUNT \
+            --add-cloudsql-instances=$CLOUD_SQL_CONNECTION_NAME \
+            --set-env-vars=CLOUD_SQL_CONNECTION_NAME=$CLOUD_SQL_CONNECTION_NAME,DB_USER=green_orbit_app,DB_NAME=green_orbit_payroll,SESSION_COOKIE_SECURE=true,GEMINI_MODEL=$GEMINI_MODEL,DOCUMENT_BUCKET=$DOCUMENT_BUCKET,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,DOCUMENT_AI_LOCATION=$DOCUMENT_AI_LOCATION,DOCUMENT_AI_PROCESSOR_ID=$DOCUMENT_AI_PROCESSOR_ID \
+            --set-secrets=DB_PASSWORD=green-orbit-db-password:latest,SESSION_SECRET=green-orbit-session-secret:latest,GREEN_ORBIT_TFN_KEY=green-orbit-tfn-key:latest,GEMINI_API_KEY=green-orbit-gemini-api-key:latest \
+            --allow-unauthenticated \
+            --execution-environment=gen2 \
+            --memory=1Gi \
+            --cpu=1 \
+            --concurrency=40 \
+            --timeout=300 \
+            --min=0 \
+            --max=10 \
+            --quiet
+
+      - name: Deploy document listener to Cloud Run
+        run: |
+          gcloud run deploy $DOCUMENT_LISTENER_SERVICE \
+            --project=$PROJECT_ID \
+            --region=$REGION \
+            --image=$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/app:${{ github.sha }} \
+            --service-account=$RUNTIME_SERVICE_ACCOUNT \
+            --add-cloudsql-instances=$CLOUD_SQL_CONNECTION_NAME \
+            --set-env-vars=CLOUD_SQL_CONNECTION_NAME=$CLOUD_SQL_CONNECTION_NAME,DB_USER=green_orbit_app,DB_NAME=green_orbit_payroll,DOCUMENT_BUCKET=$DOCUMENT_BUCKET,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,DOCUMENT_AI_LOCATION=$DOCUMENT_AI_LOCATION,DOCUMENT_AI_PROCESSOR_ID=$DOCUMENT_AI_PROCESSOR_ID,DOCUMENT_PROCESSING_SUBSCRIPTION=$DOCUMENT_PROCESSING_SUBSCRIPTION \
+            --set-secrets=DB_PASSWORD=green-orbit-db-password:latest \
+            --command=uvicorn \
+            --args=app.document_listener_service:app,--host,0.0.0.0,--port,8080 \
+            --no-allow-unauthenticated \
+            --execution-environment=gen2 \
+            --no-cpu-throttling \
+            --min=1 \
+            --max=1 \
+            --memory=1Gi \
+            --timeout=300 \
             --quiet
 
       - name: Verify deployed service health
@@ -155,3 +194,11 @@ jobs:
           curl --fail --show-error --silent \
             --retry 6 --retry-delay 5 --retry-all-errors \
             "$SERVICE_URL/health"
+
+      - name: Verify Gemini secret binding
+        run: |
+          gcloud run services describe $SERVICE \
+            --project=$PROJECT_ID \
+            --region=$REGION \
+            --format='value(spec.template.spec.containers[0].env.name)' \
+            | grep -q GEMINI_API_KEY

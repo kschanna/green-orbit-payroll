@@ -4,6 +4,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.worker import Worker
+from app.models.engagement import Engagement
+from app.models.employee_tax_profile import EmployeeTaxProfile
 
 
 class WorkerError(ValueError):
@@ -52,7 +54,10 @@ class WorkerService:
         return db.get(Worker, worker_id)
 
     @staticmethod
-    def list(db: Session, search: str = ""):
+    def _list_statement(
+        search: str = "", active_status: str = "all",
+        tax_free: str = "all", engagement_type: str = "all",
+    ):
         statement = select(Worker)
 
         if search.strip():
@@ -66,11 +71,58 @@ class WorkerService:
                 )
             )
 
-        statement = statement.order_by(
+        if active_status == "active":
+            statement = statement.where(Worker.active.is_(True))
+        elif active_status == "inactive":
+            statement = statement.where(Worker.active.is_(False))
+
+        tax_free_profile = select(EmployeeTaxProfile.id).where(
+            EmployeeTaxProfile.worker_id == Worker.id,
+            EmployeeTaxProfile.claims_tax_free_threshold.is_(True),
+        ).exists()
+        if tax_free == "claimed":
+            statement = statement.where(tax_free_profile)
+        elif tax_free == "not_claimed":
+            statement = statement.where(~tax_free_profile)
+
+        if engagement_type in {
+            "payg_employee", "payg_contractor", "company_contractor"
+        }:
+            statement = statement.where(select(Engagement.id).where(
+                Engagement.worker_id == Worker.id,
+                Engagement.engagement_type == engagement_type,
+            ).exists())
+
+        return statement
+
+    @staticmethod
+    def list(
+        db: Session, search: str = "", offset: int = 0,
+        limit: int | None = None, active_status: str = "all",
+        tax_free: str = "all", engagement_type: str = "all",
+    ):
+        statement = WorkerService._list_statement(
+            search, active_status, tax_free, engagement_type
+        ).order_by(
             Worker.id.desc()
-        )
+        ).offset(offset)
+
+        if limit is not None:
+            statement = statement.limit(limit)
 
         return list(db.scalars(statement).all())
+
+    @staticmethod
+    def count(
+        db: Session, search: str = "", active_status: str = "all",
+        tax_free: str = "all", engagement_type: str = "all",
+    ) -> int:
+        statement = WorkerService._list_statement(
+            search, active_status, tax_free, engagement_type
+        ).with_only_columns(
+            func.count(Worker.id)
+        ).order_by(None)
+        return int(db.scalar(statement) or 0)
 
     @staticmethod
     def update(db: Session, worker: Worker,

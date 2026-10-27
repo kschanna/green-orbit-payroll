@@ -16,16 +16,46 @@
 <div class="card p-3 p-md-4">
 
     <form method="get" action="/ui/workers" class="row g-2 mb-4">
-        <div class="col-md-9">
+        <div class="col-lg-4">
+            <label class="form-label" for="workerSearch">Search</label>
             <input name="search"
+                   id="workerSearch"
                    class="form-control"
                    placeholder="Search by name or email"
                    value="{{ search }}">
         </div>
 
-        <div class="col-md-3">
+        <div class="col-sm-6 col-lg-2">
+            <label class="form-label" for="activeStatus">Status</label>
+            <select name="active_status" id="activeStatus" class="form-select">
+                <option value="all">All statuses</option>
+                <option value="active" {% if active_status == "active" %}selected{% endif %}>Active</option>
+                <option value="inactive" {% if active_status == "inactive" %}selected{% endif %}>Inactive</option>
+            </select>
+        </div>
+
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label" for="engagementType">Engagement type</label>
+            <select name="engagement_type" id="engagementType" class="form-select">
+                <option value="all">All engagement types</option>
+                <option value="payg_employee" {% if engagement_type == "payg_employee" %}selected{% endif %}>PAYG Employee</option>
+                <option value="payg_contractor" {% if engagement_type == "payg_contractor" %}selected{% endif %}>PAYG Contractor</option>
+                <option value="company_contractor" {% if engagement_type == "company_contractor" %}selected{% endif %}>Company Contractor</option>
+            </select>
+        </div>
+
+        <div class="col-sm-6 col-lg-2">
+            <label class="form-label" for="taxFree">Tax-free threshold</label>
+            <select name="tax_free" id="taxFree" class="form-select">
+                <option value="all">All</option>
+                <option value="claimed" {% if tax_free == "claimed" %}selected{% endif %}>Claimed</option>
+                <option value="not_claimed" {% if tax_free == "not_claimed" %}selected{% endif %}>Not claimed / none</option>
+            </select>
+        </div>
+
+        <div class="col-sm-6 col-lg-1 d-flex align-items-end">
             <button class="btn btn-outline-success w-100">
-                Search
+                Apply
             </button>
         </div>
     </form>
@@ -38,6 +68,7 @@
                     <th>Worker</th>
                     <th>Email</th>
                     <th>Phone</th>
+                    <th>Engagement Type</th>
                     <th>Status</th>
                     <th></th>
                 </tr>
@@ -60,6 +91,18 @@
                     <td>{{ worker.phone or "—" }}</td>
 
                     <td>
+                        <div class="d-flex flex-wrap gap-1">
+                            {% for engagement in worker.engagement_types %}
+                                <span class="badge {{ engagement.badge_class }} {% if engagement.status == 'draft' %}opacity-75{% elif engagement.status == 'ended' %}opacity-50{% endif %}">
+                                    {{ engagement.label }}{% if engagement.status != 'active' %} · {{ engagement.status | title }}{% endif %}
+                                </span>
+                            {% else %}
+                                <span class="text-muted">None</span>
+                            {% endfor %}
+                        </div>
+                    </td>
+
+                    <td>
                         {{ "Active" if worker.active else "Inactive" }}
                     </td>
 
@@ -78,7 +121,7 @@
 
                 {% else %}
                 <tr>
-                    <td colspan="6" class="text-center text-muted">
+                    <td colspan="7" class="text-center text-muted">
                         No workers found.
                     </td>
                 </tr>
@@ -86,6 +129,7 @@
             </tbody>
         </table>
     </div>
+    {% include "_pagination.html" %}
 </div>
 
 {% endblock %}

@@ -50,7 +50,7 @@
                     <td>{{ engagement.customer_name }}</td>
                     <td>{{ engagement.host_organisation_name }}</td>
                     <td>{{ engagement.pbt_schedule_name }}</td>
-                    <td>${{ engagement.billing_rate }}/hr</td>
+                    <td>${{ "{:,.2f}".format(engagement.billing_rate) }}/hr</td>
                     <td>
                         {{ engagement.start_date_display }}
                     </td>
@@ -76,6 +76,8 @@
         </table>
     </div>
 </div>
+
+{% include "_pagination.html" %}
 
 <div class="modal fade"
      id="engagementEditor"

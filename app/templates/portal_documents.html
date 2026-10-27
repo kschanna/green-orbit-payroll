@@ -1,0 +1,109 @@
+{% extends "portal_base.html" %}
+{% block title %}My Documents{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div>
+        <h1 class="h2 mb-1">My documents</h1>
+        <p class="text-muted mb-0">{{ worker.first_name }} {{ worker.last_name }}</p>
+    </div>
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">+ New Document</button>
+</div>
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+<div class="card shadow-sm border-0">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead><tr><th>Document</th><th>Type</th><th>Status</th><th>Uploaded</th><th>Expiry</th><th class="text-end">Actions</th></tr></thead>
+            <tbody>
+            {% for document in documents %}
+            <tr>
+                <td title="{{ document.original_filename }}">{{ document.original_filename | middle_ellipsis(30) }}</td>
+                <td>{{ document_types.get(document.document_type, document.document_type | replace("_", " ") | title) }}</td>
+                <td>
+                    {% if document.status == "approved" %}<span class="badge bg-success">Approved</span>
+                    {% elif document.status in ("failed", "rejected") %}<span class="badge bg-danger">{{ document.status | title }}</span>
+                    {% elif document.status == "ready_for_review" %}<span class="badge bg-info text-dark">Under review</span>
+                    {% else %}<span class="badge bg-secondary">{{ document.status | replace("_", " ") | title }}</span>{% endif %}
+                </td>
+                <td>{{ document.created_at.strftime("%d/%m/%Y") }}</td>
+                <td>{{ document.expires_on.strftime("%d/%m/%Y") if document.expires_on else "—" }}</td>
+                <td class="text-end text-nowrap">
+                    <button type="button" class="btn btn-sm btn-outline-primary preview-button" data-bs-toggle="modal" data-bs-target="#previewModal" data-name="{{ document.original_filename }}" data-url="/portal/documents/{{ document.id }}/download">View</button>
+                    {% if document.status in ("uploaded", "failed", "rejected") %}
+                    <button type="button" class="btn btn-sm btn-outline-danger delete-button" data-bs-toggle="modal" data-bs-target="#deleteModal" data-name="{{ document.original_filename }}" data-url="/portal/documents/{{ document.id }}/delete">Delete</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="text-center text-muted py-5">No documents uploaded yet.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="uploadModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-lg modal-dialog-centered"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">New Document</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <form id="portalUploadForm" action="/portal/documents" method="post" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+        <div class="modal-body">
+            <div id="portalUploadError" class="alert alert-danger d-none"></div>
+            <div class="alert alert-light border small">PDF only, up to 10 MB. Green Orbit will process the document before an administrator reviews it.</div>
+            <div class="mb-3"><label for="document_type" class="form-label">Document type</label><select id="document_type" name="document_type" class="form-select" required>{% for value, label in document_types.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></div>
+            <div class="mb-3"><label for="document" class="form-label">PDF file</label><input id="document" name="document" type="file" class="form-control" accept="application/pdf,.pdf" required></div>
+            <div class="row g-3"><div class="col-md-6"><label for="issued_on" class="form-label">Issue date</label><input id="issued_on" name="issued_on" type="date" class="form-control"></div><div class="col-md-6"><label for="expires_on" class="form-label">Expiry date</label><input id="expires_on" name="expires_on" type="date" class="form-control"></div></div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button id="portalUploadButton" type="submit" class="btn btn-primary">Upload Document</button></div>
+    </form>
+</div></div></div>
+
+<div class="modal fade" id="previewModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">
+    <div class="modal-header"><div><h5 class="modal-title">Document Preview</h5><div id="previewName" class="small text-muted"></div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body p-0"><iframe id="previewFrame" title="Document preview" style="width:100%;height:78vh;border:0"></iframe></div>
+    <div class="modal-footer"><a id="previewOpen" class="btn btn-outline-primary" target="_blank" rel="noopener">Open in new tab</a><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button></div>
+</div></div></div>
+
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">Delete Document</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body"><p>Are you sure you want to permanently delete this document?</p><strong id="deleteName"></strong></div>
+    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><form id="deleteForm" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}"><button type="submit" class="btn btn-danger">Delete Document</button></form></div>
+</div></div></div>
+
+<script>
+document.getElementById("previewModal").addEventListener("show.bs.modal", event => {
+    const button = event.relatedTarget;
+    document.getElementById("previewName").textContent = button.dataset.name;
+    document.getElementById("previewFrame").src = button.dataset.url;
+    document.getElementById("previewOpen").href = button.dataset.url;
+});
+document.getElementById("previewModal").addEventListener("hidden.bs.modal", () => { document.getElementById("previewFrame").src = "about:blank"; });
+document.getElementById("deleteModal").addEventListener("show.bs.modal", event => {
+    const button = event.relatedTarget;
+    document.getElementById("deleteName").textContent = button.dataset.name;
+    document.getElementById("deleteForm").action = button.dataset.url;
+});
+document.getElementById("portalUploadForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = document.getElementById("portalUploadButton");
+    const errorBox = document.getElementById("portalUploadError");
+    button.disabled = true;
+    button.textContent = "Uploading…";
+    errorBox.classList.add("d-none");
+    try {
+        const response = await fetch(form.action, {
+            method: "POST",
+            headers: {"X-CSRF-Token": {{ csrf_token(request) | tojson }}},
+            body: new FormData(form),
+        });
+        if (!response.ok) throw new Error(`Upload failed with status ${response.status}`);
+        window.location.assign(response.url);
+    } catch (error) {
+        errorBox.textContent = "The document could not be uploaded. Please try again.";
+        errorBox.classList.remove("d-none");
+        button.disabled = false;
+        button.textContent = "Upload Document";
+    }
+});
+{% if error %}document.addEventListener("DOMContentLoaded", () => bootstrap.Modal.getOrCreateInstance(document.getElementById("uploadModal")).show());{% endif %}
+</script>
+{% endblock %}

@@ -7,11 +7,11 @@
 </div>
 <div class="row g-3 mb-4">
     <div class="col-md-4"><div class="card p-3"><small class="text-muted">Payment lines</small><h4>{{ batch.line_count }}</h4></div></div>
-    <div class="col-md-4"><div class="card p-3"><small class="text-muted">Total payments</small><h4>${{ "%.2f"|format(batch.total_amount) }}</h4></div></div>
+    <div class="col-md-4"><div class="card p-3"><small class="text-muted">Total payments</small><h4>${{ "{:,.2f}".format(batch.total_amount) }}</h4></div></div>
     <div class="col-md-4"><div class="card p-3"><small class="text-muted">ABA description</small><h4>{{ batch.description }}</h4></div></div>
 </div>
 <div class="card p-4 mb-4"><h5>Payment Instructions</h5><div class="table-responsive"><table class="table align-middle"><thead><tr><th>Source</th><th>Recipient</th><th>Payslip</th><th>Bank details</th><th>Reference</th><th class="text-end">Amount</th></tr></thead><tbody>
-{% for line in lines %}<tr><td><span class="badge bg-{{ 'primary' if line.source_type == 'payroll' else 'warning text-dark' }}">{{ line.source_type | title }}</span></td><td>{{ line.worker_name }}<div class="small text-muted">{{ line.account_name }}</div></td><td>{% if line.payslip_id %}<a href="/ui/payslips/{{ line.payslip_id }}/preview" data-bs-toggle="modal" data-bs-target="#payslipPreviewModal" data-preview-url="/ui/payslips/{{ line.payslip_id }}/preview?embed=1" data-preview-title="Payslip #{{ line.payslip_id }}">#{{ line.payslip_id }}</a>{% else %}—{% endif %}</td><td>{{ line.bsb }} / {{ line.account_number }}</td><td>{{ line.reference }}{% if line.reason %}<div class="small text-muted">{{ line.reason }}</div>{% endif %}</td><td class="text-end fw-semibold">${{ "%.2f"|format(line.amount) }}</td></tr>
+{% for line in lines %}<tr><td><span class="badge bg-{{ 'primary' if line.source_type == 'payroll' else 'warning text-dark' }}">{{ line.source_type | title }}</span></td><td>{{ line.worker_name }}<div class="small text-muted">{{ line.account_name }}</div></td><td>{% if line.payslip_id %}<a href="/ui/payslips/{{ line.payslip_id }}/preview" data-bs-toggle="modal" data-bs-target="#payslipPreviewModal" data-preview-url="/ui/payslips/{{ line.payslip_id }}/preview?embed=1" data-preview-title="Payslip #{{ line.payslip_id }}">#{{ line.payslip_id }}</a>{% else %}—{% endif %}</td><td>{{ line.bsb }} / {{ line.account_number }}</td><td>{{ line.reference }}{% if line.reason %}<div class="small text-muted">{{ line.reason }}</div>{% endif %}</td><td class="text-end fw-semibold">${{ "{:,.2f}".format(line.amount) }}</td></tr>
 {% else %}<tr><td colspan="6" class="text-center text-muted">No payment instructions.</td></tr>{% endfor %}
 </tbody></table></div></div>
 {% if editable %}

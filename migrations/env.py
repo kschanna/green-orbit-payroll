@@ -42,6 +42,12 @@ from app.models.payment_instruction import PaymentInstruction
 from app.models.pbt_schedule import PBTSchedule
 from app.models.pbt_schedule_rule import PBTScheduleRule
 from app.models.pbt_schedule_period import PBTSchedulePeriod
+from app.models.worker_document import WorkerDocument
+from app.models.document_extraction import DocumentExtraction
+from app.models.document_review import DocumentReview
+from app.models.notification import Notification
+from app.models.assignment_component_application import AssignmentComponentApplication
+from app.models.invoice_component_allocation import InvoiceComponentAllocation
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

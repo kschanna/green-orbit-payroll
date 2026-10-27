@@ -4,13 +4,72 @@ from decimal import Decimal
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.database import SessionLocal
 from app.models.assignment import Assignment
 from app.models.assignment_component import AssignmentComponent
 from app.models.component_definition import ComponentDefinition
 from app.models.component_family import ComponentFamily
+from app.models.assignment_component_application import AssignmentComponentApplication
+
+
+STAGE_ORDER = {"earnings": 100, "fee": 200, "on_cost": 300}
+CALCULATION_METHODS = {
+    "timesheet_rate", "percentage_of_value", "amount_per_unit",
+    "fixed_per_invoice", "fixed_per_period",
+}
+
+
+def _validate_processing_configuration(
+    db, assignment_id, *, component_id, processing_stage,
+    processing_order, calculation_method, source_component_ids,
+):
+    if processing_stage not in STAGE_ORDER:
+        raise HTTPException(422, "Invalid processing stage")
+    if calculation_method not in CALCULATION_METHODS:
+        raise HTTPException(422, "Invalid calculation method")
+    stage_ranges = {"earnings": range(100, 200), "fee": range(200, 300), "on_cost": range(300, 400)}
+    if processing_order not in stage_ranges[processing_stage]:
+        raise HTTPException(
+            422,
+            f"{processing_stage.replace('_', ' ').title()} order must be between "
+            f"{stage_ranges[processing_stage].start} and {stage_ranges[processing_stage].stop - 1}",
+        )
+    if processing_stage == "earnings" and calculation_method != "timesheet_rate":
+        raise HTTPException(422, "Earnings must use timesheet units and rates")
+    if processing_stage != "earnings" and calculation_method == "timesheet_rate":
+        raise HTTPException(422, "Fees and on-costs require a derived calculation method")
+    needs_sources = calculation_method in {"percentage_of_value", "amount_per_unit"}
+    if needs_sources and not source_component_ids:
+        raise HTTPException(422, "Select at least one source component")
+    if not needs_sources and source_component_ids:
+        raise HTTPException(422, "This calculation method does not use source components")
+    sources = list(db.scalars(select(AssignmentComponent).where(
+        AssignmentComponent.id.in_(set(source_component_ids))
+    )).all()) if source_component_ids else []
+    if len(sources) != len(set(source_component_ids)) or any(
+        source.assignment_id != assignment_id or source.id == component_id
+        for source in sources
+    ):
+        raise HTTPException(422, "Invalid source component")
+    target_rank = (STAGE_ORDER[processing_stage], processing_order)
+    for source in sources:
+        source_rank = (STAGE_ORDER.get(source.processing_stage, 999), source.processing_order)
+        if source_rank >= target_rank:
+            raise HTTPException(422, "Source components must process before the configured component")
+    if calculation_method == "timesheet_rate":
+        unit_type = "hours"
+    elif calculation_method == "percentage_of_value":
+        unit_type = "currency"
+    elif calculation_method in {"fixed_per_invoice", "fixed_per_period"}:
+        unit_type = "invoice"
+    else:
+        source_unit_types = {source.unit_type for source in sources}
+        if len(source_unit_types) != 1:
+            raise HTTPException(422, "Per-unit sources must use the same quantity type")
+        unit_type = source_unit_types.pop()
+    return sources, unit_type
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -55,6 +114,9 @@ def assignment_components_page(request: Request, assignment_id: int):
         family_lookup = {
             family.id: family.name for family in families
         }
+        family_code_lookup = {
+            family.id: family.code for family in families
+        }
 
         rows = db.scalars(
             select(AssignmentComponent)
@@ -68,6 +130,14 @@ def assignment_components_page(request: Request, assignment_id: int):
                 select(ComponentDefinition)
             ).all()
         }
+        application_rows = db.scalars(select(AssignmentComponentApplication).where(
+            AssignmentComponentApplication.assignment_component_id.in_([row.id for row in rows])
+        )).all() if rows else []
+        source_ids_by_target = {}
+        for application in application_rows:
+            source_ids_by_target.setdefault(application.assignment_component_id, []).append(
+                application.source_assignment_component_id
+            )
 
         assignment_data = {
             "id": assignment.id,
@@ -87,6 +157,7 @@ def assignment_components_page(request: Request, assignment_id: int):
                 "family": family_lookup.get(
                     definition.family_id, "Other"
                 ),
+                "family_code": family_code_lookup.get(definition.family_id, ""),
             }
             for definition in definitions
         ]
@@ -125,6 +196,11 @@ def assignment_components_page(request: Request, assignment_id: int):
                 "applies_to": row.applies_to,
                 "effective_from": row.effective_from,
                 "effective_to": row.effective_to,
+                "processing_stage": row.processing_stage,
+                "processing_order": row.processing_order,
+                "calculation_method": row.calculation_method,
+                "unit_type": row.unit_type,
+                "source_component_ids": source_ids_by_target.get(row.id, []),
             })
 
     return templates.TemplateResponse(
@@ -135,6 +211,11 @@ def assignment_components_page(request: Request, assignment_id: int):
             "definitions": component_options,
             "component_groups": component_groups,
             "history": history,
+            "source_components": [
+                {"id": item["id"], "name": item["name"],
+                 "stage": item["processing_stage"], "order": item["processing_order"]}
+                for item in history if item["applies_to"] in ("invoice", "both")
+            ],
         },
     )
 
@@ -150,6 +231,10 @@ def save_assignment_component(
     effective_from: date = Form(...),
     effective_to: date | None = Form(None),
     return_to_preview: bool = Form(False),
+    processing_stage: str = Form("earnings"),
+    processing_order: int = Form(100),
+    calculation_method: str = Form("timesheet_rate"),
+    source_component_ids: list[int] = Form(default=[]),
     csrf_token: str = Form(...),
 ):
     require_session(request)
@@ -201,6 +286,14 @@ def save_assignment_component(
         if definition is None or not definition.active:
             raise HTTPException(422, "Invalid or inactive component")
 
+        _, unit_type = _validate_processing_configuration(
+            db, assignment_id, component_id=None,
+            processing_stage=processing_stage,
+            processing_order=processing_order,
+            calculation_method=calculation_method,
+            source_component_ids=source_component_ids,
+        )
+
         existing = db.scalars(
             select(AssignmentComponent).where(
                 AssignmentComponent.assignment_id == assignment_id,
@@ -229,8 +322,7 @@ def save_assignment_component(
                     "for the selected dates",
                 )
 
-        db.add(
-            AssignmentComponent(
+        component = AssignmentComponent(
                 assignment_id=assignment_id,
                 component_definition_id=component_definition_id,
                 rate=pay_rate,
@@ -239,8 +331,20 @@ def save_assignment_component(
                 applies_to=applies_to,
                 effective_from=effective_from,
                 effective_to=effective_to,
+                processing_stage=processing_stage,
+                processing_order=processing_order,
+                calculation_method=calculation_method,
+                unit_type=unit_type,
             )
-        )
+        db.add(component)
+        db.flush()
+        basis = "value" if calculation_method == "percentage_of_value" else "units"
+        for source_id in set(source_component_ids):
+            db.add(AssignmentComponentApplication(
+                assignment_component_id=component.id,
+                source_assignment_component_id=source_id,
+                basis=basis,
+            ))
 
         db.commit()
 
@@ -265,6 +369,10 @@ def update_assignment_component(
     effective_from: date = Form(...),
     effective_to: date | None = Form(None),
     return_to_preview: bool = Form(False),
+    processing_stage: str = Form("earnings"),
+    processing_order: int = Form(100),
+    calculation_method: str = Form("timesheet_rate"),
+    source_component_ids: list[int] = Form(default=[]),
     csrf_token: str = Form(...),
 ):
     require_session(request)
@@ -321,6 +429,14 @@ def update_assignment_component(
         if definition is None or not definition.active:
             raise HTTPException(422, "Invalid or inactive component")
 
+        _, unit_type = _validate_processing_configuration(
+            db, assignment_id, component_id=component.id,
+            processing_stage=processing_stage,
+            processing_order=processing_order,
+            calculation_method=calculation_method,
+            source_component_ids=source_component_ids,
+        )
+
         existing = db.scalars(
             select(AssignmentComponent).where(
                 AssignmentComponent.assignment_id == assignment_id,
@@ -357,6 +473,20 @@ def update_assignment_component(
         component.applies_to = applies_to
         component.effective_from = effective_from
         component.effective_to = effective_to
+        component.processing_stage = processing_stage
+        component.processing_order = processing_order
+        component.calculation_method = calculation_method
+        component.unit_type = unit_type
+        db.execute(delete(AssignmentComponentApplication).where(
+            AssignmentComponentApplication.assignment_component_id == component.id
+        ))
+        basis = "value" if calculation_method == "percentage_of_value" else "units"
+        for source_id in set(source_component_ids):
+            db.add(AssignmentComponentApplication(
+                assignment_component_id=component.id,
+                source_assignment_component_id=source_id,
+                basis=basis,
+            ))
 
         db.commit()
 

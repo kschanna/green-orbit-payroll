@@ -238,11 +238,11 @@
                             </td>
 
                             <td class="text-end">
-                                ${{ "%.2f"|format(component.rate) }}
+                                ${{ "{:,.2f}".format(component.rate) }}
                             </td>
 
                             <td class="text-end">
-                                ${{ "%.2f"|format(component.amount) }}
+                                ${{ "{:,.2f}".format(component.amount) }}
                             </td>
                         </tr>
 
@@ -306,28 +306,28 @@
                         <tr>
                             <td>Gross Earnings</td>
                             <td class="text-end">
-                                ${{ "%.2f"|format(payslip.gross_pay) }}
+                                ${{ "{:,.2f}".format(payslip.gross_pay) }}
                             </td>
                         </tr>
 
                         <tr>
                             <td>PAYG Withholding</td>
                             <td class="text-end">
-                                ${{ "%.2f"|format(payslip.payg_withholding) }}
+                                ${{ "{:,.2f}".format(payslip.payg_withholding) }}
                             </td>
                         </tr>
 
                         <tr class="table-light fw-bold">
                             <td>NET PAY</td>
                             <td class="text-end">
-                                ${{ "%.2f"|format(payslip.net_pay) }}
+                                ${{ "{:,.2f}".format(payslip.net_pay) }}
                             </td>
                         </tr>
 
                         <tr>
                             <td>Employer Superannuation</td>
                             <td class="text-end">
-                                ${{ "%.2f"|format(payslip.superannuation) }}
+                                ${{ "{:,.2f}".format(payslip.superannuation) }}
                             </td>
                         </tr>
 
@@ -368,7 +368,7 @@
                                 </span>
                             </td>
                             <td class="text-end fw-semibold">
-                                ${{ "%.2f"|format(payment.amount) }}
+                                ${{ "{:,.2f}".format(payment.amount) }}
                             </td>
                         </tr>
                         {% endfor %}

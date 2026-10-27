@@ -14,7 +14,7 @@
     </div>
 
     <span class="badge bg-success fs-6">
-        {{ payslips | length }} Payslips
+        {{ pagination.total }} Payslips
     </span>
 
 </div>
@@ -79,21 +79,21 @@
                     <td>{{ payslip.payment_date | date_au }}</td>
 
                     <td>
-                        ${{ "%.2f" | format(payslip.gross_pay) }}
+                        ${{ "{:,.2f}".format(payslip.gross_pay) }}
                     </td>
 
                     <td>
-                        ${{ "%.2f" | format(payslip.payg_withholding) }}
+                        ${{ "{:,.2f}".format(payslip.payg_withholding) }}
                     </td>
 
                     <td>
                         <strong>
-                            ${{ "%.2f" | format(payslip.net_pay) }}
+                            ${{ "{:,.2f}".format(payslip.net_pay) }}
                         </strong>
                     </td>
 
                     <td>
-                        ${{ "%.2f" | format(payslip.superannuation) }}
+                        ${{ "{:,.2f}".format(payslip.superannuation) }}
                     </td>
 
                     <td>
@@ -195,7 +195,7 @@
                 <small class="text-muted">Gross Pay</small>
 
                 <div class="fw-semibold">
-                    ${{ "%.2f" | format(payslip.gross_pay) }}
+                    ${{ "{:,.2f}".format(payslip.gross_pay) }}
                 </div>
 
             </div>
@@ -205,7 +205,7 @@
                 <small class="text-muted">PAYG</small>
 
                 <div class="fw-semibold">
-                    ${{ "%.2f" | format(payslip.payg_withholding) }}
+                    ${{ "{:,.2f}".format(payslip.payg_withholding) }}
                 </div>
 
             </div>
@@ -215,7 +215,7 @@
                 <small class="text-muted">Net Pay</small>
 
                 <div class="fw-bold text-success">
-                    ${{ "%.2f" | format(payslip.net_pay) }}
+                    ${{ "{:,.2f}".format(payslip.net_pay) }}
                 </div>
 
             </div>
@@ -225,7 +225,7 @@
                 <small class="text-muted">Superannuation</small>
 
                 <div class="fw-semibold">
-                    ${{ "%.2f" | format(payslip.superannuation) }}
+                    ${{ "{:,.2f}".format(payslip.superannuation) }}
                 </div>
 
             </div>
@@ -252,6 +252,8 @@
 
 </div>
 
+
+{% include "_pagination.html" %}
 
 <!-- PAYSLIP PREVIEW MODAL -->
 

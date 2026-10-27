@@ -56,7 +56,7 @@
 
             <div class="mt-2">
                 Customer invoice total:
-                ${{ "%.2f"|format(payroll.invoice_total) }}
+                ${{ "{:,.2f}".format(payroll.invoice_total) }}
             </div>
 
             <div class="small mt-2">
@@ -98,7 +98,7 @@
         <div class="card mb-3">
             <div class="card-header d-flex justify-content-between">
                 <strong>{{ group.name }}</strong>
-                <span>${{ "%.2f"|format(group.subtotal) }}</span>
+                <span>${{ "{:,.2f}".format(group.subtotal) }}</span>
             </div>
             <div class="table-responsive">
                 <table class="table table-sm align-middle mb-0">
@@ -118,14 +118,14 @@
                                 {% if item.calculation_type == "hourly" %}
                                     {{ "%.2f"|format(item.quantity) }} hrs
                                 {% elif item.calculation_type == "percentage" %}
-                                    ${{ "%.2f"|format(item.quantity) }}
+                                    ${{ "{:,.2f}".format(item.quantity) }}
                                 {% else %}
                                     —
                                 {% endif %}
                             </td>
                             <td class="text-end">
                                 {% if item.calculation_type == "hourly" %}
-                                    ${{ "%.2f"|format(item.rate) }}
+                                    ${{ "{:,.2f}".format(item.rate) }}
                                 {% elif item.calculation_type == "percentage" %}
                                     {{ "%.2f"|format(item.rate * 100) }}%
                                 {% else %}
@@ -133,7 +133,7 @@
                                 {% endif %}
                             </td>
                             <td class="text-end fw-semibold">
-                                ${{ "%.2f"|format(item.amount) }}
+                                ${{ "{:,.2f}".format(item.amount) }}
                             </td>
                         </tr>
                         {% endfor %}
@@ -152,19 +152,19 @@
                 </tr>
                 <tr>
                     <td>Gross Pay</td>
-                    <td class="text-end">${{ "%.2f"|format(payroll.gross) }}</td>
+                    <td class="text-end">${{ "{:,.2f}".format(payroll.gross) }}</td>
                 </tr>
                 <tr>
                     <td>PAYG Withholding</td>
-                    <td class="text-end">${{ "%.2f"|format(payroll.payg) }}</td>
+                    <td class="text-end">${{ "{:,.2f}".format(payroll.payg) }}</td>
                 </tr>
                 <tr class="table-light fw-bold">
                     <td>Net Pay</td>
-                    <td class="text-end">${{ "%.2f"|format(payroll.net) }}</td>
+                    <td class="text-end">${{ "{:,.2f}".format(payroll.net) }}</td>
                 </tr>
                 <tr>
                     <td>Employer Superannuation</td>
-                    <td class="text-end">${{ "%.2f"|format(payroll.total_super) }}</td>
+                    <td class="text-end">${{ "{:,.2f}".format(payroll.total_super) }}</td>
                 </tr>
             </tbody>
         </table>

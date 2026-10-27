@@ -1,0 +1,29 @@
+{% if pagination and pagination.total %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mt-3">
+  <div class="text-muted small">
+    Showing {{ pagination.start }}–{{ pagination.end }} of {{ pagination.total }}
+  </div>
+  <div class="d-flex flex-wrap align-items-center gap-3">
+    <div class="btn-group btn-group-sm" role="group" aria-label="Rows per page">
+      {% for size, url in pagination.size_urls %}
+      <a href="{{ url }}" class="btn {% if size == pagination.page_size %}btn-success{% else %}btn-outline-secondary{% endif %}">{{ size }}</a>
+      {% endfor %}
+    </div>
+    <nav aria-label="Pagination">
+      <ul class="pagination pagination-sm mb-0">
+        <li class="page-item {% if not pagination.previous_url %}disabled{% endif %}">
+          <a class="page-link" href="{{ pagination.previous_url or '#' }}" aria-label="Previous">Previous</a>
+        </li>
+        {% for number, url in pagination.page_urls %}
+        <li class="page-item {% if number == pagination.page %}active{% endif %}">
+          <a class="page-link" href="{{ url }}">{{ number }}</a>
+        </li>
+        {% endfor %}
+        <li class="page-item {% if not pagination.next_url %}disabled{% endif %}">
+          <a class="page-link" href="{{ pagination.next_url or '#' }}" aria-label="Next">Next</a>
+        </li>
+      </ul>
+    </nav>
+  </div>
+</div>
+{% endif %}

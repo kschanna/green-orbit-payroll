@@ -1,0 +1,449 @@
+{% extends assistant_base if assistant_base is defined else "base.html" %}
+
+{% block content %}
+{% set embedded_assistant = request.query_params.get("embed") == "1" %}
+<div class="ai-page {% if embedded_assistant %}ai-page-embedded{% endif %}">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 {% if embedded_assistant %}mb-2{% else %}mb-4{% endif %}">
+        <div>
+            <h2 class="mb-1 {% if embedded_assistant %}fs-5{% endif %}">AI Assistant</h2>
+            {% if not embedded_assistant %}
+            <p class="text-muted mb-0">
+                {% if worker_mode is defined and worker_mode %}Ask about your work, pay and general payroll concepts.{% else %}Ask Green Orbit about general workforce and payroll concepts.{% endif %}
+            </p>
+            {% endif %}
+        </div>
+        <button id="newConversation" class="btn btn-outline-secondary" type="button">
+            New conversation
+        </button>
+    </div>
+
+    <div class="card ai-chat-card">
+        <div id="chatMessages"
+             class="ai-messages"
+             role="log"
+             aria-live="polite"
+             aria-label="Conversation messages"></div>
+
+        <div id="chatStatus" class="ai-status px-3 px-md-4" role="status"></div>
+
+        <form id="chatForm" class="ai-composer p-3 p-md-4">
+            <label for="chatInput" class="visually-hidden">Message</label>
+            <textarea id="chatInput"
+                      class="form-control"
+                      rows="2"
+                      maxlength="4000"
+                      placeholder="Ask the Green Orbit AI Assistant…"
+                      required></textarea>
+            <button id="sendButton" class="btn btn-success" type="submit">
+                Send
+            </button>
+        </form>
+    </div>
+
+    <p class="small text-muted {% if embedded_assistant %}mt-2{% else %}mt-3{% endif %} mb-0">
+        {% if worker_mode is defined and worker_mode %}
+        The worker assistant provides general guidance and cannot access or change payroll records.
+        {% else %}
+        The assistant can retrieve selected Green Orbit records in read-only mode,
+        but it cannot perform business actions.
+        {% endif %}
+        Do not enter sensitive personal, banking, tax, or credential information.
+    </p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+(() => {
+    const storageKey = {{ conversation_storage_key|default("green-orbit-ai-conversation")|tojson }};
+    const chatEndpoint = {{ chat_endpoint|default("/api/ai/chat")|tojson }};
+    const messagesElement = document.getElementById("chatMessages");
+    const statusElement = document.getElementById("chatStatus");
+    const form = document.getElementById("chatForm");
+    const input = document.getElementById("chatInput");
+    const sendButton = document.getElementById("sendButton");
+    const newConversationButton = document.getElementById("newConversation");
+    const csrfToken = {{ csrf_token(request) | tojson }};
+    const activeCharts = [];
+    const chartColours = ["#36845b", "#495057", "#b7791f", "#5b6fb5"];
+    const currencyFormatter = new Intl.NumberFormat("en-AU", {
+        style: "currency",
+        currency: "AUD",
+        maximumFractionDigits: 0
+    });
+
+    function loadConversation() {
+        try {
+            const parsed = JSON.parse(sessionStorage.getItem(storageKey) || "[]");
+            if (!Array.isArray(parsed)) return [];
+            const valid = parsed.every(message =>
+                message &&
+                ["user", "assistant"].includes(message.role) &&
+                typeof message.content === "string" &&
+                message.content.trim() &&
+                message.content.length <= 4000
+            );
+            return valid ? parsed.slice(-20) : [];
+        } catch (_error) {
+            return [];
+        }
+    }
+
+    let conversation = loadConversation();
+    if (conversation.length && conversation[conversation.length - 1].role !== "assistant") {
+        conversation = [];
+    }
+
+    function saveConversation() {
+        sessionStorage.setItem(storageKey, JSON.stringify(conversation));
+    }
+
+    function appendInlineMarkdown(parent, text) {
+        const pattern = /(\*\*[^*\n]+\*\*|`[^`\n]+`|\*[^*\n]+\*)/g;
+        let position = 0;
+
+        for (const match of text.matchAll(pattern)) {
+            if (match.index > position) {
+                parent.appendChild(document.createTextNode(
+                    text.slice(position, match.index)
+                ));
+            }
+
+            const token = match[0];
+            let element;
+            if (token.startsWith("**")) {
+                element = document.createElement("strong");
+                element.textContent = token.slice(2, -2);
+            } else if (token.startsWith("`")) {
+                element = document.createElement("code");
+                element.textContent = token.slice(1, -1);
+            } else {
+                element = document.createElement("em");
+                element.textContent = token.slice(1, -1);
+            }
+            parent.appendChild(element);
+            position = match.index + token.length;
+        }
+
+        if (position < text.length) {
+            parent.appendChild(document.createTextNode(text.slice(position)));
+        }
+    }
+
+    function renderAssistantMarkdown(container, markdown) {
+        const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+        let index = 0;
+
+        function tableCells(line) {
+            let value = line.trim();
+            if (value.startsWith("|")) value = value.slice(1);
+            if (value.endsWith("|")) value = value.slice(0, -1);
+            return value.split("|").map(cell => cell.trim());
+        }
+
+        function isTableDivider(line) {
+            const cells = tableCells(line);
+            return cells.length > 0 && cells.every(cell => /^:?-{3,}:?$/.test(cell));
+        }
+
+        while (index < lines.length) {
+            const line = lines[index];
+            if (!line.trim()) {
+                index += 1;
+                continue;
+            }
+
+            if (line.trimStart().startsWith("```")) {
+                const language = line.trim().slice(3).trim();
+                const codeLines = [];
+                index += 1;
+                while (index < lines.length && !lines[index].trimStart().startsWith("```")) {
+                    codeLines.push(lines[index]);
+                    index += 1;
+                }
+                if (index < lines.length) index += 1;
+                const pre = document.createElement("pre");
+                const code = document.createElement("code");
+                if (language) code.dataset.language = language;
+                code.textContent = codeLines.join("\n");
+                pre.appendChild(code);
+                container.appendChild(pre);
+                continue;
+            }
+
+            if (
+                line.includes("|") &&
+                index + 1 < lines.length &&
+                isTableDivider(lines[index + 1])
+            ) {
+                const headings = tableCells(line);
+                const wrapper = document.createElement("div");
+                wrapper.className = "table-responsive ai-markdown-table";
+                const table = document.createElement("table");
+                table.className = "table table-sm align-middle mb-0";
+                const tableHead = document.createElement("thead");
+                const headingRow = document.createElement("tr");
+                headings.forEach(heading => {
+                    const cell = document.createElement("th");
+                    cell.scope = "col";
+                    appendInlineMarkdown(cell, heading);
+                    headingRow.appendChild(cell);
+                });
+                tableHead.appendChild(headingRow);
+                table.appendChild(tableHead);
+
+                const tableBody = document.createElement("tbody");
+                index += 2;
+                while (index < lines.length && lines[index].includes("|")) {
+                    const values = tableCells(lines[index]);
+                    const row = document.createElement("tr");
+                    headings.forEach((_heading, columnIndex) => {
+                        const cell = document.createElement("td");
+                        appendInlineMarkdown(cell, values[columnIndex] || "");
+                        row.appendChild(cell);
+                    });
+                    tableBody.appendChild(row);
+                    index += 1;
+                }
+                table.appendChild(tableBody);
+                wrapper.appendChild(table);
+                container.appendChild(wrapper);
+                continue;
+            }
+
+            const heading = line.match(/^(#{1,6})\s+(.+)$/);
+            if (heading) {
+                const element = document.createElement(`h${heading[1].length}`);
+                appendInlineMarkdown(element, heading[2]);
+                container.appendChild(element);
+                index += 1;
+                continue;
+            }
+
+            const listItem = line.match(/^\s*([-+*]|\d+\.)\s+(.+)$/);
+            if (listItem) {
+                const ordered = /\d+\./.test(listItem[1]);
+                const list = document.createElement(ordered ? "ol" : "ul");
+                while (index < lines.length) {
+                    const item = lines[index].match(/^\s*([-+*]|\d+\.)\s+(.+)$/);
+                    if (!item || /\d+\./.test(item[1]) !== ordered) break;
+                    const listElement = document.createElement("li");
+                    appendInlineMarkdown(listElement, item[2]);
+                    list.appendChild(listElement);
+                    index += 1;
+                }
+                container.appendChild(list);
+                continue;
+            }
+
+            if (line.startsWith("> ")) {
+                const quote = document.createElement("blockquote");
+                const quoteLines = [];
+                while (index < lines.length && lines[index].startsWith("> ")) {
+                    quoteLines.push(lines[index].slice(2));
+                    index += 1;
+                }
+                appendInlineMarkdown(quote, quoteLines.join(" "));
+                container.appendChild(quote);
+                continue;
+            }
+
+            const paragraphLines = [line.trim()];
+            index += 1;
+            while (
+                index < lines.length &&
+                lines[index].trim() &&
+                !/^(#{1,6})\s+/.test(lines[index]) &&
+                !/^\s*([-+*]|\d+\.)\s+/.test(lines[index]) &&
+                !lines[index].startsWith("> ") &&
+                !(
+                    lines[index].includes("|") &&
+                    index + 1 < lines.length &&
+                    isTableDivider(lines[index + 1])
+                ) &&
+                !lines[index].trimStart().startsWith("```")
+            ) {
+                paragraphLines.push(lines[index].trim());
+                index += 1;
+            }
+            const paragraph = document.createElement("p");
+            appendInlineMarkdown(paragraph, paragraphLines.join(" "));
+            container.appendChild(paragraph);
+        }
+    }
+
+    function addMessage(message) {
+        const row = document.createElement("div");
+        row.className = `ai-message-row ai-message-${message.role}`;
+
+        const bubble = document.createElement("div");
+        bubble.className = "ai-message-bubble";
+        if (message.role === "assistant") {
+            renderAssistantMarkdown(bubble, message.content);
+            if (Array.isArray(message.charts)) {
+                message.charts.forEach(chart => renderChart(bubble, chart));
+            }
+        } else {
+            bubble.textContent = message.content;
+        }
+        row.appendChild(bubble);
+        messagesElement.appendChild(row);
+    }
+
+    function renderChart(container, chart) {
+        if (typeof Chart === "undefined" || !chart || !Array.isArray(chart.labels)) {
+            return;
+        }
+        container.classList.add("ai-message-with-chart");
+        const figure = document.createElement("figure");
+        figure.className = "ai-chart";
+        const heading = document.createElement("figcaption");
+        heading.textContent = chart.title;
+        figure.appendChild(heading);
+        const canvas = document.createElement("canvas");
+        canvas.setAttribute("role", "img");
+        canvas.setAttribute("aria-label", chart.title);
+        figure.appendChild(canvas);
+        container.appendChild(figure);
+
+        const datasets = chart.datasets.map((dataset, index) => ({
+            label: dataset.label,
+            data: dataset.values,
+            borderColor: chartColours[index % chartColours.length],
+            backgroundColor: chart.type === "line"
+                ? `${chartColours[index % chartColours.length]}22`
+                : chartColours[index % chartColours.length],
+            borderWidth: 2,
+            borderRadius: chart.type === "bar" ? 5 : 0,
+            fill: chart.type === "line" && index === 0,
+            tension: 0.25
+        }));
+        activeCharts.push(new Chart(canvas, {
+            type: chart.type,
+            data: {labels: chart.labels, datasets},
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {mode: "index", intersect: false},
+                plugins: {
+                    legend: {display: datasets.length > 1, position: "bottom"},
+                    tooltip: {
+                        callbacks: {
+                            label: context => {
+                                const value = chart.value_format === "currency"
+                                    ? currencyFormatter.format(context.raw)
+                                    : Number(context.raw).toLocaleString("en-AU");
+                                return `${context.dataset.label}: ${value}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: value => chart.value_format === "currency"
+                                ? currencyFormatter.format(value)
+                                : Number(value).toLocaleString("en-AU")
+                        }
+                    },
+                    x: {grid: {display: false}}
+                }
+            }
+        }));
+    }
+
+    function renderConversation() {
+        activeCharts.splice(0).forEach(chart => chart.destroy());
+        messagesElement.replaceChildren();
+        if (!conversation.length) {
+            addMessage({
+                role: "assistant",
+                content: "Hello — I’m the Green Orbit AI Assistant. How can I help?"
+            });
+        } else {
+            conversation.forEach(addMessage);
+        }
+        messagesElement.scrollTop = messagesElement.scrollHeight;
+    }
+
+    function setBusy(busy) {
+        input.disabled = busy;
+        sendButton.disabled = busy;
+        newConversationButton.disabled = busy;
+        statusElement.className = busy
+            ? "ai-status px-3 px-md-4 text-muted"
+            : "ai-status px-3 px-md-4";
+        statusElement.textContent = busy ? "Green Orbit is thinking…" : "";
+    }
+
+    function showError(message) {
+        statusElement.className = "ai-status px-3 px-md-4 text-danger";
+        statusElement.textContent = message;
+    }
+
+    form.addEventListener("submit", async event => {
+        event.preventDefault();
+        const content = input.value.trim();
+        if (!content) return;
+
+        while (conversation.length >= 20) {
+            conversation.splice(0, 2);
+        }
+
+        const userMessage = {role: "user", content};
+        conversation.push(userMessage);
+        input.value = "";
+        renderConversation();
+        setBusy(true);
+
+        try {
+            const response = await fetch(chatEndpoint, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-Token": csrfToken
+                },
+                body: JSON.stringify({
+                    messages: conversation.map(({role, content}) => ({role, content}))
+                })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(result.detail || "Unable to contact the AI Assistant.");
+            }
+            conversation.push({...result.message, charts: result.charts || []});
+            saveConversation();
+            renderConversation();
+            setBusy(false);
+            input.focus();
+        } catch (error) {
+            conversation.pop();
+            saveConversation();
+            renderConversation();
+            setBusy(false);
+            input.value = content;
+            showError(error.message || "Unable to contact the AI Assistant.");
+            input.focus();
+        }
+    });
+
+    input.addEventListener("keydown", event => {
+        if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            form.requestSubmit();
+        }
+    });
+
+    newConversationButton.addEventListener("click", () => {
+        conversation = [];
+        sessionStorage.removeItem(storageKey);
+        statusElement.textContent = "";
+        renderConversation();
+        input.focus();
+    });
+
+    renderConversation();
+    input.focus();
+})();
+</script>
+{% endblock %}

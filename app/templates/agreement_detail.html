@@ -93,7 +93,7 @@
                     <label class="text-muted">Hourly Rate (AUD)</label>
 
                     <div class="fw-semibold">
-                        ${{ "%.2f" | format(agreement.hourly_rate) }}
+                        ${{ "{:,.2f}".format(agreement.hourly_rate) }}
                     </div>
                 </div>
 

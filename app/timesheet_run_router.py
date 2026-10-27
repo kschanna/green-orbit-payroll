@@ -19,6 +19,7 @@ from app.models.pbt_schedule_period import PBTSchedulePeriod
 from app.models.timesheet import Timesheet
 from app.models.timesheet_header import TimesheetHeader
 from app.models.worker import Worker
+from app.pagination import build_pagination
 
 
 router = APIRouter()
@@ -116,8 +117,16 @@ def timesheet_run_page(
     request: Request,
     customer_id: int | None = None,
     status: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    page: int = 1,
+    page_size: int = 25,
 ):
     today = date.today()
+    date_from = date_from or today - timedelta(days=90)
+    date_to = date_to or today + timedelta(days=30)
+    if date_to < date_from:
+        raise HTTPException(422, "End date cannot precede start date")
     with SessionLocal() as db:
         statement = (
             select(
@@ -139,6 +148,8 @@ def timesheet_run_page(
             .where(
                 PBTSchedulePeriod.schedule_type == "timesheet",
                 PBTSchedule.status == "active",
+                PBTSchedulePeriod.event_date >= date_from,
+                PBTSchedulePeriod.event_date <= date_to,
             )
         )
         if customer_id is not None:
@@ -216,6 +227,20 @@ def timesheet_run_page(
                 ),
             })
 
+        pagination = build_pagination(
+            total=len(rows), page=page, page_size=page_size,
+            path="/ui/timesheet-runs",
+            params={
+                "customer_id": customer_id,
+                "status": status,
+                "date_from": date_from.isoformat(),
+                "date_to": date_to.isoformat(),
+            },
+        )
+        rows = rows[
+            pagination.offset:pagination.offset + pagination.page_size
+        ]
+
         customers = db.scalars(
             select(Organisation)
             .join(Assignment, Assignment.customer_id == Organisation.id)
@@ -233,6 +258,9 @@ def timesheet_run_page(
             "customers": customers,
             "selected_customer_id": customer_id,
             "selected_status": status or "all",
+            "selected_date_from": date_from.isoformat(),
+            "selected_date_to": date_to.isoformat(),
+            "pagination": pagination,
         },
     )
 

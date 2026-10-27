@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2>Notifications</h2>
+        <p class="text-muted mb-0">Document processing and compliance activity.</p>
+    </div>
+    {% if unread_count %}
+    <form method="post" action="/ui/notifications/read-all">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+        <button type="submit" class="btn btn-outline-secondary">Mark all as read</button>
+    </form>
+    {% endif %}
+</div>
+
+<div class="btn-group mb-3" role="group" aria-label="Filter notifications">
+    <a href="/ui/notifications?view=unread"
+       class="btn btn-outline-primary {% if notification_view == 'unread' %}active{% endif %}">
+        Unread{% if unread_count %} ({{ unread_count }}){% endif %}
+    </a>
+    <a href="/ui/notifications?view=all"
+       class="btn btn-outline-primary {% if notification_view == 'all' %}active{% endif %}">
+        All
+    </a>
+</div>
+
+<div class="card">
+    <div class="list-group list-group-flush">
+    {% for notification in notifications %}
+        <a href="/ui/notifications/{{ notification.id }}/open"
+           class="list-group-item list-group-item-action p-3 {% if not notification.read_at %}bg-primary-subtle{% endif %}">
+            <div class="d-flex justify-content-between gap-3">
+                <div class="d-flex gap-2">
+                    <span class="mt-1" aria-label="{{ 'Unread' if not notification.read_at else 'Read' }} notification">
+                        {% if not notification.read_at %}<span class="badge rounded-pill bg-primary">&nbsp;</span>{% endif %}
+                    </span>
+                    <div>
+                    <div class="{% if not notification.read_at %}fw-bold{% else %}fw-semibold{% endif %}">{{ notification.title }}</div>
+                    <div class="text-muted">{{ notification.message }}</div>
+                    </div>
+                </div>
+                <div class="small text-muted text-nowrap">
+                    {{ notification.created_at.strftime("%d/%m/%Y %H:%M") }}
+                </div>
+            </div>
+        </a>
+    {% else %}
+        <div class="p-5 text-center text-muted">
+            {% if notification_view == "unread" %}You're all caught up.{% else %}No notifications yet.{% endif %}
+        </div>
+    {% endfor %}
+    </div>
+</div>
+
+{% endblock %}

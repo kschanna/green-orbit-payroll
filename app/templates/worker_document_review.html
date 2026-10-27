@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block content %}
+
+<a href="/ui/workers/{{ worker.id }}/documents" class="btn btn-link mb-3">
+    ← Back to Worker Documents
+</a>
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div>
+        <h2>Review Document</h2>
+        <p class="text-muted mb-0">
+            {{ worker.first_name }} {{ worker.last_name }} · {{ document_type_label }}
+        </p>
+    </div>
+    <div>
+        {% if document.status == "approved" %}
+        <span class="badge bg-success fs-6">Approved</span>
+        {% elif document.status == "rejected" %}
+        <span class="badge bg-danger fs-6">Rejected</span>
+        {% elif document.status == "ready_for_review" %}
+        <span class="badge bg-warning text-dark fs-6">Ready for review</span>
+        {% else %}
+        <span class="badge bg-secondary fs-6">{{ document.status | replace("_", " ") | title }}</span>
+        {% endif %}
+    </div>
+</div>
+
+<div class="alert alert-info">
+    Document AI suggestions are not authoritative. Check every value against the PDF before approving.
+</div>
+
+{% set review_complete = document.status in ("approved", "rejected") %}
+{% if request.query_params.get("synced") == "1" %}
+<div class="alert alert-success">
+    Approved values were applied to the worker's
+    {{ "tax and TFN" if document.document_type == "tfn_declaration" else "superannuation" }} record.
+</div>
+{% endif %}
+{% if review_complete %}
+<div class="alert alert-secondary">
+    This review is complete. Its extracted values and decision are now read-only.
+</div>
+{% endif %}
+
+<div class="row g-4">
+    <div class="col-12 col-xl-7">
+        <div class="card p-3 h-100">
+            <h5>{{ document.original_filename }}</h5>
+            <iframe
+                title="Uploaded worker document"
+                src="/ui/workers/{{ worker.id }}/documents/{{ document.id }}/download"
+                style="width:100%; min-height:720px; border:1px solid #dee2e6; border-radius:.375rem;">
+            </iframe>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-5">
+        <form method="post"
+              action="/ui/workers/{{ worker.id }}/documents/{{ document.id }}/review"
+              class="card p-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">Extracted values</h5>
+                {% if extraction and extraction.confidence is not none %}
+                <span class="badge bg-light text-dark border">
+                    {{ (extraction.confidence * 100) | round(1) }}% confidence
+                </span>
+                {% endif %}
+            </div>
+
+            {% if extraction and extraction.warnings %}
+            <div class="alert alert-warning">
+                {% for warning in extraction.warnings %}<div>{{ warning }}</div>{% endfor %}
+            </div>
+            {% endif %}
+
+            {% for name, value in values.items() %}
+            <div class="mb-3">
+                <label class="form-label">{{ name }}</label>
+                <input type="hidden" name="field_name" value="{{ name }}">
+                <input class="form-control" name="field_value" value="{{ value }}"
+                       {% if name in ("Tax file number", "Residency status", "Claims tax-free threshold", "Has study loan", "Effective from", "Fund name", "Fund USI", "Member number") and not review_complete %}required{% endif %}
+                       {% if review_complete %}readonly{% endif %}>
+            </div>
+            {% else %}
+            <div class="alert alert-warning">No form fields were extracted. Review the PDF manually.</div>
+            {% endfor %}
+
+            <div class="mb-3">
+                <label for="notes" class="form-label">Review notes</label>
+                <textarea id="notes" name="notes" class="form-control" rows="4"
+                          {% if review_complete %}readonly{% endif %}>{{ review.notes if review and review.notes else "" }}</textarea>
+                <div class="form-text">A reason is required when rejecting a document.</div>
+            </div>
+
+            {% if review and review.reviewed_at %}
+            <p class="small text-muted">
+                Last decision: {{ review.decision | title }} on
+                {{ review.reviewed_at.strftime("%d/%m/%Y %H:%M") }}
+            </p>
+            {% endif %}
+
+            <div class="d-flex gap-2">
+                <button class="btn btn-success" type="submit" name="decision" value="approved"
+                        {% if review_complete %}disabled{% endif %}>
+                    {{ "Approved" if document.status == "approved" else "Approve values" }}
+                </button>
+                <button class="btn btn-outline-danger" type="submit" name="decision" value="rejected"
+                        formnovalidate
+                        {% if review_complete %}disabled{% endif %}>
+                    {{ "Rejected" if document.status == "rejected" else "Reject document" }}
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}

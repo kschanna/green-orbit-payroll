@@ -1,4 +1,5 @@
 from typing import Literal
+from collections import defaultdict
 from app.engagement_resolver import resolve_worker_id
 from app.workers_router import router as workers_router
 from app.employee_super_router import router as employee_super_router
@@ -11,6 +12,9 @@ from app.leave_router import router as leave_router
 from app.payments_router import router as payments_router
 from app.pbt_router import router as pbt_router
 from app.timesheet_run_router import router as timesheet_run_router
+from app.ai_router import router as ai_router
+from app.worker_documents_router import router as worker_documents_router
+from app.worker_portal_router import router as worker_portal_router
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -50,10 +54,12 @@ from app.models.component_definition import ComponentDefinition
 from app.models.component_family import ComponentFamily
 from app.models.assignment_component import AssignmentComponent
 from app.reports.invoice_pdf import InvoicePDFGenerator
-from app.invoicing.engine import generate_invoice
+from app.invoicing.engine import delete_draft_invoice, generate_invoice
 from app.models.timesheet_header import TimesheetHeader
 from app.models.pbt_schedule import PBTSchedule
 from app.models.pbt_schedule_period import PBTSchedulePeriod
+from app.models.pbt_schedule_rule import PBTScheduleRule
+from app.pagination import build_pagination
 
 
 # ============================================================
@@ -69,7 +75,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 app = FastAPI(
     title="Green Orbit Payroll API",
     description="Australian Payroll Engine",
-    version="0.4.0"
+    version="0.5.0"
 )
 
 app.router.include_router(components_router)
@@ -83,6 +89,9 @@ app.router.include_router(leave_router)
 app.router.include_router(payments_router)
 app.router.include_router(pbt_router)
 app.router.include_router(timesheet_run_router)
+app.router.include_router(ai_router)
+app.router.include_router(worker_documents_router)
+app.router.include_router(worker_portal_router)
 
 session_secret = os.environ.get("SESSION_SECRET")
 
@@ -212,20 +221,21 @@ async def csrf_protection(request: Request, call_next):
 
 @app.middleware("http")
 async def require_login(request: Request, call_next):
-    public_paths = {"/login", "/health"}
+    public_paths = {"/login", "/portal/login", "/health"}
 
     if request.url.path in public_paths or request.url.path.startswith("/static/"):
         return await call_next(request)
 
     user_id = request.session.get("user_id")
-    authenticated = False
+    user = None
 
     if user_id is not None:
         with SessionLocal() as db:
-            user = db.get(User, user_id)
-            authenticated = user is not None and user.is_active
+            candidate = db.get(User, user_id)
+            if candidate is not None and candidate.is_active:
+                user = candidate
 
-    if not authenticated:
+    if user is None:
         request.session.pop("user_id", None)
 
         if request.url.path.startswith("/api/") or request.url.path in {
@@ -236,7 +246,22 @@ async def require_login(request: Request, call_next):
                 content={"detail": "Authentication required"},
             )
 
-        return RedirectResponse("/login", status_code=303)
+        login_path = "/portal/login" if request.url.path.startswith("/portal") else "/login"
+        return RedirectResponse(login_path, status_code=303)
+
+    is_portal_path = request.url.path.startswith("/portal")
+    if is_portal_path:
+        if user.role != "worker" or user.worker_id is None:
+            return RedirectResponse("/dashboard", status_code=303)
+        if (
+            user.must_change_password
+            and request.url.path not in {"/portal/change-password", "/portal/logout"}
+        ):
+            return RedirectResponse("/portal/change-password", status_code=303)
+    elif user.role != "admin":
+        if request.url.path.startswith("/api/"):
+            return JSONResponse(status_code=403, content={"detail": "Administrator access required"})
+        return RedirectResponse("/portal", status_code=303)
 
     return await call_next(request)
 
@@ -317,7 +342,7 @@ class PayRunCreate(BaseModel):
 def home():
     return {
         "application": "Green Orbit Payroll Engine",
-        "version": "0.4.0",
+        "version": "0.5.0",
         "status": "running"
     }
 
@@ -1168,40 +1193,83 @@ def generate_contractor_payroll(
 
 
 @app.get("/ui/timesheets", response_class=HTMLResponse)
-def list_timesheets(request: Request):
+def list_timesheets(
+    request: Request, page: int = 1, page_size: int = 25,
+):
 
     with SessionLocal() as db:
 
         # Retrieve every header-based timesheet, including PBT-scheduled
         # weekly, fortnightly, monthly and semi-monthly periods.
+        pagination = build_pagination(
+            total=int(db.scalar(select(func.count(TimesheetHeader.id))) or 0),
+            page=page, page_size=page_size, path="/ui/timesheets",
+        )
         period_headers = db.scalars(
             select(TimesheetHeader)
             .order_by(TimesheetHeader.id.desc())
+            .offset(pagination.offset)
+            .limit(pagination.page_size)
         ).all()
+
+        header_ids = [header.id for header in period_headers]
+        entry_map = defaultdict(list)
+        if header_ids:
+            for entry in db.scalars(select(Timesheet).where(
+                Timesheet.timesheet_header_id.in_(header_ids)
+            )).all():
+                entry_map[entry.timesheet_header_id].append(entry)
+        invoiced_header_ids = set()
+        if header_ids:
+            invoiced_header_ids = set(db.scalars(
+                select(Timesheet.timesheet_header_id)
+                .join(
+                    InvoiceTimesheet,
+                    InvoiceTimesheet.timesheet_id == Timesheet.id,
+                )
+                .where(Timesheet.timesheet_header_id.in_(header_ids))
+                .distinct()
+            ).all())
+        engagement_ids = {
+            header.engagement_id for header in period_headers
+            if header.engagement_id is not None
+        }
+        worker_names = {}
+        if engagement_ids:
+            worker_names = {
+                engagement_id: f"{first_name} {last_name}"
+                for engagement_id, first_name, last_name in db.execute(
+                    select(Engagement.id, Worker.first_name, Worker.last_name)
+                    .join(Worker, Worker.id == Engagement.worker_id)
+                    .where(Engagement.id.in_(engagement_ids))
+                ).all()
+            }
+        period_ids = {
+            header.pbt_schedule_period_id for header in period_headers
+            if header.pbt_schedule_period_id is not None
+        }
+        period_frequencies = {}
+        if period_ids:
+            period_frequencies = dict(db.execute(
+                select(PBTSchedulePeriod.id, PBTScheduleRule.frequency)
+                .join(
+                    PBTScheduleRule,
+                    PBTScheduleRule.id == PBTSchedulePeriod.rule_id,
+                )
+                .where(PBTSchedulePeriod.id.in_(period_ids))
+            ).all())
 
         period_timesheets = []
 
         for header in period_headers:
-
-            entries = db.scalars(
-                select(Timesheet)
-                .where(Timesheet.timesheet_header_id == header.id)
-            ).all()
-
-            entry_ids = [entry.id for entry in entries]
-            is_invoiced = bool(entry_ids and db.scalar(
-                select(InvoiceTimesheet.id)
-                .where(InvoiceTimesheet.timesheet_id.in_(entry_ids))
-                .limit(1)
-            ))
+            entries = entry_map[header.id]
+            is_invoiced = header.id in invoiced_header_ids
             type_label = header.period_type.replace("_", " ").title()
             if header.period_type == "scheduled":
-                pbt_period = db.get(
-                    PBTSchedulePeriod, header.pbt_schedule_period_id
-                )
                 frequency = (
-                    pbt_period.rule.frequency.replace("_", " ").title()
-                    if pbt_period is not None else "Scheduled"
+                    period_frequencies.get(
+                        header.pbt_schedule_period_id, "scheduled"
+                    ).replace("_", " ").title()
                 )
                 type_label = f"PBT {frequency}"
 
@@ -1209,8 +1277,8 @@ def list_timesheets(request: Request):
                 "id": header.id,
                 "engagement_id": header.engagement_id,
                 "assignment_id": header.assignment_id,
-                "employee_name": (
-                    (timesheet_worker_name(db, header.engagement_id))
+                "employee_name": worker_names.get(
+                    header.engagement_id, "Historical worker"
                 ),
                 "period_type": header.period_type,
                 "type_label": type_label,
@@ -1256,6 +1324,7 @@ def list_timesheets(request: Request):
             context={
                 "period_timesheets": period_timesheets,
                 "daily_timesheets": daily_data,
+                "pagination": pagination,
                 "engagement_options": [
                     {
                         "id": engagement.id,
@@ -2731,13 +2800,21 @@ def download_payslip_pdf(payslip_id: int):
 
 
 @app.get("/ui/pay-runs", response_class=HTMLResponse)
-def pay_runs_page(request: Request):
+def pay_runs_page(
+    request: Request, page: int = 1, page_size: int = 25,
+):
 
     with SessionLocal() as session:
 
+        pagination = build_pagination(
+            total=int(session.scalar(select(func.count(PayRun.id))) or 0),
+            page=page, page_size=page_size, path="/ui/pay-runs",
+        )
         pay_runs = session.scalars(
             select(PayRun)
             .order_by(PayRun.id.desc())
+            .offset(pagination.offset)
+            .limit(pagination.page_size)
         ).all()
 
         run_data = [
@@ -2754,7 +2831,7 @@ def pay_runs_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="pay_runs.html",
-        context={"pay_runs": run_data}
+        context={"pay_runs": run_data, "pagination": pagination}
     )
 
 
@@ -3714,15 +3791,23 @@ def update_work_pattern(
         }
 
 @app.get("/ui/agreements", response_class=HTMLResponse)
-def agreements_page(request: Request):
+def agreements_page(
+    request: Request, page: int = 1, page_size: int = 25,
+):
 
     with SessionLocal() as session:
 
+        pagination = build_pagination(
+            total=int(session.scalar(select(func.count(WorkPattern.id))) or 0),
+            page=page, page_size=page_size, path="/ui/agreements",
+        )
         rows = session.execute(
             select(WorkPattern, Engagement, Worker)
             .join(Engagement, WorkPattern.engagement_id == Engagement.id)
             .join(Worker, Engagement.worker_id == Worker.id)
             .order_by(Worker.last_name, Worker.first_name)
+            .offset(pagination.offset)
+            .limit(pagination.page_size)
         ).all()
 
         today = date.today()
@@ -3753,15 +3838,21 @@ def agreements_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="agreements.html",
-        context={"agreements": agreement_data}
+        context={"agreements": agreement_data, "pagination": pagination}
     )
 
 
 @app.get("/ui/payslips", response_class=HTMLResponse)
-def payslips_page(request: Request):
+def payslips_page(
+    request: Request, page: int = 1, page_size: int = 25,
+):
 
     with SessionLocal() as session:
 
+        pagination = build_pagination(
+            total=int(session.scalar(select(func.count(Payslip.id))) or 0),
+            page=page, page_size=page_size, path="/ui/payslips",
+        )
         rows = session.execute(
             select(Payslip, Engagement, Worker, PayRun)
             .join(Engagement, Payslip.engagement_id == Engagement.id)
@@ -3771,6 +3862,8 @@ def payslips_page(request: Request):
                 PayRun.id.desc(),
                 Payslip.id.desc()
             )
+            .offset(pagination.offset)
+            .limit(pagination.page_size)
         ).all()
 
         payslip_data = [
@@ -3795,7 +3888,7 @@ def payslips_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="payslips.html",
-        context={"payslips": payslip_data}
+        context={"payslips": payslip_data, "pagination": pagination}
     )
 
 
@@ -4188,10 +4281,18 @@ def assignment_preview_page(
 
 
 @app.get("/ui/engagements", response_class=HTMLResponse)
-def assignments_page(request: Request):
+def assignments_page(
+    request: Request, page: int = 1, page_size: int = 25,
+):
     with SessionLocal() as db:
+        pagination = build_pagination(
+            total=int(db.scalar(select(func.count(Assignment.id))) or 0),
+            page=page, page_size=page_size, path="/ui/engagements",
+        )
         assignments = db.scalars(
             select(Assignment).order_by(Assignment.id.desc())
+            .offset(pagination.offset)
+            .limit(pagination.page_size)
         ).all()
         assignment_data = [
             {
@@ -4280,6 +4381,7 @@ def assignments_page(request: Request):
                 }
                 for schedule in pbt_schedules
             ],
+            "pagination": pagination,
         },
     )
 
@@ -4455,8 +4557,21 @@ def update_invoice_status(
     )
 
 
+@app.post("/ui/invoices/{invoice_id}/delete")
+def delete_invoice(invoice_id: int):
+    try:
+        delete_draft_invoice(invoice_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return RedirectResponse("/ui/invoices", status_code=303)
+
+
 @app.get("/ui/invoices", response_class=HTMLResponse)
-def invoices_page(request: Request):
+def invoices_page(
+    request: Request, page: int = 1, page_size: int = 25,
+):
     with SessionLocal() as session:
         assignments = session.scalars(
             select(Assignment).order_by(Assignment.id)
@@ -4474,8 +4589,14 @@ def invoices_page(request: Request):
             }
             for assignment in assignments
         ]
+        pagination = build_pagination(
+            total=int(session.scalar(select(func.count(Invoice.id))) or 0),
+            page=page, page_size=page_size, path="/ui/invoices",
+        )
         invoices = session.scalars(
             select(Invoice).order_by(Invoice.id.desc())
+            .offset(pagination.offset)
+            .limit(pagination.page_size)
         ).all()
         invoice_data = []
         for invoice in invoices:
@@ -4537,7 +4658,11 @@ def invoices_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="invoices.html",
-        context={"invoices": invoice_data, "engagements": engagement_data},
+        context={
+            "invoices": invoice_data,
+            "engagements": engagement_data,
+            "pagination": pagination,
+        },
     )
 
 
@@ -4593,21 +4718,30 @@ def preview_invoice_page(request: Request, invoice_id: int):
 
         component_rows = session.execute(
             select(InvoiceComponent, ComponentDefinition)
-            .join(
+            .outerjoin(
                 ComponentDefinition,
                 ComponentDefinition.id
                 == InvoiceComponent.component_definition_id,
             )
             .where(InvoiceComponent.invoice_id == invoice.id)
-            .order_by(InvoiceComponent.id)
+            .order_by(InvoiceComponent.processing_order, InvoiceComponent.id)
         ).all()
         line_items = [
             {
-                "description": definition.name,
-                "calculation_type": definition.calculation_type,
+                "description": component.component_name or (definition.name if definition else "Services provided"),
+                "calculation_type": (
+                    "percentage" if component.calculation_method == "percentage_of_value"
+                    else "hourly" if component.calculation_method == "amount_per_unit"
+                    else "fixed" if (component.calculation_method or "").startswith("fixed_per_")
+                    else (definition.calculation_type if definition else "hourly")
+                ),
                 "quantity": component.quantity,
                 "rate": component.rate,
                 "amount": component.amount,
+                "base_amount": component.base_amount,
+                "explanation": component.explanation,
+                "calculation_method": component.calculation_method,
+                "unit_type": component.unit_type or "hours",
             }
             for component, definition in component_rows
         ]
@@ -5319,21 +5453,30 @@ def download_invoice_pdf(invoice_id: int):
         hours = sum(t.hours_worked for t in timesheets)
         component_rows = session.execute(
             select(InvoiceComponent, ComponentDefinition)
-            .join(
+            .outerjoin(
                 ComponentDefinition,
                 ComponentDefinition.id
                 == InvoiceComponent.component_definition_id,
             )
             .where(InvoiceComponent.invoice_id == invoice.id)
-            .order_by(InvoiceComponent.id)
+            .order_by(InvoiceComponent.processing_order, InvoiceComponent.id)
         ).all()
         line_items = [
             {
-                "description": definition.name,
-                "calculation_type": definition.calculation_type,
+                "description": component.component_name or (definition.name if definition else "Services provided"),
+                "calculation_type": (
+                    "percentage" if component.calculation_method == "percentage_of_value"
+                    else "hourly" if component.calculation_method == "amount_per_unit"
+                    else "fixed" if (component.calculation_method or "").startswith("fixed_per_")
+                    else (definition.calculation_type if definition else "hourly")
+                ),
                 "quantity": component.quantity,
                 "rate": component.rate,
                 "amount": component.amount,
+                "base_amount": component.base_amount,
+                "explanation": component.explanation,
+                "calculation_method": component.calculation_method,
+                "unit_type": component.unit_type or "hours",
             }
             for component, definition in component_rows
         ]
@@ -5383,7 +5526,11 @@ def login(request: Request, email: str = Form(...), password: str = Form(...)):
             User.is_active == True
         ).first()
 
-        if not user or not verify_password(password, user.password_hash):
+        if (
+            not user
+            or user.role != "admin"
+            or not verify_password(password, user.password_hash)
+        ):
             return templates.TemplateResponse(
                 request=request,
                 name="login.html",

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<a href="/ui/workers/{{ worker.id }}" class="btn btn-link px-0 mb-3">← Back to {{ worker.first_name }} {{ worker.last_name }}</a>
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h2>Worker Portal Access</h2>
+        <p class="text-muted mb-0">{{ worker.first_name }} {{ worker.last_name }} · Worker #{{ worker.id }}</p>
+    </div>
+</div>
+
+{% if temporary_password %}
+<div class="alert alert-success">
+    <h5 class="alert-heading">Temporary credentials created</h5>
+    <p class="mb-2">Copy these now. The temporary password will not be shown again.</p>
+    <dl class="row mb-0">
+        <dt class="col-sm-3">Portal URL</dt><dd class="col-sm-9"><a href="/portal/login" target="_blank">/portal/login</a></dd>
+        <dt class="col-sm-3">Username</dt><dd class="col-sm-9"><code>{{ account.email }}</code></dd>
+        <dt class="col-sm-3">Password</dt><dd class="col-sm-9"><code class="user-select-all">{{ temporary_password }}</code></dd>
+    </dl>
+</div>
+{% endif %}
+
+<div class="card p-4" style="max-width: 760px;">
+    <h5>Account</h5>
+    <dl class="row mt-3">
+        <dt class="col-sm-4">Worker email</dt><dd class="col-sm-8">{{ worker.email }}</dd>
+        <dt class="col-sm-4">Portal status</dt>
+        <dd class="col-sm-8">
+            {% if account and account.is_active %}<span class="badge bg-success">Enabled</span>{% else %}<span class="badge bg-secondary">Not enabled</span>{% endif %}
+        </dd>
+        {% if account %}
+        <dt class="col-sm-4">Password status</dt><dd class="col-sm-8">{{ "Temporary password — change required" if account.must_change_password else "Password set" }}</dd>
+        <dt class="col-sm-4">Last sign in</dt><dd class="col-sm-8">{{ account.last_login_at.strftime("%d/%m/%Y %H:%M") if account.last_login_at else "Never" }}</dd>
+        {% endif %}
+    </dl>
+    <div class="alert alert-light border small">
+        The username is the worker's email address. Enabling access generates a one-time temporary password and requires the worker to choose a new password at first sign-in.
+    </div>
+    <form action="/ui/workers/{{ worker.id }}/portal-access" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+        <button type="submit" class="btn btn-primary">
+            {{ "Reset Temporary Password" if account else "Enable Portal Access" }}
+        </button>
+    </form>
+</div>
+{% endblock %}

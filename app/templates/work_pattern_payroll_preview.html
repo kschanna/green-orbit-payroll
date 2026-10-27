@@ -74,35 +74,35 @@
                 <tr>
                     <td>Hourly Rate</td>
                     <td class="text-end">
-                        ${{ "%.2f"|format(payroll.rate) }}
+                        ${{ "{:,.2f}".format(payroll.rate) }}
                     </td>
                 </tr>
 
                 <tr class="table-light fw-semibold">
                     <td>Gross Pay</td>
                     <td class="text-end">
-                        ${{ "%.2f"|format(payroll.gross) }}
+                        ${{ "{:,.2f}".format(payroll.gross) }}
                     </td>
                 </tr>
 
                 <tr>
                     <td>PAYG Withholding</td>
                     <td class="text-end">
-                        ${{ "%.2f"|format(payroll.payg) }}
+                        ${{ "{:,.2f}".format(payroll.payg) }}
                     </td>
                 </tr>
 
                 <tr class="table-light fw-bold">
                     <td>Net Pay</td>
                     <td class="text-end">
-                        ${{ "%.2f"|format(payroll.net) }}
+                        ${{ "{:,.2f}".format(payroll.net) }}
                     </td>
                 </tr>
 
                 <tr>
                     <td>Employer Superannuation</td>
                     <td class="text-end">
-                        ${{ "%.2f"|format(payroll.total_super) }}
+                        ${{ "{:,.2f}".format(payroll.total_super) }}
                     </td>
                 </tr>
 

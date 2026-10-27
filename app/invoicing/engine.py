@@ -2,7 +2,7 @@ from datetime import date
 from collections import defaultdict
 from decimal import Decimal, ROUND_HALF_UP
 
-from sqlalchemy import select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
@@ -14,6 +14,8 @@ from app.models.assignment_component import AssignmentComponent
 from app.models.component_definition import ComponentDefinition
 from app.models.component_family import ComponentFamily
 from app.models.invoice_component import InvoiceComponent
+from app.models.assignment_component_application import AssignmentComponentApplication
+from app.models.invoice_component_allocation import InvoiceComponentAllocation
 
 
 def _exclude_leave_timesheets(session, timesheets):
@@ -32,7 +34,7 @@ def _exclude_leave_timesheets(session, timesheets):
     ]
 
 
-def _invoice_lines(session, assignment, timesheets):
+def _legacy_invoice_lines(session, assignment, timesheets):
     """Calculate effective-dated ordinary and percentage invoice lines."""
     definitions = {
         definition.id: definition
@@ -188,6 +190,200 @@ def _invoice_lines(session, assignment, timesheets):
     return lines
 
 
+STAGE_RANK = {"earnings": 100, "fee": 200, "on_cost": 300}
+DERIVED_METHODS = {
+    "percentage_of_value", "amount_per_unit",
+    "fixed_per_invoice", "fixed_per_period",
+}
+
+
+def _invoice_lines(session, assignment, timesheets):
+    """Realise ordered, effective-dated assignment invoice components."""
+    definitions = {
+        definition.id: definition
+        for definition in session.scalars(select(ComponentDefinition)).all()
+    }
+    families = {
+        family.id: family
+        for family in session.scalars(select(ComponentFamily)).all()
+    }
+    ordinary = next((d for d in definitions.values() if d.code == "ORDINARY_HOURS"), None)
+    configured = list(session.scalars(select(AssignmentComponent).where(
+        AssignmentComponent.assignment_id == assignment.id,
+        AssignmentComponent.applies_to.in_(("invoice", "both")),
+    )).all())
+    legacy_derived_ids = set()
+    for component in configured:
+        definition = definitions.get(component.component_definition_id)
+        if (
+            definition is not None
+            and definition.calculation_type == "percentage"
+            and component.calculation_method == "timesheet_rate"
+        ):
+            component.processing_stage = "fee"
+            component.processing_order = 200
+            component.calculation_method = "percentage_of_value"
+            legacy_derived_ids.add(component.id)
+    configured_by_id = {component.id: component for component in configured}
+    applications = list(session.scalars(select(AssignmentComponentApplication).where(
+        AssignmentComponentApplication.assignment_component_id.in_(configured_by_id)
+    )).all()) if configured_by_id else []
+    sources_by_target = defaultdict(list)
+    for application in applications:
+        target = configured_by_id.get(application.assignment_component_id)
+        source = configured_by_id.get(application.source_assignment_component_id)
+        if target is None or source is None:
+            raise ValueError("Component application references another assignment")
+        target_rank = (STAGE_RANK.get(target.processing_stage, 999), target.processing_order)
+        source_rank = (STAGE_RANK.get(source.processing_stage, 999), source.processing_order)
+        if target.id == source.id or source_rank >= target_rank:
+            raise ValueError("Invoice component dependencies must point to an earlier component")
+        sources_by_target[target.id].append(application)
+
+    daily = defaultdict(list)
+    for row in timesheets:
+        definition = definitions.get(row.component_definition_id) if row.component_definition_id else ordinary
+        if definition is not None and families.get(definition.family_id) and families[definition.family_id].code == "LEAVE":
+            continue
+        matches = [component for component in configured if (
+            definition is not None
+            and component.component_definition_id == definition.id
+            and component.processing_stage == "earnings"
+            and component.effective_from <= row.work_date
+            and (component.effective_to is None or component.effective_to >= row.work_date)
+        )]
+        if len(matches) > 1:
+            raise ValueError(f"Multiple {definition.name} invoice rates apply on {row.work_date}")
+        component = matches[0] if matches else None
+        if component is None and definition is not None and definition.code != "ORDINARY_HOURS":
+            raise ValueError(f"{definition.name} is not configured for invoicing on {row.work_date}")
+        rate = component.bill_rate if component else assignment.billing_rate
+        if rate is None or rate < 0:
+            raise ValueError(f"Missing or invalid bill rate for {definition.name if definition else 'ordinary services'} on {row.work_date}")
+        quantity = Decimal(row.hours_worked)
+        amount = (quantity * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        daily[row.work_date].append({
+            "assignment_component_id": component.id if component else None,
+            "component_definition_id": definition.id if definition else None,
+            "component_code": definition.code if definition else "SERVICES",
+            "component_name": definition.name if definition else "Services provided",
+            "family_code": families[definition.family_id].code if definition else "EARNINGS",
+            "calculation_method": "timesheet_rate",
+            "calculation_type": "hourly",
+            "unit_type": component.unit_type if component else "hours",
+            "processing_order": component.processing_order if component else 100,
+            "quantity": quantity, "rate": rate, "base_amount": amount,
+            "amount": amount, "sources": [],
+        })
+
+    derived = sorted(
+        (c for c in configured if c.processing_stage in {"fee", "on_cost"}),
+        key=lambda c: (STAGE_RANK[c.processing_stage], c.processing_order, c.id),
+    )
+    invoice_dates = sorted(daily)
+    for component in derived:
+        if component.calculation_method not in DERIVED_METHODS:
+            raise ValueError("Fee and on-cost components require a derived calculation method")
+        definition = definitions[component.component_definition_id]
+        family = families[definition.family_id]
+        apps = sources_by_target[component.id]
+        if (
+            component.calculation_method in {"percentage_of_value", "amount_per_unit"}
+            and not apps and component.id not in legacy_derived_ids
+        ):
+            raise ValueError(f"{definition.name} requires at least one source component")
+        active_dates = [d for d in invoice_dates if component.effective_from <= d and (
+            component.effective_to is None or component.effective_to >= d
+        )]
+        if not active_dates:
+            continue
+        dates = active_dates[:1] if component.calculation_method.startswith("fixed_per_") else active_dates
+        for work_date in dates:
+            source_rows = []
+            for application in apps:
+                source_rows.extend(
+                    (entry, application)
+                    for entry in daily[work_date]
+                    if entry["assignment_component_id"] == application.source_assignment_component_id
+                )
+            if component.id in legacy_derived_ids and not apps:
+                source_rows = [
+                    (entry, type("LegacyApplication", (), {"basis": "value"})())
+                    for entry in daily[work_date]
+                    if entry["component_code"] in {"ORDINARY_HOURS", "SERVICES"}
+                ]
+            rate = component.bill_rate
+            if rate is None or rate < 0:
+                raise ValueError(f"Missing or invalid bill rate for {definition.name}")
+            base_amount = sum((entry["amount"] for entry, _ in source_rows), Decimal("0"))
+            source_units = sum((entry["quantity"] for entry, _ in source_rows), Decimal("0"))
+            source_unit_types = {entry["unit_type"] for entry, _ in source_rows}
+            if component.calculation_method == "percentage_of_value":
+                quantity = base_amount
+                amount = (base_amount * rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                calc_type = "percentage"
+            elif component.calculation_method == "amount_per_unit":
+                quantity = source_units
+                amount = (source_units * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                calc_type = "hourly"
+            else:
+                quantity = Decimal("1")
+                base_amount = Decimal("0")
+                amount = Decimal(rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                calc_type = "fixed"
+            if not source_rows and component.calculation_method not in {"fixed_per_invoice", "fixed_per_period"}:
+                continue
+            daily[work_date].append({
+                "assignment_component_id": component.id,
+                "component_definition_id": definition.id,
+                "component_code": definition.code,
+                "component_name": definition.name,
+                "family_code": family.code,
+                "calculation_method": component.calculation_method,
+                "calculation_type": calc_type,
+                "unit_type": (
+                    next(iter(source_unit_types))
+                    if component.calculation_method == "amount_per_unit"
+                    and len(source_unit_types) == 1
+                    else component.unit_type
+                ),
+                "processing_order": component.processing_order,
+                "quantity": quantity, "rate": rate, "base_amount": base_amount,
+                "amount": amount,
+                "sources": [{
+                    "assignment_component_id": entry["assignment_component_id"],
+                    "basis": application.basis,
+                    "quantity": entry["quantity"], "amount": entry["amount"],
+                } for entry, application in source_rows],
+            })
+
+    aggregated = {}
+    for work_date in invoice_dates:
+        for entry in daily[work_date]:
+            key = (entry["assignment_component_id"], entry["component_definition_id"], entry["rate"], entry["calculation_method"])
+            if key not in aggregated:
+                aggregated[key] = dict(entry)
+                aggregated[key]["sources"] = list(entry["sources"])
+            else:
+                result = aggregated[key]
+                result["quantity"] += entry["quantity"]
+                result["base_amount"] += entry["base_amount"]
+                result["amount"] += entry["amount"]
+                result["sources"].extend(entry["sources"])
+    lines = sorted(aggregated.values(), key=lambda line: (line["processing_order"], line["component_name"]))
+    for line in lines:
+        if line["calculation_method"] == "percentage_of_value":
+            line["explanation"] = f'{line["rate"]:.2f}% of ${line["base_amount"]:,.2f}'
+        elif line["calculation_method"] == "amount_per_unit":
+            line["explanation"] = f'{line["quantity"]:.4f} {line["unit_type"]} at ${line["rate"]}'
+        elif line["calculation_method"].startswith("fixed_per_"):
+            line["explanation"] = f'Fixed charge of ${line["rate"]}'
+        else:
+            line["explanation"] = f'{line["quantity"]:.4f} {line["unit_type"]} at ${line["rate"]}'
+        line["description"] = line["component_name"]
+    return lines
+
+
 def _invoice_amounts(lines, total_hours, fallback_rate):
     subtotal = sum(
         (line["amount"] for line in lines), Decimal("0.00")
@@ -205,16 +401,48 @@ def _invoice_amounts(lines, total_hours, fallback_rate):
 
 
 def _save_invoice_lines(session, invoice, lines):
+    saved_by_assignment_component = {}
+    saved = []
     for line in lines:
-        if line["component_definition_id"] is None:
-            continue
-        session.add(InvoiceComponent(
+        row = InvoiceComponent(
             invoice_id=invoice.id,
             component_definition_id=line["component_definition_id"],
+            assignment_component_id=line.get("assignment_component_id"),
+            component_code=line.get("component_code"),
+            component_name=line.get("component_name"),
+            family_code=line.get("family_code"),
+            calculation_method=line.get("calculation_method"),
+            unit_type=line.get("unit_type"),
+            base_amount=line.get("base_amount"),
+            processing_order=line.get("processing_order"),
+            explanation=line.get("explanation"),
             quantity=line["quantity"],
             rate=line["rate"],
             amount=line["amount"],
-        ))
+        )
+        session.add(row)
+        saved.append((row, line))
+    session.flush()
+    for row, line in saved:
+        if line.get("assignment_component_id") is not None:
+            saved_by_assignment_component[line["assignment_component_id"]] = row
+    for row, line in saved:
+        combined = defaultdict(lambda: {"quantity": Decimal("0"), "amount": Decimal("0"), "basis": "value"})
+        for source in line.get("sources", []):
+            source_id = source["assignment_component_id"]
+            if source_id is None or source_id not in saved_by_assignment_component:
+                continue
+            combined[source_id]["quantity"] += source["quantity"]
+            combined[source_id]["amount"] += source["amount"]
+            combined[source_id]["basis"] = source["basis"]
+        for source_id, values in combined.items():
+            session.add(InvoiceComponentAllocation(
+                invoice_component_id=row.id,
+                source_invoice_component_id=saved_by_assignment_component[source_id].id,
+                basis=values["basis"],
+                source_quantity=values["quantity"],
+                source_amount=values["amount"],
+            ))
 
 
 def generate_invoice(engagement_id: int, start_date: date, end_date: date):
@@ -421,3 +649,26 @@ def generate_invoice_for_timesheet(
             "invoice_number": invoice_number,
             **amounts,
         }
+
+
+def delete_draft_invoice(invoice_id: int) -> None:
+    """Delete a draft invoice and release its linked timesheets."""
+    with SessionLocal() as session:
+        invoice = session.get(Invoice, invoice_id)
+        if invoice is None:
+            raise LookupError("Invoice not found")
+        if invoice.status != "draft":
+            raise ValueError("Only draft invoices can be deleted")
+
+        component_ids = list(session.scalars(
+            select(InvoiceComponent.id).where(InvoiceComponent.invoice_id == invoice_id)
+        ).all())
+        if component_ids:
+            session.execute(delete(InvoiceComponentAllocation).where(or_(
+                InvoiceComponentAllocation.invoice_component_id.in_(component_ids),
+                InvoiceComponentAllocation.source_invoice_component_id.in_(component_ids),
+            )))
+        session.execute(delete(InvoiceComponent).where(InvoiceComponent.invoice_id == invoice_id))
+        session.execute(delete(InvoiceTimesheet).where(InvoiceTimesheet.invoice_id == invoice_id))
+        session.delete(invoice)
+        session.commit()

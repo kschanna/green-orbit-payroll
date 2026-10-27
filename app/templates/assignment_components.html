@@ -35,6 +35,8 @@
                     <th>Component</th>
                     <th>Type</th>
                     <th>Applies To</th>
+                    <th>Stage / Order</th>
+                    <th>Invoice Method</th>
                     <th>Pay Rate</th>
                     <th>Bill Rate</th>
                     <th>Effective From</th>
@@ -55,6 +57,8 @@
                             "both": "Payroll & Invoice"
                            }.get(item.applies_to, item.applies_to) }}
                     </td>
+                    <td>{{ item.processing_stage | replace("_", " ") | title }} · {{ item.processing_order }}</td>
+                    <td>{{ item.calculation_method | replace("_", " ") | title }}</td>
                     <td>
                         {{ item.pay_rate if item.pay_rate is not none else "—" }}
                     </td>
@@ -75,14 +79,18 @@
                                 data-pay-rate="{{ item.pay_rate if item.pay_rate is not none else '' }}"
                                 data-bill-rate="{{ item.bill_rate if item.bill_rate is not none else '' }}"
                                 data-effective-from="{{ item.effective_from.isoformat() }}"
-                                data-effective-to="{{ item.effective_to.isoformat() if item.effective_to else '' }}">
+                                data-effective-to="{{ item.effective_to.isoformat() if item.effective_to else '' }}"
+                                data-processing-stage="{{ item.processing_stage }}"
+                                data-processing-order="{{ item.processing_order }}"
+                                data-calculation-method="{{ item.calculation_method }}"
+                                data-source-component-ids='{{ item.source_component_ids | tojson }}'>
                             Edit
                         </button>
                     </td>
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="8" class="text-center text-muted">
+                    <td colspan="10" class="text-center text-muted">
                         No components configured for this assignment.
                     </td>
                 </tr>
@@ -118,12 +126,13 @@
                         <div class="col-md-6">
                             <label class="form-label">Component</label>
                             <select name="component_definition_id"
+                                    id="new_component_definition_id"
                                     class="form-select" required>
                                 <option value="">Select component</option>
                                 {% for family, components in component_groups.items() %}
                                 <optgroup label="{{ family }}">
                                     {% for component in components %}
-                                    <option value="{{ component.id }}">
+                                    <option value="{{ component.id }}" data-family-code="{{ component.family_code }}">
                                         {{ component.name }}
                                     </option>
                                     {% endfor %}
@@ -142,6 +151,41 @@
                             </select>
                         </div>
 
+                        <div class="col-md-6">
+                            <label class="form-label">Processing stage</label>
+                            <select name="processing_stage" id="processing_stage" class="form-select" required>
+                                <option value="earnings">1. Earnings</option>
+                                <option value="fee">2. Fee</option>
+                                <option value="on_cost">3. On-cost</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Processing order</label>
+                            <input type="number" name="processing_order" id="processing_order" class="form-control" min="0" max="9999" value="100" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Invoice calculation</label>
+                            <select name="calculation_method" id="calculation_method" class="form-select" required>
+                                <option value="timesheet_rate">Timesheet units × rate</option>
+                                <option value="percentage_of_value">Percentage of selected component value</option>
+                                <option value="amount_per_unit">Amount per selected component unit</option>
+                                <option value="fixed_per_invoice">Fixed amount per invoice</option>
+                                <option value="fixed_per_period">Fixed amount per billing period</option>
+                            </select>
+                        </div>
+                        <div class="col-12" id="source_components_group">
+                            <label class="form-label">Apply to components</label>
+                            <div class="border rounded p-3 d-grid gap-2" id="source_component_choices">
+                                {% for source in source_components %}
+                                <label class="form-check new-source-option" data-stage="{{ source.stage }}" data-order="{{ source.order }}">
+                                    <input class="form-check-input" type="checkbox" name="source_component_ids" value="{{ source.id }}">
+                                    <span class="form-check-label">{{ source.name }} <span class="text-muted">— {{ source.stage | replace("_", " ") | title }} {{ source.order }}</span></span>
+                                </label>
+                                {% else %}<span class="text-muted">Add an invoice earning component first.</span>{% endfor %}
+                            </div>
+                            <div class="form-text">Select earlier components whose realised value or units form this component's base.</div>
+                        </div>
+
                         <div class="col-md-6" id="pay_rate_group">
                             <label class="form-label">Pay Rate ($ or %)</label>
                             <input type="number" name="pay_rate" id="pay_rate"
@@ -150,12 +194,12 @@
                         </div>
 
                         <div class="col-md-6" id="bill_rate_group">
-                            <label class="form-label">Bill Rate ($ or %)</label>
+                            <label class="form-label" id="bill_rate_label">Bill Rate ($)</label>
                             <input type="number" name="bill_rate" id="bill_rate"
                                    class="form-control"
                                    min="0" max="99999999" step="0.0001">
-                            <div class="form-text">
-                                Invoice percentage components are calculated from ordinary billed services.
+                            <div class="form-text" id="bill_rate_help">
+                                Enter the dollar amount charged for each selected unit.
                             </div>
                         </div>
 
@@ -219,7 +263,7 @@
                                 {% for family, components in component_groups.items() %}
                                 <optgroup label="{{ family }}">
                                     {% for component in components %}
-                                    <option value="{{ component.id }}">
+                                    <option value="{{ component.id }}" data-family-code="{{ component.family_code }}">
                                         {{ component.name }}
                                     </option>
                                     {% endfor %}
@@ -238,6 +282,22 @@
                             </select>
                         </div>
 
+                        <div class="col-md-6"><label class="form-label">Processing stage</label><select name="processing_stage" id="edit_processing_stage" class="form-select" required><option value="earnings">1. Earnings</option><option value="fee">2. Fee</option><option value="on_cost">3. On-cost</option></select></div>
+                        <div class="col-md-6"><label class="form-label">Processing order</label><input type="number" name="processing_order" id="edit_processing_order" class="form-control" min="0" max="9999" required></div>
+                        <div class="col-md-6"><label class="form-label">Invoice calculation</label><select name="calculation_method" id="edit_calculation_method" class="form-select" required><option value="timesheet_rate">Timesheet units × rate</option><option value="percentage_of_value">Percentage of selected component value</option><option value="amount_per_unit">Amount per selected component unit</option><option value="fixed_per_invoice">Fixed amount per invoice</option><option value="fixed_per_period">Fixed amount per billing period</option></select></div>
+                        <div class="col-12" id="edit_source_components_group">
+                            <label class="form-label">Apply to components</label>
+                            <div class="border rounded p-3 d-grid gap-2">
+                                {% for source in source_components %}
+                                <label class="form-check edit-source-option" data-component-id="{{ source.id }}" data-stage="{{ source.stage }}" data-order="{{ source.order }}">
+                                    <input class="form-check-input" type="checkbox" name="source_component_ids" value="{{ source.id }}">
+                                    <span class="form-check-label">{{ source.name }} <span class="text-muted">— {{ source.stage | replace("_", " ") | title }} {{ source.order }}</span></span>
+                                </label>
+                                {% endfor %}
+                            </div>
+                            <div class="form-text">Only components processed before this component can be selected.</div>
+                        </div>
+
                         <div class="col-md-6" id="edit_pay_rate_group">
                             <label class="form-label">Pay Rate ($ or %)</label>
                             <input type="number" name="pay_rate" id="edit_pay_rate"
@@ -246,12 +306,12 @@
                         </div>
 
                         <div class="col-md-6" id="edit_bill_rate_group">
-                            <label class="form-label">Bill Rate ($ or %)</label>
+                            <label class="form-label" id="edit_bill_rate_label">Bill Rate ($)</label>
                             <input type="number" name="bill_rate" id="edit_bill_rate"
                                    class="form-control"
                                    min="0" max="99999999" step="0.0001">
-                            <div class="form-text">
-                                Invoice percentage components are calculated from ordinary billed services.
+                            <div class="form-text" id="edit_bill_rate_help">
+                                Enter the dollar amount charged for each selected unit.
                             </div>
                         </div>
 
@@ -294,6 +354,37 @@ document.addEventListener("DOMContentLoaded", function () {
     const billGroup = document.getElementById("bill_rate_group");
     const payRate = document.getElementById("pay_rate");
     const billRate = document.getElementById("bill_rate");
+    const stage = document.getElementById("processing_stage");
+    const order = document.getElementById("processing_order");
+    const method = document.getElementById("calculation_method");
+    const definition = document.getElementById("new_component_definition_id");
+    const sources = document.getElementById("source_components_group");
+    const billRateLabel = document.getElementById("bill_rate_label");
+    const billRateHelp = document.getElementById("bill_rate_help");
+    const stageRank = {earnings: 100, fee: 200, on_cost: 300};
+
+    function updateSourceChoices() {
+        const needsSources = ["percentage_of_value", "amount_per_unit"].includes(method.value);
+        sources.style.display = needsSources ? "" : "none";
+        const target = [stageRank[stage.value], Number(order.value)];
+        document.querySelectorAll(".new-source-option").forEach(label => {
+            const source = [stageRank[label.dataset.stage] || 999, Number(label.dataset.order)];
+            const valid = source[0] < target[0] || (source[0] === target[0] && source[1] < target[1]);
+            label.style.display = valid ? "" : "none";
+            label.querySelector("input").disabled = !needsSources || !valid;
+            if (!valid) label.querySelector("input").checked = false;
+        });
+    }
+
+    function updateBillRateText() {
+        const percentage = method.value === "percentage_of_value";
+        billRateLabel.textContent = percentage ? "Bill Rate (%)" : "Bill Rate ($)";
+        billRateHelp.textContent = percentage
+            ? "Enter the percentage applied to the selected component value."
+            : method.value === "amount_per_unit"
+                ? "Enter the dollar amount charged for each selected unit."
+                : "Enter the invoice amount or rate in dollars.";
+    }
 
     function updateRateFields() {
         const usePay = appliesTo.value !== "invoice";
@@ -310,7 +401,25 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     appliesTo.addEventListener("change", updateRateFields);
+    stage.addEventListener("change", () => {
+        order.value = stage.value === "earnings" ? 100 : (stage.value === "fee" ? 200 : 300);
+        if (stage.value === "earnings") method.value = "timesheet_rate";
+        else if (method.value === "timesheet_rate") method.value = "percentage_of_value";
+        updateSourceChoices();
+    });
+    method.addEventListener("change", () => {
+        updateSourceChoices();
+        updateBillRateText();
+    });
+    order.addEventListener("input", updateSourceChoices);
+    definition.addEventListener("change", () => {
+        const family = definition.selectedOptions[0]?.dataset.familyCode;
+        stage.value = family === "FEE" ? "fee" : (family === "ON_COST" ? "on_cost" : "earnings");
+        stage.dispatchEvent(new Event("change"));
+    });
     updateRateFields();
+    updateSourceChoices();
+    updateBillRateText();
 });
 </script>
 
@@ -328,6 +437,37 @@ document.addEventListener("DOMContentLoaded", function () {
     const billRate = document.getElementById("edit_bill_rate");
     const effectiveFrom = document.getElementById("edit_effective_from");
     const effectiveTo = document.getElementById("edit_effective_to");
+    const stage = document.getElementById("edit_processing_stage");
+    const order = document.getElementById("edit_processing_order");
+    const method = document.getElementById("edit_calculation_method");
+    const sourceGroup = document.getElementById("edit_source_components_group");
+    const billRateLabel = document.getElementById("edit_bill_rate_label");
+    const billRateHelp = document.getElementById("edit_bill_rate_help");
+    const stageRank = {earnings: 100, fee: 200, on_cost: 300};
+
+    function updateEditSourceChoices(currentId = null) {
+        const needsSources = ["percentage_of_value", "amount_per_unit"].includes(method.value);
+        sourceGroup.style.display = needsSources ? "" : "none";
+        const target = [stageRank[stage.value], Number(order.value)];
+        document.querySelectorAll(".edit-source-option").forEach(label => {
+            const source = [stageRank[label.dataset.stage] || 999, Number(label.dataset.order)];
+            const valid = label.dataset.componentId !== String(currentId)
+                && (source[0] < target[0] || (source[0] === target[0] && source[1] < target[1]));
+            label.style.display = valid ? "" : "none";
+            label.querySelector("input").disabled = !needsSources || !valid;
+            if (!valid) label.querySelector("input").checked = false;
+        });
+    }
+
+    function updateBillRateText() {
+        const percentage = method.value === "percentage_of_value";
+        billRateLabel.textContent = percentage ? "Bill Rate (%)" : "Bill Rate ($)";
+        billRateHelp.textContent = percentage
+            ? "Enter the percentage applied to the selected component value."
+            : method.value === "amount_per_unit"
+                ? "Enter the dollar amount charged for each selected unit."
+                : "Enter the invoice amount or rate in dollars.";
+    }
 
     function updateRateFields() {
         const usePay = appliesTo.value !== "invoice";
@@ -359,8 +499,21 @@ document.addEventListener("DOMContentLoaded", function () {
         billRate.value = trigger.dataset.billRate;
         effectiveFrom.value = trigger.dataset.effectiveFrom;
         effectiveTo.value = trigger.dataset.effectiveTo;
+        stage.value = trigger.dataset.processingStage;
+        order.value = trigger.dataset.processingOrder;
+        method.value = trigger.dataset.calculationMethod;
+        const selectedSources = new Set(JSON.parse(trigger.dataset.sourceComponentIds || "[]").map(String));
+        document.querySelectorAll(".edit-source-option input").forEach(input => { input.checked = selectedSources.has(input.value); });
+        updateEditSourceChoices(trigger.dataset.componentId);
         updateRateFields();
+        updateBillRateText();
     });
+    method.addEventListener("change", () => {
+        updateEditSourceChoices(form.action.split("/").pop());
+        updateBillRateText();
+    });
+    stage.addEventListener("change", () => updateEditSourceChoices(form.action.split("/").pop()));
+    order.addEventListener("input", () => updateEditSourceChoices(form.action.split("/").pop()));
 });
 </script>
 
