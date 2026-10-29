@@ -22,16 +22,20 @@ from app.models.worker_document import WorkerDocument
 from app.models.assignment import Assignment
 from app.models.component_definition import ComponentDefinition
 from app.models.engagement import Engagement
+from app.models.employee_tax_profile import EmployeeTaxProfile
 from app.models.leave_plan import LeavePlan
 from app.models.notification import Notification
 from app.models.organisation import Organisation
 from app.models.pay_run import PayRun
 from app.models.payslip import Payslip
+from app.models.payroll_component import PayrollComponent
 from app.models.timesheet import Timesheet
 from app.models.timesheet_header import TimesheetHeader
 from app.leave.service import LeaveService
 from app.security import hash_password, verify_password
 from app.worker_documents_router import middle_ellipsis
+from app.timesheet_agent_service import process_timesheet_created
+from app.worker_compliance_service import payroll_setup_items
 
 
 router = APIRouter()
@@ -50,6 +54,28 @@ def _portal_user(request: Request, db) -> User:
     if user is None or user.role != "worker" or user.worker_id is None:
         raise HTTPException(403, "Worker portal access required")
     return user
+
+
+def mark_tfn_declaration_received(db, worker_id: int, *, as_of: date | None = None) -> bool:
+    """Record receipt without treating the uploaded declaration as approved."""
+    as_of = as_of or date.today()
+    profile = db.scalar(
+        select(EmployeeTaxProfile)
+        .where(
+            EmployeeTaxProfile.worker_id == worker_id,
+            EmployeeTaxProfile.effective_from <= as_of,
+            or_(
+                EmployeeTaxProfile.effective_to.is_(None),
+                EmployeeTaxProfile.effective_to >= as_of,
+            ),
+        )
+        .order_by(EmployeeTaxProfile.effective_from.desc())
+        .limit(1)
+    )
+    if profile is None:
+        return False
+    profile.tfn_declaration_received = True
+    return True
 
 
 @router.get("/portal/login", response_class=HTMLResponse)
@@ -146,7 +172,10 @@ def portal_change_password(
 
 
 @router.get("/portal/documents", response_class=HTMLResponse)
-def portal_documents_page(request: Request, error: str | None = None):
+def portal_documents_page(
+    request: Request, error: str | None = None, document_type: str | None = None,
+):
+    selected_document_type = document_type if document_type in DOCUMENT_TYPES else None
     with SessionLocal() as db:
         user = _portal_user(request, db)
         worker = db.get(Worker, user.worker_id)
@@ -159,6 +188,7 @@ def portal_documents_page(request: Request, error: str | None = None):
             "documents": documents,
             "document_types": DOCUMENT_TYPES,
             "error": error,
+            "selected_document_type": selected_document_type,
         },
     )
 
@@ -187,6 +217,9 @@ async def portal_upload_document(
                 issued_on=issued_on,
                 expires_on=expires_on,
             )
+            if document_type == "tfn_declaration":
+                if mark_tfn_declaration_received(db, user.worker_id):
+                    db.commit()
     except DocumentValidationError as exc:
         return RedirectResponse(
             f"/portal/documents?error={quote(str(exc))}", status_code=303
@@ -273,6 +306,25 @@ def portal_dashboard(request: Request):
                 ),
             ).order_by(WorkerDocument.expires_on)
         ).all()
+        payroll_setup = payroll_setup_items(db, user.worker_id)
+        payroll_setup_action_count = sum(
+            item["status"] != "complete" for item in payroll_setup
+        )
+        agent_message = db.scalar(select(Notification).where(
+            Notification.recipient_user_id == user.id,
+            Notification.notification_type == "agent_payroll_setup_required",
+            Notification.read_at.is_(None),
+        ).order_by(Notification.id.desc()).limit(1))
+        agent_message_data = None
+        if agent_message is not None:
+            if payroll_setup_action_count:
+                agent_message_data = {
+                    "title": agent_message.title,
+                    "message": agent_message.message,
+                }
+            agent_message.read_at = datetime.now(timezone.utc)
+            db.commit()
+            unread_count = max(0, unread_count - 1)
     return templates.TemplateResponse(
         request=request,
         name="portal_dashboard.html",
@@ -283,6 +335,9 @@ def portal_dashboard(request: Request):
             "leave_balances": leave_balances,
             "unread_count": unread_count,
             "action_documents": action_documents,
+            "payroll_setup": payroll_setup,
+            "payroll_setup_action_count": payroll_setup_action_count,
+            "agent_message": agent_message_data,
         },
     )
 
@@ -312,8 +367,40 @@ def portal_payslips(request: Request, year: int | None = None):
     })
 
 
+@router.get("/portal/payslips/{payslip_id}/preview", response_class=HTMLResponse)
+def portal_payslip_preview(request: Request, payslip_id: int):
+    with SessionLocal() as db:
+        user = _portal_user(request, db)
+        row = db.execute(
+            select(Payslip, PayRun, Engagement, Worker, Organisation)
+            .join(PayRun, PayRun.id == Payslip.pay_run_id)
+            .join(Engagement, Engagement.id == Payslip.engagement_id)
+            .join(Worker, Worker.id == Engagement.worker_id)
+            .join(Organisation, Organisation.id == PayRun.organisation_id)
+            .where(Payslip.id == payslip_id, Worker.id == user.worker_id)
+        ).first()
+        if row is None:
+            raise HTTPException(404, "Payslip not found")
+        payslip, pay_run, engagement, worker, organisation = row
+        components = [{
+            "code": definition.code, "name": definition.name,
+            "quantity": component.quantity, "rate": component.rate,
+            "amount": component.amount,
+        } for component, definition in db.execute(
+            select(PayrollComponent, ComponentDefinition)
+            .join(ComponentDefinition, ComponentDefinition.id == PayrollComponent.component_definition_id)
+            .where(PayrollComponent.payslip_id == payslip.id)
+            .order_by(PayrollComponent.id)
+        ).all()]
+    return templates.TemplateResponse(request=request, name="portal_payslip_preview.html", context={
+        "payslip": payslip, "pay_run": pay_run, "engagement": engagement,
+        "worker": worker, "organisation": organisation, "components": components,
+    })
+
+
 @router.get("/portal/timesheets", response_class=HTMLResponse)
 def portal_timesheets(request: Request, created: bool = False):
+    agent_alert = request.session.pop("agent_alert", None)
     with SessionLocal() as db:
         user = _portal_user(request, db)
         headers = db.scalars(
@@ -341,7 +428,36 @@ def portal_timesheets(request: Request, created: bool = False):
         ).all()
     return templates.TemplateResponse(request=request, name="portal_timesheets.html", context={
         "headers": headers, "totals": totals, "engagements": engagements,
-        "assignments": assignments, "created": created,
+        "assignments": assignments, "created": created, "agent_alert": agent_alert,
+    })
+
+
+@router.get("/portal/timesheets/{header_id}/preview", response_class=HTMLResponse)
+def portal_timesheet_preview(request: Request, header_id: int):
+    with SessionLocal() as db:
+        user = _portal_user(request, db)
+        header = db.scalar(
+            select(TimesheetHeader)
+            .join(Engagement, Engagement.id == TimesheetHeader.engagement_id)
+            .where(TimesheetHeader.id == header_id, Engagement.worker_id == user.worker_id)
+        )
+        if header is None:
+            raise HTTPException(404, "Timesheet not found")
+        entries = db.scalars(select(Timesheet).where(
+            Timesheet.timesheet_header_id == header.id
+        ).order_by(Timesheet.work_date, Timesheet.id)).all()
+        definitions = {item.id: item for item in db.scalars(select(ComponentDefinition)).all()}
+        entry_data = []
+        component_totals: dict[str, Decimal] = {}
+        for entry in entries:
+            definition = definitions.get(entry.component_definition_id)
+            name = definition.name if definition else "Ordinary Hours"
+            entry_data.append({"work_date": entry.work_date, "component": name, "hours_worked": entry.hours_worked})
+            component_totals[name] = component_totals.get(name, Decimal("0")) + entry.hours_worked
+        total_hours = sum((entry.hours_worked for entry in entries), Decimal("0"))
+    return templates.TemplateResponse(request=request, name="portal_timesheet_preview.html", context={
+        "header": header, "entries": entry_data,
+        "component_totals": component_totals, "total_hours": total_hours,
     })
 
 
@@ -404,7 +520,16 @@ def portal_create_timesheet(
                 message=f"Week commencing {week_start:%d/%m/%Y} · {sum(hours):,.2f} hours · ready for review.",
                 action_url=f"/ui/timesheets/weekly/{header.id}/preview",
             ))
+        agent_alert = process_timesheet_created(
+            db,
+            engagement_id=engagement.id,
+            as_of=week_start,
+            assignment_id=assignment.id,
+            timesheet_header_id=header.id,
+        )
         db.commit()
+        if agent_alert:
+            request.session["agent_alert"] = agent_alert
     return RedirectResponse("/portal/timesheets?created=true", status_code=303)
 
 

@@ -147,6 +147,14 @@ document.getElementById("timesheetForm").addEventListener("submit", async functi
         const result = await response.json();
 
         if (response.ok) {
+            if (result.agent_alert) {
+                sessionStorage.setItem(
+                    "green-orbit-agent-alert",
+                    JSON.stringify(result.agent_alert)
+                );
+                window.location.href = "/ui/timesheets";
+                return;
+            }
             message.className = "alert alert-success mt-3";
             message.textContent = "Timesheet saved successfully! ID: " + result.id;
             //document.getElementById("hours_worked").value = "";

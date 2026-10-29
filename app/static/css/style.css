@@ -267,6 +267,41 @@ body {
 }
 
 /* AI Assistant */
+.ai-context {
+    display: inline-flex;
+    align-items: center;
+    margin-top: .25rem;
+    padding: .2rem .55rem;
+    border: 1px solid #cfe3d7;
+    border-radius: 999px;
+    background: #f2f8f4;
+    color: #2f6848 !important;
+}
+
+.ai-suggested-prompts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .45rem;
+    padding-bottom: .75rem;
+}
+
+.ai-suggested-prompts:empty {
+    display: none;
+}
+
+.ai-sources {
+    margin-top: .8rem;
+    padding-top: .65rem;
+    border-top: 1px solid rgba(0, 0, 0, .1);
+    font-size: .78rem;
+    color: #667085;
+}
+
+.ai-sources a {
+    color: #2f6848;
+    font-weight: 600;
+}
+
 
 .ai-page {
     max-width: 1000px;

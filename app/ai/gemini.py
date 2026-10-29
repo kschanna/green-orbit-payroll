@@ -38,6 +38,10 @@ tool or the global payroll summary when one of those scoped summary tools can
 answer the question. Omit date_from and date_to unless the user specified a
 date range; the tool will apply its documented default period. Never invent a
 date range.
+For payroll readiness, missing setup data, or timesheet exceptions across the
+workforce, call get_payroll_readiness directly. Treat its issue codes and
+severity as authoritative; do not infer that a missing item exists from other
+tools.
 """
 
 
@@ -65,6 +69,7 @@ class GeminiAIProvider:
         self,
         messages: Sequence[ConversationMessage],
         tools: Sequence[AITool] = (),
+        context: str | None = None,
     ) -> AIProviderResult:
         if not self.api_key.strip():
             raise AIConfigurationError("Gemini API key is not configured")
@@ -86,6 +91,8 @@ class GeminiAIProvider:
         ]
         charts: list[dict[str, Any]] = []
         chart_titles: set[str] = set()
+        sources: list[dict[str, Any]] = []
+        source_keys: set[tuple[str, str]] = set()
 
         tool_map = {tool.name: tool for tool in tools}
         gemini_tools = []
@@ -100,8 +107,15 @@ class GeminiAIProvider:
             ]
             gemini_tools = [types.Tool(function_declarations=declarations)]
 
+        system_instruction = SYSTEM_INSTRUCTION
+        if context:
+            system_instruction += (
+                "\nThe application has verified this current screen context: "
+                f"{context}. Use it only to resolve references such as 'this' or "
+                "'here'. Do not claim the user is viewing anything else."
+            )
         config = types.GenerateContentConfig(
-            system_instruction=SYSTEM_INSTRUCTION,
+            system_instruction=system_instruction,
             max_output_tokens=self.max_output_tokens,
             tools=gemini_tools or None,
             automatic_function_calling=types.AutomaticFunctionCallingConfig(
@@ -160,9 +174,19 @@ class GeminiAIProvider:
                                     charts.append(item)
                                     if isinstance(title, str):
                                         chart_titles.add(title)
+                            source_items = result.get("_sources", [])
+                            if isinstance(source_items, list):
+                                for item in source_items:
+                                    if not isinstance(item, dict):
+                                        continue
+                                    key = (str(item.get("type", "")), str(item.get("id", "")))
+                                    if key in source_keys:
+                                        continue
+                                    source_keys.add(key)
+                                    sources.append(item)
                             result = {
                                 key: value for key, value in result.items()
-                                if key != "_charts"
+                                if key not in {"_charts", "_sources"}
                             }
                         response_parts.append(types.Part.from_function_response(
                             name=function_call.name,
@@ -192,4 +216,8 @@ class GeminiAIProvider:
 
         if not text or not text.strip():
             raise AIProviderError("Gemini returned an empty response")
-        return AIProviderResult(text=text, charts=tuple(charts))
+        return AIProviderResult(
+            text=text,
+            charts=tuple(charts),
+            sources=tuple(sources),
+        )

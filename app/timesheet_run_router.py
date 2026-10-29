@@ -13,6 +13,7 @@ from app.models.assignment import Assignment
 from app.models.component_definition import ComponentDefinition
 from app.models.engagement import Engagement
 from app.models.invoice_timesheet import InvoiceTimesheet
+from app.models.agent_task import AgentTask
 from app.models.organisation import Organisation
 from app.models.pbt_schedule import PBTSchedule
 from app.models.pbt_schedule_period import PBTSchedulePeriod
@@ -20,6 +21,7 @@ from app.models.timesheet import Timesheet
 from app.models.timesheet_header import TimesheetHeader
 from app.models.worker import Worker
 from app.pagination import build_pagination
+from app.timesheet_agent_service import process_timesheet_created
 
 
 router = APIRouter()
@@ -115,13 +117,27 @@ def _create_scheduled_timesheet(db, assignment, period):
 @router.get("/ui/timesheet-runs", response_class=HTMLResponse)
 def timesheet_run_page(
     request: Request,
-    customer_id: int | None = None,
+    customer_id: str | None = None,
+    worker_id: str | None = None,
     status: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
     page: int = 1,
     page_size: int = 25,
 ):
+    def optional_id(value: str | None, label: str) -> int | None:
+        if value in {None, ""}:
+            return None
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(422, f"{label} must be a valid ID") from exc
+        if parsed < 1:
+            raise HTTPException(422, f"{label} must be a valid ID")
+        return parsed
+
+    selected_customer_id = optional_id(customer_id, "Customer")
+    selected_worker_id = optional_id(worker_id, "Person")
     today = date.today()
     date_from = date_from or today - timedelta(days=90)
     date_to = date_to or today + timedelta(days=30)
@@ -152,8 +168,12 @@ def timesheet_run_page(
                 PBTSchedulePeriod.event_date <= date_to,
             )
         )
-        if customer_id is not None:
-            statement = statement.where(Assignment.customer_id == customer_id)
+        if selected_customer_id is not None:
+            statement = statement.where(
+                Assignment.customer_id == selected_customer_id
+            )
+        if selected_worker_id is not None:
+            statement = statement.where(Worker.id == selected_worker_id)
 
         expected = db.execute(
             statement.order_by(
@@ -231,7 +251,8 @@ def timesheet_run_page(
             total=len(rows), page=page, page_size=page_size,
             path="/ui/timesheet-runs",
             params={
-                "customer_id": customer_id,
+                "customer_id": selected_customer_id,
+                "worker_id": selected_worker_id,
                 "status": status,
                 "date_from": date_from.isoformat(),
                 "date_to": date_to.isoformat(),
@@ -248,6 +269,14 @@ def timesheet_run_page(
             .distinct()
             .order_by(Organisation.name)
         ).all()
+        workers = db.scalars(
+            select(Worker)
+            .join(Engagement, Engagement.worker_id == Worker.id)
+            .join(Assignment, Assignment.engagement_id == Engagement.id)
+            .where(Assignment.pbt_schedule_id.is_not(None))
+            .distinct()
+            .order_by(Worker.last_name, Worker.first_name, Worker.id)
+        ).all()
 
     return templates.TemplateResponse(
         request=request,
@@ -256,7 +285,9 @@ def timesheet_run_page(
             "rows": rows,
             "counts": counts,
             "customers": customers,
-            "selected_customer_id": customer_id,
+            "workers": workers,
+            "selected_customer_id": selected_customer_id,
+            "selected_worker_id": selected_worker_id,
             "selected_status": status or "all",
             "selected_date_from": date_from.isoformat(),
             "selected_date_to": date_to.isoformat(),
@@ -269,6 +300,8 @@ def timesheet_run_page(
 def create_timesheet_run(data: TimesheetRunCreate):
     created = []
     skipped = []
+    agent_alerts = []
+    alerted_workers = set()
     with SessionLocal() as db:
         try:
             for selection in data.selections:
@@ -286,6 +319,18 @@ def create_timesheet_run(data: TimesheetRunCreate):
                     "period_id": period.id,
                     "timesheet_header_id": header.id,
                 })
+                if was_created:
+                    alert = process_timesheet_created(
+                        db,
+                        engagement_id=assignment.engagement_id,
+                        as_of=period.period_start,
+                        assignment_id=assignment.id,
+                        timesheet_header_id=header.id,
+                    )
+                    worker_id = alert and alert.get("source", {}).get("id")
+                    if alert and worker_id not in alerted_workers:
+                        agent_alerts.append(alert)
+                        alerted_workers.add(worker_id)
             db.commit()
         except IntegrityError:
             db.rollback()
@@ -293,7 +338,26 @@ def create_timesheet_run(data: TimesheetRunCreate):
                 409,
                 "One of these timesheets was created by another request; refresh and try again",
             )
-    return {"created": created, "skipped": skipped}
+    agent_alert = None
+    if len(agent_alerts) == 1:
+        agent_alert = agent_alerts[0]
+    elif agent_alerts:
+        names = [alert["source"]["label"] for alert in agent_alerts]
+        agent_alert = {
+            "code": "missing_tfn_declaration",
+            "severity": "critical",
+            "content": (
+                "I noticed missing current TFN declarations for: "
+                + ", ".join(names)
+                + ". The timesheets were created, but these declarations need "
+                "attention before payroll is processed."
+            ),
+        }
+    return {
+        "created": created,
+        "skipped": skipped,
+        "agent_alert": agent_alert,
+    }
 
 
 @router.get(
@@ -451,6 +515,32 @@ def update_scheduled_timesheet(header_id: int, data: ScheduledTimesheetUpdate):
         ])
         db.commit()
     return {"message": "Scheduled timesheet updated", "timesheet_header_id": header_id}
+
+
+@router.delete("/api/timesheets/scheduled/{header_id}")
+def delete_scheduled_timesheet(header_id: int):
+    with SessionLocal() as db:
+        header = db.get(TimesheetHeader, header_id)
+        if header is None or header.source != "pbt_schedule":
+            raise HTTPException(404, "Scheduled timesheet not found")
+        if header.status != "draft":
+            raise HTTPException(409, "Only draft timesheets can be deleted")
+
+        # Keep the agent audit trail, but detach it from the deleted draft.
+        tasks = db.scalars(
+            select(AgentTask).where(AgentTask.timesheet_header_id == header.id)
+        ).all()
+        for task in tasks:
+            task.timesheet_header_id = None
+
+        entries = db.scalars(
+            select(Timesheet).where(Timesheet.timesheet_header_id == header.id)
+        ).all()
+        for entry in entries:
+            db.delete(entry)
+        db.delete(header)
+        db.commit()
+    return {"message": "Draft timesheet deleted", "timesheet_header_id": header_id}
 
 
 @router.post("/api/timesheets/scheduled/{header_id}/approve")

@@ -7,6 +7,7 @@ from google.protobuf.json_format import MessageToDict
 from sqlalchemy import select
 
 from app.database import SessionLocal
+from app.document_service import DOCUMENT_TYPES
 from app.document_storage import get_document_storage
 from app.models.document_extraction import DocumentExtraction
 from app.models.notification import Notification
@@ -107,6 +108,15 @@ def process_storage_object(bucket: str, object_name: str) -> str:
             extraction.error_message = None
             worker_document.status = "ready_for_review"
             worker_document.error_message = None
+            worker = db.get(Worker, worker_document.worker_id)
+            worker_name = (
+                f"{worker.first_name} {worker.last_name}"
+                if worker is not None else f"Worker #{worker_document.worker_id}"
+            )
+            document_label = DOCUMENT_TYPES.get(
+                worker_document.document_type,
+                worker_document.document_type.replace("_", " ").title(),
+            )
             admin_user_ids = db.scalars(
                 select(User.id).where(User.role == "admin", User.is_active.is_(True))
             ).all()
@@ -115,10 +125,10 @@ def process_storage_object(bucket: str, object_name: str) -> str:
                 [Notification(
                     recipient_user_id=recipient_user_id,
                     notification_type="document_ready_for_review",
-                    title="Worker document ready for review",
+                    title=f"{worker_name} uploaded a document",
                     message=(
-                        f"{worker_document.original_filename} has been processed "
-                        "and is ready for review."
+                        f"{worker_name}'s {document_label} has been processed "
+                        "and is ready for review and validation."
                     ),
                     action_url=(
                         f"/ui/workers/{worker_document.worker_id}/documents/"

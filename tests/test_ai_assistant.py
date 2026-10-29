@@ -20,7 +20,8 @@ from app.ai import (
 from app.ai.provider import ConversationMessage
 from app.ai.gemini import GeminiAIProvider, SYSTEM_INSTRUCTION
 from app.ai.tools import read_only_tools
-from app.ai_router import get_ai_service, get_worker_ai_service
+from app.ai.worker_tools import worker_read_only_tools
+from app.ai_router import _screen_context, get_ai_service, get_worker_ai_service
 from app.main import app
 from test_authentication import client, login
 
@@ -33,9 +34,10 @@ class StubProvider:
         self.messages = None
         self.tools = None
 
-    def generate(self, messages, tools=()):
+    def generate(self, messages, tools=(), context=None):
         self.messages = list(messages)
         self.tools = list(tools)
+        self.context = context
         if self.error:
             raise self.error
         return AIProviderResult(text=self.response, charts=tuple(self.charts))
@@ -102,6 +104,7 @@ def test_successful_multi_turn_chat(authenticated_client):
     assert response.json() == {
         "message": {"role": "assistant", "content": "A useful answer."},
         "charts": [],
+        "sources": [],
     }
     assert provider.messages == [ConversationMessage(**item) for item in messages]
 
@@ -231,6 +234,16 @@ def test_assistant_markdown_is_rendered_without_raw_html_injection():
     assert "bubble.innerHTML" not in template
 
 
+def test_assistant_formats_structured_api_errors_for_people():
+    template = Path("app/templates/ai_assistant.html").read_text()
+    assert "function apiErrorMessage(result)" in template
+    assert 'item?.msg' in template
+    assert "new Error(apiErrorMessage(result))" in template
+    assert 'new Error(result.detail' not in template
+    assert "function trimConversationForRequest()" in template
+    assert "conversation.splice(0, 2)" in template
+
+
 def test_shared_layout_contains_floating_ai_assistant():
     template = Path("app/templates/base.html").read_text()
     assert 'id="dashboardAiLauncher"' in template
@@ -244,6 +257,38 @@ def test_shared_layout_contains_floating_ai_assistant():
 def test_worker_ai_service_has_no_cross_worker_data_tools():
     service = get_worker_ai_service()
     assert service.tools == ()
+
+
+def test_worker_tools_bind_scope_without_model_supplied_worker_id():
+    tools = worker_read_only_tools(worker_id=42, user_id=7)
+    assert {tool.name for tool in tools} == {
+        "get_my_timesheets",
+        "get_my_payslips",
+        "get_my_leave_balances",
+        "get_my_assignments",
+        "get_my_documents",
+        "get_my_notifications",
+    }
+    assert all(
+        "worker_id" not in tool.parameters_json_schema.get("properties", {})
+        for tool in tools
+    )
+
+
+def test_worker_tools_execute_with_server_bound_scope():
+    tools = worker_read_only_tools(worker_id=999_999, user_id=999_999)
+    for tool in tools:
+        result = tool.execute({} if tool.name == "get_my_leave_balances" else {"limit": 5})
+        assert result["count"] == 0
+        assert result["items"] == []
+
+
+def test_screen_context_is_allowlisted_and_worker_specific():
+    assert _screen_context("/portal/payslips", worker_mode=True) == "your payslips"
+    assert _screen_context("/portal/payslips?worker_id=99", worker_mode=True) is None
+    assert _screen_context("/ui/workers/99", worker_mode=True) is None
+    assert _screen_context("/ui/workers/99", worker_mode=False) == "worker records (record #99)"
+    assert _screen_context("https://evil.example/payroll", worker_mode=False) is None
 
 
 def test_worker_portal_contains_scoped_ai_launcher():
@@ -384,6 +429,12 @@ def test_gemini_executes_only_declared_read_only_tool(monkeypatch):
                 "datasets": [{"label": "Records", "values": [1]}],
                 "value_format": "number",
             }],
+            "_sources": [{
+                "type": "record",
+                "id": 7,
+                "label": "Record #7",
+                "url": "/ui/records/7",
+            }],
         },
     )
     monkeypatch.setattr(genai, "Client", FakeClient)
@@ -395,6 +446,12 @@ def test_gemini_executes_only_declared_read_only_tool(monkeypatch):
 
     assert result.text == "Record 7 is active."
     assert result.charts[0]["title"] == "Record totals"
+    assert result.sources == ({
+        "type": "record",
+        "id": 7,
+        "label": "Record #7",
+        "url": "/ui/records/7",
+    },)
     assert executed == [{"record_id": 7}]
     assert len(calls) == 2
     assert calls[1]["contents"][-1].role == "user"
@@ -490,6 +547,7 @@ def test_gemini_provider_maps_timeout(monkeypatch):
 def test_read_only_tool_catalogue_has_no_action_tools():
     tools = read_only_tools()
     assert {tool.name for tool in tools} == {
+            "get_payroll_readiness",
         "get_outstanding_timesheets",
         "get_timesheet_status",
         "get_engagement_details",

@@ -19,9 +19,42 @@ from app.models.pbt_schedule_period import PBTSchedulePeriod
 from app.models.timesheet import Timesheet  # noqa: F401
 from app.models.timesheet_header import TimesheetHeader
 from app.models.worker import Worker
+from app.ai.payroll_readiness import (
+    find_timesheet_issues,
+    find_worker_data_issues,
+    readiness_summary,
+)
 
 
 MAX_TOOL_RESULTS = 50
+
+
+def _with_sources(
+    execute, source_type: str, id_field: str, url_prefix: str, *, append_id: bool = True
+):
+    """Attach safe application links without exposing them to business queries."""
+    def wrapped(args: dict[str, Any]) -> dict[str, Any]:
+        result = execute(args)
+        candidates = result.get("items", [])
+        if not candidates and isinstance(result.get("item"), dict):
+            candidates = [result["item"]]
+        if not candidates and isinstance(result.get(source_type), dict):
+            candidates = [result[source_type]]
+        sources = []
+        for item in candidates:
+            record_id = item.get(id_field) if isinstance(item, dict) else None
+            if record_id is None:
+                continue
+            sources.append({
+                "type": source_type,
+                "id": record_id,
+                "label": f"{source_type.replace('_', ' ').title()} #{record_id}",
+                "url": f"{url_prefix}{record_id}" if append_id else url_prefix,
+            })
+        if sources:
+            result["_sources"] = sources
+        return result
+    return wrapped
 
 
 def _iso(value):
@@ -64,6 +97,36 @@ def _date_range(args: dict[str, Any]) -> tuple[date, date]:
     if (end - start).days > 366:
         raise ValueError("Date range cannot exceed 366 days")
     return start, end
+
+
+def get_payroll_readiness(args: dict[str, Any]) -> dict[str, Any]:
+    """Run deterministic pre-payroll checks; the model only explains the result."""
+    as_of = _parse_date(args.get("as_of"), "as_of") or date.today()
+    start = _parse_date(args.get("date_from"), "date_from") or (as_of - timedelta(days=14))
+    end = _parse_date(args.get("date_to"), "date_to") or as_of
+    if start > end:
+        raise ValueError("date_from cannot be after date_to")
+    if (end - start).days > 93:
+        raise ValueError("Readiness date range cannot exceed 93 days")
+    with SessionLocal() as db:
+        issues = find_timesheet_issues(db, start=start, end=end, as_of=as_of)
+        issues.extend(find_worker_data_issues(db, as_of=as_of))
+    result = readiness_summary(issues)
+    result.update({
+        "as_of": as_of.isoformat(),
+        "date_from": start.isoformat(),
+        "date_to": end.isoformat(),
+        "_sources": [
+            {
+                "type": "worker",
+                "id": issue["worker_id"],
+                "label": issue.get("worker", f"Worker #{issue['worker_id']}"),
+                "url": f"/ui/workers/{issue['worker_id']}",
+            }
+            for issue in issues if issue.get("worker_id") is not None
+        ],
+    })
+    return result
 
 
 def _monthly_series(rows, date_index: int, value_indexes: tuple[int, ...]):
@@ -637,6 +700,23 @@ def read_only_tools() -> tuple[AITool, ...]:
     }
     return (
         AITool(
+            name="get_payroll_readiness",
+            description=(
+                "Run a payroll readiness audit for missing, incomplete, duplicate, "
+                "or unapproved timesheets and workers missing tax, super, bank, "
+                "engagement, pay-rate, or required document data."
+            ),
+            parameters_json_schema={
+                "type": "object",
+                "properties": {
+                    "as_of": {"type": "string", "format": "date"},
+                    "date_from": {"type": "string", "format": "date"},
+                    "date_to": {"type": "string", "format": "date"},
+                },
+            },
+            execute=get_payroll_readiness,
+        ),
+        AITool(
             name="get_outstanding_timesheets",
             description="List missing, overdue, due-today, or draft scheduled timesheets.",
             parameters_json_schema={
@@ -648,7 +728,7 @@ def read_only_tools() -> tuple[AITool, ...]:
                     **common_limit,
                 },
             },
-            execute=get_outstanding_timesheets,
+            execute=_with_sources(get_outstanding_timesheets, "timesheet", "timesheet_header_id", "/ui/timesheets/weekly/", append_id=True),
         ),
         AITool(
             name="get_timesheet_status",
@@ -661,7 +741,7 @@ def read_only_tools() -> tuple[AITool, ...]:
                     **common_limit,
                 },
             },
-            execute=get_timesheet_status,
+            execute=_with_sources(get_timesheet_status, "timesheet", "timesheet_header_id", "/ui/timesheets/weekly/", append_id=True),
         ),
         AITool(
             name="get_engagement_details",
@@ -674,7 +754,7 @@ def read_only_tools() -> tuple[AITool, ...]:
                     **common_limit,
                 },
             },
-            execute=get_engagement_details,
+            execute=_with_sources(get_engagement_details, "engagement", "engagement_id", "/ui/engagements", append_id=False),
         ),
         AITool(
             name="get_assignment_details",
@@ -686,7 +766,7 @@ def read_only_tools() -> tuple[AITool, ...]:
                 },
                 "required": ["assignment_id"],
             },
-            execute=get_assignment_details,
+            execute=_with_sources(get_assignment_details, "assignment", "assignment_id", "/ui/engagements", append_id=False),
         ),
         AITool(
             name="get_worker_business_summary",
@@ -703,7 +783,7 @@ def read_only_tools() -> tuple[AITool, ...]:
                     "date_to": {"type": "string", "format": "date"},
                 },
             },
-            execute=get_worker_business_summary,
+            execute=_with_sources(get_worker_business_summary, "worker", "worker_id", "/ui/workers/"),
         ),
         AITool(
             name="get_assignment_business_summary",
@@ -720,7 +800,7 @@ def read_only_tools() -> tuple[AITool, ...]:
                 },
                 "required": ["assignment_id"],
             },
-            execute=get_assignment_business_summary,
+            execute=_with_sources(get_assignment_business_summary, "assignment", "assignment_id", "/ui/engagements", append_id=False),
         ),
         AITool(
             name="get_payroll_summary",
@@ -733,6 +813,6 @@ def read_only_tools() -> tuple[AITool, ...]:
                     **common_limit,
                 },
             },
-            execute=get_payroll_summary,
+            execute=_with_sources(get_payroll_summary, "pay_run", "pay_run_id", "/ui/pay-runs/"),
         ),
     )

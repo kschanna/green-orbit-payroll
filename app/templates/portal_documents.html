@@ -48,7 +48,7 @@
         <div class="modal-body">
             <div id="portalUploadError" class="alert alert-danger d-none"></div>
             <div class="alert alert-light border small">PDF only, up to 10 MB. Green Orbit will process the document before an administrator reviews it.</div>
-            <div class="mb-3"><label for="document_type" class="form-label">Document type</label><select id="document_type" name="document_type" class="form-select" required>{% for value, label in document_types.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></div>
+            <div class="mb-3"><label for="document_type" class="form-label">Document type</label><select id="document_type" name="document_type" class="form-select" required>{% for value, label in document_types.items() %}<option value="{{ value }}" {% if selected_document_type == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
             <div class="mb-3"><label for="document" class="form-label">PDF file</label><input id="document" name="document" type="file" class="form-control" accept="application/pdf,.pdf" required></div>
             <div class="row g-3"><div class="col-md-6"><label for="issued_on" class="form-label">Issue date</label><input id="issued_on" name="issued_on" type="date" class="form-control"></div><div class="col-md-6"><label for="expires_on" class="form-label">Expiry date</label><input id="expires_on" name="expires_on" type="date" class="form-control"></div></div>
         </div>
@@ -69,6 +69,7 @@
 </div></div></div>
 
 <script>
+{% if selected_document_type %}window.addEventListener("DOMContentLoaded", () => bootstrap.Modal.getOrCreateInstance(document.getElementById("uploadModal")).show());{% endif %}
 document.getElementById("previewModal").addEventListener("show.bs.modal", event => {
     const button = event.relatedTarget;
     document.getElementById("previewName").textContent = button.dataset.name;

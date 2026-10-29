@@ -56,6 +56,18 @@ of Assignment #7” or “Summarise payroll and invoicing for Jane Smith over th
 last quarter.” It cannot run arbitrary database queries, reveal sensitive
 tax or banking details, send notifications, or perform payroll actions.
 
+The floating assistant receives an allowlisted description of the current
+screen, so questions such as “explain this pay run” can use the visible page as
+context. Answers based on application tools include clickable source links.
+The browser path is validated by the server before it is included in an AI
+request.
+
+Worker portal users can ask about their own timesheets, payslips, leave
+balances, assignments, documents, and notifications. Worker identity is bound
+from the authenticated session and is never accepted as an AI tool argument,
+preventing the model or browser from selecting another worker's records. All
+worker tools are read-only.
+
 ### Gemini configuration
 
 Create a Gemini API key in Google AI Studio and set these backend environment

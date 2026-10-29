@@ -15,6 +15,26 @@
         </a>
     </div>
 
+    <form method="get" action="/ui/timesheets" class="card p-3 mb-4">
+        <div class="row g-3 align-items-end">
+            <div class="col-12 col-md-6 col-lg-4">
+                <label for="workerFilter" class="form-label">Person</label>
+                <select id="workerFilter" name="worker_id" class="form-select">
+                    <option value="">All people</option>
+                    {% for worker_id, first_name, last_name in worker_options %}
+                    <option value="{{ worker_id }}" {% if selected_worker_id == worker_id %}selected{% endif %}>
+                        {{ first_name }} {{ last_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-md-auto">
+                <button type="submit" class="btn btn-success">Apply filter</button>
+                {% if selected_worker_id %}<a href="/ui/timesheets" class="btn btn-outline-secondary ms-1">Clear</a>{% endif %}
+            </div>
+        </div>
+    </form>
+
     <!-- PERIOD TIMESHEETS -->
 
     <h4 class="mt-4">Period Timesheets</h4>

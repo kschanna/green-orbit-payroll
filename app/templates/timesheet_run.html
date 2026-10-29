@@ -30,7 +30,7 @@
 
   <form method="get" class="card card-body mb-3">
     <div class="row g-3 align-items-end">
-      <div class="col-md-4">
+      <div class="col-md-2">
         <label class="form-label" for="customerFilter">Customer</label>
         <select class="form-select" id="customerFilter" name="customer_id">
           <option value="">All customers</option>
@@ -39,7 +39,16 @@
           {% endfor %}
         </select>
       </div>
-      <div class="col-md-3">
+      <div class="col-md-2">
+        <label class="form-label" for="workerFilter">Person</label>
+        <select class="form-select" id="workerFilter" name="worker_id">
+          <option value="">All people</option>
+          {% for worker in workers %}
+          <option value="{{ worker.id }}" {% if selected_worker_id == worker.id %}selected{% endif %}>{{ worker.first_name }} {{ worker.last_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
         <label class="form-label" for="statusFilter">Status</label>
         <select class="form-select" id="statusFilter" name="status">
           {% for value, label in [('all','All'),('missing','Missing only'),('overdue','Overdue'),('due_today','Due today'),('upcoming','Upcoming'),('draft','Draft'),('approved','Approved')] %}
@@ -55,8 +64,9 @@
         <label class="form-label" for="dateTo">To</label>
         <input class="form-control" id="dateTo" name="date_to" type="date" value="{{ selected_date_to }}">
       </div>
-      <div class="col-md-1 d-flex gap-2">
+      <div class="col-md-2 d-flex gap-2">
         <button class="btn btn-outline-primary">Apply</button>
+        {% if selected_customer_id or selected_worker_id or selected_status != 'all' %}<a href="/ui/timesheet-runs" class="btn btn-outline-secondary">Clear</a>{% endif %}
       </div>
     </div>
   </form>
@@ -97,7 +107,9 @@
             <td class="text-nowrap">{{ row.period_start | date_au }} – {{ row.period_end | date_au }}</td>
             <td>
               {% if row.header_id %}
-              <a href="/ui/timesheets/scheduled/{{ row.header_id }}/edit" class="fw-semibold me-2">#{{ row.header_id }}</a>
+              <button type="button" class="btn btn-link fw-semibold p-0 me-2 open-timesheet"
+                      data-header-id="{{ row.header_id }}"
+                      data-worker-name="{{ row.worker_name }}">#{{ row.header_id }}</button>
               {% if row.status == 'approved' and not row.is_invoiced %}
               <button type="button" class="btn btn-sm btn-outline-success create-invoice"
                       data-header-id="{{ row.header_id }}" data-assignment-id="{{ row.assignment_id }}">Generate Invoice</button>
@@ -117,6 +129,24 @@
   </div>
   {% include "_pagination.html" %}
 </div>
+
+<div class="modal fade" id="timesheetModal" tabindex="-1" aria-labelledby="timesheetModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title fs-5" id="timesheetModalLabel">Timesheet</h2>
+          <div class="small text-muted" id="timesheetModalWorker"></div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-0" style="height: min(78vh, 850px)">
+        <div id="timesheetModalLoading" class="d-flex align-items-center justify-content-center h-100 text-muted">Loading timesheet…</div>
+        <iframe id="timesheetModalFrame" class="w-100 h-100 border-0 d-none" title="Timesheet details"></iframe>
+      </div>
+    </div>
+  </div>
+</div>
 <script>
 const csrfToken={{ csrf_token(request)|tojson }};
 const selections=()=>[...document.querySelectorAll('.run-selection:checked')].map(item=>({assignment_id:Number(item.dataset.assignmentId),pbt_schedule_period_id:Number(item.dataset.periodId)}));
@@ -124,9 +154,48 @@ const createButton=document.getElementById('createSelected'), message=document.g
 function updateButton(){createButton.disabled=selections().length===0;createButton.textContent=selections().length?`Create Selected Timesheets (${selections().length})`:'Create Selected Timesheets';}
 document.querySelectorAll('.run-selection').forEach(item=>item.addEventListener('change',updateButton));
 document.getElementById('selectAll').addEventListener('change',event=>{document.querySelectorAll('.run-selection').forEach(item=>item.checked=event.target.checked);updateButton();});
-async function createTimesheets(items){message.className='alert alert-info';message.textContent='Creating timesheets…';const response=await fetch('/api/timesheet-runs',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify({selections:items})});const result=await response.json();if(!response.ok){message.className='alert alert-danger';message.textContent=result.detail||'Unable to create timesheets.';return;}message.className='alert alert-success';message.textContent=`Created ${result.created.length} timesheet(s).${result.skipped.length?` Skipped ${result.skipped.length} already created.`:''}`;setTimeout(()=>window.location.reload(),500);}
+async function createTimesheets(items){message.className='alert alert-info';message.textContent='Creating timesheets…';const response=await fetch('/api/timesheet-runs',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify({selections:items})});const result=await response.json();if(!response.ok){message.className='alert alert-danger';message.textContent=result.detail||'Unable to create timesheets.';return;}if(result.agent_alert)sessionStorage.setItem('green-orbit-agent-alert',JSON.stringify(result.agent_alert));message.className='alert alert-success';message.textContent=`Created ${result.created.length} timesheet(s).${result.skipped.length?` Skipped ${result.skipped.length} already created.`:''}`;setTimeout(()=>window.location.reload(),500);}
 createButton.addEventListener('click',()=>createTimesheets(selections()));
 document.querySelectorAll('.create-one').forEach(button=>button.addEventListener('click',()=>createTimesheets([{assignment_id:Number(button.dataset.assignmentId),pbt_schedule_period_id:Number(button.dataset.periodId)}])));
 document.querySelectorAll('.create-invoice').forEach(button=>button.addEventListener('click',async()=>{if(!confirm('Generate an invoice from this approved timesheet?'))return;button.disabled=true;message.className='alert alert-info';message.textContent='Generating invoice…';const response=await fetch('/api/timesheets/invoice',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify({period_type:'scheduled',timesheet_id:Number(button.dataset.headerId),engagement_id:Number(button.dataset.assignmentId)})});const result=await response.json();if(response.ok){window.location.href=`/ui/invoices/${result.invoice_id}/preview`;return;}message.className='alert alert-danger';message.textContent=result.detail||'Unable to generate invoice.';button.disabled=false;}));
+
+window.addEventListener('DOMContentLoaded',()=>{
+const timesheetModalElement=document.getElementById('timesheetModal');
+const timesheetModal=new bootstrap.Modal(timesheetModalElement);
+const timesheetFrame=document.getElementById('timesheetModalFrame');
+const timesheetLoading=document.getElementById('timesheetModalLoading');
+let timesheetChanged=false;
+document.querySelectorAll('.open-timesheet').forEach(button=>button.addEventListener('click',()=>{
+  const headerId=button.dataset.headerId;
+  document.getElementById('timesheetModalLabel').textContent=`Timesheet #${headerId}`;
+  document.getElementById('timesheetModalWorker').textContent=button.dataset.workerName;
+  timesheetChanged=false;
+  timesheetLoading.classList.remove('d-none');
+  timesheetFrame.classList.add('d-none');
+  timesheetFrame.src=`/ui/timesheets/scheduled/${headerId}/edit?embed=1`;
+  timesheetModal.show();
+}));
+timesheetFrame.addEventListener('load',()=>{
+  timesheetLoading.classList.add('d-none');
+  timesheetFrame.classList.remove('d-none');
+});
+window.addEventListener('message',event=>{
+  if(event.origin!==window.location.origin||!event.data)return;
+  if(event.data.type==='green-orbit-timesheet-saved')timesheetChanged=true;
+  if(event.data.type==='green-orbit-timesheet-close')timesheetModal.hide();
+  if(event.data.type==='green-orbit-timesheet-approved'){
+    timesheetChanged=true;
+    timesheetModal.hide();
+  }
+  if(event.data.type==='green-orbit-timesheet-deleted'){
+    timesheetChanged=true;
+    timesheetModal.hide();
+  }
+});
+timesheetModalElement.addEventListener('hidden.bs.modal',()=>{
+  timesheetFrame.src='about:blank';
+  if(timesheetChanged)window.location.reload();
+});
+});
 </script>
 {% endblock %}
