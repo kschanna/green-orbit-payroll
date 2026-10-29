@@ -1,4 +1,5 @@
 import asyncio
+import re
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -15,6 +16,9 @@ from app.ai import (
 )
 from app.ai.gemini import GeminiAIProvider
 from app.ai.tools import read_only_tools
+from app.ai.worker_tools import worker_read_only_tools
+from app.database import SessionLocal
+from app.models.user import User
 
 
 MAX_CONVERSATION_CHARACTERS = 24_000
@@ -44,6 +48,7 @@ class ChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     messages: list[ChatMessage] = Field(min_length=1, max_length=20)
+    current_path: str | None = Field(default=None, max_length=300)
 
     @model_validator(mode="after")
     def validate_conversation(self) -> "ChatRequest":
@@ -88,6 +93,16 @@ class ChartSpec(BaseModel):
 class ChatResponse(BaseModel):
     message: ChatMessage
     charts: list[ChartSpec] = Field(default_factory=list)
+    sources: list["SourceSpec"] = Field(default_factory=list)
+
+
+class SourceSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: str = Field(min_length=1, max_length=50)
+    id: int | str
+    label: str = Field(min_length=1, max_length=200)
+    url: str = Field(pattern=r"^/(?:ui|portal)/", max_length=500)
 
 
 def get_ai_service() -> AIService:
@@ -95,9 +110,46 @@ def get_ai_service() -> AIService:
 
 
 def get_worker_ai_service() -> AIService:
-    # Worker conversations intentionally have no database tools. This keeps
-    # the assistant useful for explanations without risking cross-worker data.
+    """Unscoped construction is intentionally data-free; routes bind worker tools."""
     return AIService(GeminiAIProvider.from_environment())
+
+
+def _screen_context(path: str | None, *, worker_mode: bool) -> str | None:
+    """Convert untrusted browser location into a small allowlisted label."""
+    if not path or not path.startswith("/") or "?" in path or "#" in path:
+        return None
+    patterns = (
+        (
+            (
+                (r"^/portal$", "worker dashboard"),
+                (r"^/portal/payslips$", "your payslips"),
+                (r"^/portal/timesheets$", "your timesheets"),
+                (r"^/portal/leave$", "your leave"),
+                (r"^/portal/assignments$", "your assignments"),
+                (r"^/portal/documents$", "your documents"),
+                (r"^/portal/notifications$", "your notifications"),
+                (r"^/portal/profile$", "your profile"),
+            )
+            if worker_mode
+            else (
+                (r"^/dashboard$", "dashboard"),
+                (r"^/ui/workers(?:/(?P<id>\d+).*)?$", "worker records"),
+                (r"^/ui/engagements(?:/(?P<id>\d+).*)?$", "engagement records"),
+                (r"^/ui/timesheets(?:/.*)?$", "timesheets"),
+                (r"^/ui/pay-runs(?:/(?P<id>\d+).*)?$", "pay runs"),
+                (r"^/ui/payslips(?:/(?P<id>\d+).*)?$", "payslips"),
+                (r"^/ui/invoices(?:/(?P<id>\d+).*)?$", "invoices"),
+                (r"^/ui/notifications$", "notifications"),
+                (r"^/ui/organisations(?:/(?P<id>\d+).*)?$", "organisations"),
+            )
+        )
+    )
+    for pattern, label in patterns:
+        match = re.fullmatch(pattern, path)
+        if match:
+            record_id = match.groupdict().get("id")
+            return f"{label}{f' (record #{record_id})' if record_id else ''}"
+    return None
 
 
 @router.get("/ui/ai-assistant", response_class=HTMLResponse)
@@ -134,7 +186,11 @@ async def chat(
     ]
 
     try:
-        response = await asyncio.to_thread(service.reply, messages)
+        response = await asyncio.to_thread(
+            service.reply,
+            messages,
+            _screen_context(data.current_path, worker_mode=False),
+        )
     except AIConfigurationError:
         raise HTTPException(503, "AI Assistant is not configured")
     except AITimeoutError:
@@ -145,20 +201,33 @@ async def chat(
     return ChatResponse(
         message=ChatMessage(role="assistant", content=response.text),
         charts=list(response.charts),
+        sources=list(response.sources),
     )
 
 
 @router.post("/portal/api/ai/chat", response_model=ChatResponse)
 async def worker_chat(
     data: ChatRequest,
-    service: AIService = Depends(get_worker_ai_service),
+    request: Request,
 ):
+    with SessionLocal() as db:
+        user = db.get(User, request.session.get("user_id"))
+        if user is None or user.role != "worker" or user.worker_id is None:
+            raise HTTPException(403, "Worker portal access required")
+        service = AIService(
+            GeminiAIProvider.from_environment(),
+            worker_read_only_tools(user.worker_id, user.id),
+        )
     messages = [
         ConversationMessage(role=message.role, content=message.content)
         for message in data.messages
     ]
     try:
-        response = await asyncio.to_thread(service.reply, messages)
+        response = await asyncio.to_thread(
+            service.reply,
+            messages,
+            _screen_context(data.current_path, worker_mode=True),
+        )
     except AIConfigurationError:
         raise HTTPException(503, "AI Assistant is not configured")
     except AITimeoutError:
@@ -168,4 +237,5 @@ async def worker_chat(
     return ChatResponse(
         message=ChatMessage(role="assistant", content=response.text),
         charts=list(response.charts),
+        sources=list(response.sources),
     )

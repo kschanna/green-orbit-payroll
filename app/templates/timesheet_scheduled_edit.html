@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="container mt-4">
-  <a href="/ui/timesheet-runs" class="text-decoration-none">← Back to Timesheet Run</a>
+  {% if request.query_params.get('embed') != '1' %}<a href="/ui/timesheet-runs" class="text-decoration-none">← Back to Timesheet Run</a>{% endif %}
   <div class="d-flex justify-content-between align-items-start mt-3 mb-4">
     <div><h2 class="mb-1">Scheduled Timesheet #{{ header.id }}</h2><p class="text-muted mb-0">{{ header.period_start | date_au }} – {{ header.period_end | date_au }}</p></div>
     <span class="badge bg-warning text-dark fs-6">{{ header.status | title }}</span>
@@ -17,10 +17,30 @@
         <tfoot><tr><th colspan="2">Total Hours</th><th id="totalHours">0.00</th><th></th></tr></tfoot>
       </table>
     </div>
-    <div><button class="btn btn-primary">Save Timesheet</button>{% if header.status == 'draft' %}<button type="button" id="approveButton" class="btn btn-success ms-2">Approve Timesheet</button>{% endif %}<a href="/ui/timesheet-runs" class="btn btn-outline-secondary ms-2">Cancel</a></div>
+    <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary">Save Timesheet</button>{% if header.status == 'draft' %}<button type="button" id="approveButton" class="btn btn-success">Approve Timesheet</button><button type="button" class="btn btn-outline-danger ms-auto" data-bs-toggle="modal" data-bs-target="#deleteTimesheetConfirmModal">Delete Timesheet</button>{% endif %}{% if request.query_params.get('embed') == '1' %}<button type="button" id="closeButton" class="btn btn-outline-secondary">Close</button>{% else %}<a href="/ui/timesheet-runs" class="btn btn-outline-secondary">Cancel</a>{% endif %}</div>
     <div id="message" class="mt-3" role="status"></div>
   </form>
 </div>
+{% if header.status == 'draft' %}
+<div class="modal fade" id="deleteTimesheetConfirmModal" tabindex="-1" aria-labelledby="deleteTimesheetConfirmLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title fs-5" id="deleteTimesheetConfirmLabel">Delete draft timesheet?</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to delete timesheet <strong>#{{ header.id }}</strong>?</p>
+        <p class="text-danger mb-0">This action cannot be undone.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" id="confirmDeleteButton" class="btn btn-danger">Delete Timesheet</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 <script>
 const headerId={{ header.id|tojson }}, assignmentId={{ assignment.id|tojson }}, csrfToken={{ csrf_token(request)|tojson }};
 const original=[{% for entry in entries %}{work_date:{{ entry.work_date.isoformat()|tojson }},component_definition_id:{{ entry.component_definition_id|tojson }},hours_worked:{{ entry.hours_worked|float|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}];
@@ -32,8 +52,10 @@ function calculate(){document.getElementById('totalHours').textContent=[...body.
 original.forEach(entry=>addRow(entry));
 body.addEventListener('input',calculate);
 body.addEventListener('click',event=>{const row=event.target.closest('tr');if(event.target.classList.contains('add'))addRow({work_date:row.dataset.date,hours_worked:0,component_definition_id:null},row);if(event.target.classList.contains('remove')){if(body.querySelectorAll(`tr[data-date="${row.dataset.date}"]`).length>1){row.remove();calculate();}}});
-async function saveTimesheet(){const entries=[...body.rows].map(row=>({work_date:row.dataset.date,component_definition_id:Number(row.querySelector('.component').value)||null,hours_worked:Number(row.querySelector('.hours').value)}));message.className='text-muted mt-3';message.textContent='Saving…';const response=await fetch(`/api/timesheets/scheduled/${headerId}`,{method:'PATCH',headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify({entries})});const result=await response.json();message.className=response.ok?'alert alert-success mt-3':'alert alert-danger mt-3';message.textContent=response.ok?'Timesheet saved successfully.':(result.detail||'Unable to save timesheet.');return response.ok;}
+async function saveTimesheet(){const entries=[...body.rows].map(row=>({work_date:row.dataset.date,component_definition_id:Number(row.querySelector('.component').value)||null,hours_worked:Number(row.querySelector('.hours').value)}));message.className='text-muted mt-3';message.textContent='Saving…';const response=await fetch(`/api/timesheets/scheduled/${headerId}`,{method:'PATCH',headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify({entries})});const result=await response.json();message.className=response.ok?'alert alert-success mt-3':'alert alert-danger mt-3';message.textContent=response.ok?'Timesheet saved successfully.':(result.detail||'Unable to save timesheet.');if(response.ok&&window.parent!==window)window.parent.postMessage({type:'green-orbit-timesheet-saved'},window.location.origin);return response.ok;}
 document.getElementById('scheduledForm').addEventListener('submit',async event=>{event.preventDefault();await saveTimesheet();});
-const approveButton=document.getElementById('approveButton');if(approveButton)approveButton.addEventListener('click',async()=>{if(!confirm('Save and approve this timesheet? It can no longer be edited.'))return;approveButton.disabled=true;if(!await saveTimesheet()){approveButton.disabled=false;return;}const response=await fetch(`/api/timesheets/scheduled/${headerId}/approve`,{method:'POST',headers:{'X-CSRF-Token':csrfToken}});const result=await response.json();if(response.ok){window.location.href='/ui/timesheet-runs';return;}message.className='alert alert-danger mt-3';message.textContent=result.detail||'Unable to approve timesheet.';approveButton.disabled=false;});
+const approveButton=document.getElementById('approveButton');if(approveButton)approveButton.addEventListener('click',async()=>{if(!confirm('Save and approve this timesheet? It can no longer be edited.'))return;approveButton.disabled=true;if(!await saveTimesheet()){approveButton.disabled=false;return;}const response=await fetch(`/api/timesheets/scheduled/${headerId}/approve`,{method:'POST',headers:{'X-CSRF-Token':csrfToken}});const result=await response.json();if(response.ok){if(window.parent!==window)window.parent.postMessage({type:'green-orbit-timesheet-approved'},window.location.origin);else window.location.href='/ui/timesheet-runs';return;}message.className='alert alert-danger mt-3';message.textContent=result.detail||'Unable to approve timesheet.';approveButton.disabled=false;});
+const confirmDeleteButton=document.getElementById('confirmDeleteButton');if(confirmDeleteButton)confirmDeleteButton.addEventListener('click',async()=>{confirmDeleteButton.disabled=true;confirmDeleteButton.textContent='Deleting…';const response=await fetch(`/api/timesheets/scheduled/${headerId}`,{method:'DELETE',headers:{'X-CSRF-Token':csrfToken}});const result=await response.json();if(response.ok){if(window.parent!==window)window.parent.postMessage({type:'green-orbit-timesheet-deleted'},window.location.origin);else window.location.href='/ui/timesheet-runs';return;}bootstrap.Modal.getInstance(document.getElementById('deleteTimesheetConfirmModal'))?.hide();message.className='alert alert-danger mt-3';message.textContent=result.detail||'Unable to delete timesheet.';confirmDeleteButton.disabled=false;confirmDeleteButton.textContent='Delete Timesheet';});
+const closeButton=document.getElementById('closeButton');if(closeButton)closeButton.addEventListener('click',()=>window.parent.postMessage({type:'green-orbit-timesheet-close'},window.location.origin));
 </script>
 {% endblock %}

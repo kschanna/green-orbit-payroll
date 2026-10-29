@@ -15,6 +15,9 @@ from app.timesheet_run_router import router as timesheet_run_router
 from app.ai_router import router as ai_router
 from app.worker_documents_router import router as worker_documents_router
 from app.worker_portal_router import router as worker_portal_router
+from app.payroll_readiness_router import router as payroll_readiness_router
+from app.agent_monitor_router import router as agent_monitor_router
+from app.worker_forms_router import router as worker_forms_router
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -60,6 +63,8 @@ from app.models.pbt_schedule import PBTSchedule
 from app.models.pbt_schedule_period import PBTSchedulePeriod
 from app.models.pbt_schedule_rule import PBTScheduleRule
 from app.pagination import build_pagination
+from app.models.payroll_readiness_run import PayrollReadinessRun
+from app.timesheet_agent_service import process_timesheet_created
 
 
 # ============================================================
@@ -92,6 +97,9 @@ app.router.include_router(timesheet_run_router)
 app.router.include_router(ai_router)
 app.router.include_router(worker_documents_router)
 app.router.include_router(worker_portal_router)
+app.router.include_router(payroll_readiness_router)
+app.router.include_router(agent_monitor_router)
+app.router.include_router(worker_forms_router)
 
 session_secret = os.environ.get("SESSION_SECRET")
 
@@ -419,6 +427,12 @@ def dashboard(request: Request):
         ).all()
         completed_value_rows.reverse()
 
+        readiness_run = session.scalar(
+            select(PayrollReadinessRun)
+            .order_by(PayrollReadinessRun.id.desc())
+            .limit(1)
+        )
+
         return templates.TemplateResponse(
             request=request,
             name="dashboard.html",
@@ -427,6 +441,7 @@ def dashboard(request: Request):
                 "pay_run_count": pay_run_count,
                 "completed_count": completed_count,
                 "pay_runs": pay_runs,
+                "readiness_run": readiness_run,
                 "worker_chart": {
                     "labels": ["Active", "Inactive"],
                     "values": [
@@ -1195,18 +1210,29 @@ def generate_contractor_payroll(
 @app.get("/ui/timesheets", response_class=HTMLResponse)
 def list_timesheets(
     request: Request, page: int = 1, page_size: int = 25,
+    worker_id: int | None = None,
 ):
 
     with SessionLocal() as db:
 
         # Retrieve every header-based timesheet, including PBT-scheduled
         # weekly, fortnightly, monthly and semi-monthly periods.
+        header_query = select(TimesheetHeader)
+        header_count = select(func.count(TimesheetHeader.id))
+        if worker_id is not None:
+            header_query = header_query.join(
+                Engagement, Engagement.id == TimesheetHeader.engagement_id
+            ).where(Engagement.worker_id == worker_id)
+            header_count = header_count.join(
+                Engagement, Engagement.id == TimesheetHeader.engagement_id
+            ).where(Engagement.worker_id == worker_id)
         pagination = build_pagination(
-            total=int(db.scalar(select(func.count(TimesheetHeader.id))) or 0),
+            total=int(db.scalar(header_count) or 0),
             page=page, page_size=page_size, path="/ui/timesheets",
+            params={"worker_id": worker_id},
         )
         period_headers = db.scalars(
-            select(TimesheetHeader)
+            header_query
             .order_by(TimesheetHeader.id.desc())
             .offset(pagination.offset)
             .limit(pagination.page_size)
@@ -1293,10 +1319,23 @@ def list_timesheets(
             })
 
         # Retrieve standalone daily timesheets only
+        daily_query = select(Timesheet).where(
+            Timesheet.timesheet_header_id.is_(None)
+        )
+        if worker_id is not None:
+            daily_query = daily_query.join(
+                Engagement, Engagement.id == Timesheet.engagement_id
+            ).where(Engagement.worker_id == worker_id)
         daily_timesheets = db.scalars(
-            select(Timesheet)
-            .where(Timesheet.timesheet_header_id.is_(None))
+            daily_query
             .order_by(Timesheet.id.desc())
+        ).all()
+
+        worker_options = db.execute(
+            select(Worker.id, Worker.first_name, Worker.last_name)
+            .join(Engagement, Engagement.worker_id == Worker.id)
+            .distinct()
+            .order_by(Worker.last_name, Worker.first_name, Worker.id)
         ).all()
 
         daily_data = [
@@ -1325,6 +1364,8 @@ def list_timesheets(
                 "period_timesheets": period_timesheets,
                 "daily_timesheets": daily_data,
                 "pagination": pagination,
+                "selected_worker_id": worker_id,
+                "worker_options": worker_options,
                 "engagement_options": [
                     {
                         "id": engagement.id,
@@ -1839,6 +1880,13 @@ def create_weekly_timesheet(data: WeeklyTimesheetCreate):
         ]
 
         db.add_all(timesheets)
+        agent_alert = process_timesheet_created(
+            db,
+            engagement_id=data.engagement_id,
+            as_of=data.week_start,
+            assignment_id=next((entry.assignment_id for entry in data.entries if entry.assignment_id), None),
+            timesheet_header_id=header.id,
+        )
         db.commit()
 
         return {
@@ -1850,7 +1898,8 @@ def create_weekly_timesheet(data: WeeklyTimesheetCreate):
             "days_created": len({entry.work_date for entry in data.entries}),
             "total_hours": sum(
                 entry.hours_worked for entry in data.entries
-            )
+            ),
+            "agent_alert": agent_alert,
         }
 
 
@@ -1992,6 +2041,13 @@ def create_timesheet(data: TimesheetCreate):
         )
 
         db.add(timesheet)
+        db.flush()
+        agent_alert = process_timesheet_created(
+            db,
+            engagement_id=data.engagement_id,
+            as_of=data.work_date,
+            assignment_id=data.assignment_id,
+        )
         db.commit()
         db.refresh(timesheet)
 
@@ -2000,7 +2056,8 @@ def create_timesheet(data: TimesheetCreate):
             "engagement_id": timesheet.engagement_id,
             "work_date": timesheet.work_date,
             "hours_worked": timesheet.hours_worked,
-            "status": timesheet.status
+            "status": timesheet.status,
+            "agent_alert": agent_alert,
         }
 
 
@@ -4322,6 +4379,7 @@ def assignments_page(
                 ),
                 "customer_name": assignment.customer.name,
                 "billing_rate": str(assignment.billing_rate),
+                "billing_rate_display": f"{assignment.billing_rate:,.2f}",
                 "start_date": (
                     assignment.start_date.isoformat()
                     if assignment.start_date else ""

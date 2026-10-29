@@ -21,6 +21,7 @@ class AITool:
 class AIProviderResult:
     text: str
     charts: tuple[dict[str, Any], ...] = ()
+    sources: tuple[dict[str, Any], ...] = ()
 
 
 class AIProvider(Protocol):
@@ -28,6 +29,7 @@ class AIProvider(Protocol):
         self,
         messages: Sequence[ConversationMessage],
         tools: Sequence[AITool] = (),
+        context: str | None = None,
     ) -> AIProviderResult:
         """Generate an assistant reply for a validated conversation."""
 

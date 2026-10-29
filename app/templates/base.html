@@ -69,6 +69,7 @@
                 <a href="/ui/pay-runs">Pay Runs</a>
                 <a href="/ui/payslips">Payslips</a>
                 <a href="/ui/ai-assistant">AI Assistant</a>
+                <a href="/ui/agent-monitor">Agent Monitor</a>
                 <a href="/ui/notifications">Notifications</a>
                 <a href="/ui/help">Help</a>
                 <form action="/logout" method="post" class="mt-3">
@@ -103,6 +104,7 @@
                 <a href="/ui/pay-runs">Pay Runs</a>
                 <a href="/ui/payslips">Payslips</a>
                 <a href="/ui/ai-assistant">AI Assistant</a>
+                <a href="/ui/agent-monitor">Agent Monitor</a>
                 <a href="/ui/notifications">Notifications</a>
                 <a href="/ui/help">Help</a>
                 <form action="/logout" method="post" class="mt-3">
@@ -173,6 +175,18 @@
         const aiPanel = document.getElementById("dashboardAiPanel");
         const aiClose = document.getElementById("dashboardAiClose");
         const aiFrame = document.getElementById("dashboardAiFrame");
+        let pendingAgentAlert = null;
+        try {
+            pendingAgentAlert = JSON.parse(
+                sessionStorage.getItem("green-orbit-agent-alert") || "null"
+            );
+            sessionStorage.removeItem("green-orbit-agent-alert");
+            if (!pendingAgentAlert || !["missing_tfn_declaration", "document_ready_for_review"].includes(pendingAgentAlert.code)) {
+                pendingAgentAlert = null;
+            }
+        } catch (_error) {
+            sessionStorage.removeItem("green-orbit-agent-alert");
+        }
 
         function setAiPanelOpen(open) {
             aiPanel.hidden = !open;
@@ -189,12 +203,48 @@
         }
 
         aiLauncher.addEventListener("click", () => setAiPanelOpen(true));
+        aiFrame.addEventListener("load", () => {
+            aiFrame.dataset.ready = "true";
+            aiFrame.contentWindow.postMessage({
+                type: "green-orbit-page-context",
+                path: window.location.pathname
+            }, window.location.origin);
+            if (pendingAgentAlert) {
+                aiFrame.contentWindow.postMessage({
+                    type: "green-orbit-agent-alert",
+                    alert: pendingAgentAlert
+                }, window.location.origin);
+                pendingAgentAlert = null;
+            }
+        });
+        async function pollDocumentAlerts() {
+            try {
+                const response = await fetch("/api/agent-alerts/document-review", {
+                    headers: {"Accept": "application/json"}
+                });
+                if (!response.ok) return;
+                const result = await response.json();
+                if (!result.alert) return;
+                pendingAgentAlert = result.alert;
+                setAiPanelOpen(true);
+                if (aiFrame.contentWindow && aiFrame.dataset.ready === "true") {
+                    aiFrame.contentWindow.postMessage({
+                        type: "green-orbit-agent-alert",
+                        alert: pendingAgentAlert
+                    }, window.location.origin);
+                    pendingAgentAlert = null;
+                }
+            } catch (_error) {}
+        }
         aiClose.addEventListener("click", () => setAiPanelOpen(false));
         document.addEventListener("keydown", event => {
             if (event.key === "Escape" && !aiPanel.hidden) {
                 setAiPanelOpen(false);
             }
         });
+        if (pendingAgentAlert) setAiPanelOpen(true);
+        pollDocumentAlerts();
+        window.setInterval(pollDocumentAlerts, 5000);
     })();
     </script>
     {% endif %}

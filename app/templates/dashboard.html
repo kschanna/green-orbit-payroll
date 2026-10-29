@@ -25,6 +25,25 @@
 
 </div>
 
+<div class="card p-3 p-md-4 mt-4 border-{{ 'success' if readiness_run and readiness_run.status == 'ready' else 'danger' if readiness_run else 'secondary' }}">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+        <div>
+            <h5 class="mb-1">Payroll Readiness</h5>
+            {% if readiness_run %}
+            <div class="fw-semibold text-{{ 'success' if readiness_run.status == 'ready' else 'danger' }}">{{ readiness_run.status|title }}</div>
+            <div class="text-muted small">{{ readiness_run.critical_count }} critical · {{ readiness_run.warning_count }} warnings · checked {{ readiness_run.created_at.strftime('%d/%m/%Y %H:%M') }}</div>
+            {% else %}<div class="text-muted">Checks have not been run yet.</div>{% endif %}
+        </div>
+        <div class="d-flex gap-2">
+            {% if readiness_run %}<a class="btn btn-outline-success" href="/ui/payroll-readiness/{{ readiness_run.id }}">Review issues</a>{% endif %}
+            <form method="post" action="/ui/payroll-readiness/run">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+                <button class="btn btn-success" type="submit">Run checks</button>
+            </form>
+        </div>
+    </div>
+</div>
+
 
 <!-- DASHBOARD SUMMARY CARDS -->
 

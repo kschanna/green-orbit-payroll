@@ -19,6 +19,7 @@ from app.timesheet_run_router import (
     TimesheetRunSelection,
     create_timesheet_run,
     approve_scheduled_timesheet,
+    delete_scheduled_timesheet,
 )
 from app.main import TimesheetInvoiceInput, create_invoice_from_timesheet
 
@@ -115,8 +116,10 @@ def test_timesheet_run_creates_complete_period_and_skips_duplicate():
 
     assert len(first["created"]) == 1
     assert first["skipped"] == []
+    assert first["agent_alert"]["code"] == "missing_tfn_declaration"
     assert second["created"] == []
     assert len(second["skipped"]) == 1
+    assert second["agent_alert"] is None
 
     with SessionLocal() as db:
         header = db.scalar(select(TimesheetHeader).where(
@@ -128,6 +131,26 @@ def test_timesheet_run_creates_complete_period_and_skips_duplicate():
         assert db.scalar(select(func.count(Timesheet.id)).where(
             Timesheet.timesheet_header_id == header.id
         )) == 14
+
+
+def test_draft_scheduled_timesheet_can_be_deleted():
+    assignment_id, period_id, _ = _seed_expected_period()
+    result = create_timesheet_run(TimesheetRunCreate(selections=[
+        TimesheetRunSelection(
+            assignment_id=assignment_id,
+            pbt_schedule_period_id=period_id,
+        )
+    ]))
+    header_id = result["created"][0]["timesheet_header_id"]
+
+    deleted = delete_scheduled_timesheet(header_id)
+
+    assert deleted["timesheet_header_id"] == header_id
+    with SessionLocal() as db:
+        assert db.get(TimesheetHeader, header_id) is None
+        assert db.scalar(select(func.count(Timesheet.id)).where(
+            Timesheet.timesheet_header_id == header_id
+        )) == 0
 
 
 def test_approved_scheduled_timesheet_uses_pbt_invoice_dates():

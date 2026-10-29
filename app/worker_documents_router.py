@@ -2,7 +2,7 @@ from datetime import date, datetime, timezone
 from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from app.database import SessionLocal
@@ -24,6 +24,8 @@ from app.models.document_extraction import DocumentExtraction
 from app.models.document_review import DocumentReview
 from app.models.notification import Notification
 from app.models.user import User
+from app.models.engagement import Engagement
+from app.timesheet_agent_service import process_timesheet_created
 from sqlalchemy import delete, func, or_, select, update
 
 
@@ -244,6 +246,20 @@ def decide_worker_document(
         review.notes = (notes or "").strip() or None
         review.reviewed_at = datetime.now(timezone.utc)
         document.status = decision
+        if decision == "approved" and document.document_type == "tfn_declaration":
+            engagement_ids = db.scalars(select(Engagement.id).where(
+                Engagement.worker_id == worker_id,
+                Engagement.status == "active",
+                Engagement.engagement_type.in_(("employee", "payg_employee")),
+            )).all()
+            for engagement_id in engagement_ids:
+                process_timesheet_created(
+                    db,
+                    engagement_id=engagement_id,
+                    as_of=date.today(),
+                    event_type="tfn_document_approved",
+                    request_popup=False,
+                )
         review_url = f"/ui/workers/{worker_id}/documents/{document_id}/review"
         db.execute(delete(Notification).where(Notification.action_url == review_url))
         db.commit()
@@ -260,6 +276,37 @@ def _visible_notifications(user_id: int):
         Notification.recipient_user_id.is_(None),
         Notification.recipient_user_id == user_id,
     )
+
+
+@router.get("/api/agent-alerts/document-review")
+def next_document_review_alert(request: Request):
+    user_id = request.session.get("user_id")
+    if user_id is None:
+        raise HTTPException(401, "Authentication required")
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        if user is None or user.role != "admin":
+            raise HTTPException(403, "Administrator access required")
+        notification = db.scalar(
+            select(Notification).where(
+                Notification.recipient_user_id == user.id,
+                Notification.notification_type == "document_ready_for_review",
+                Notification.read_at.is_(None),
+            ).order_by(Notification.id).limit(1)
+        )
+        if notification is None:
+            return JSONResponse({"alert": None})
+        notification.read_at = datetime.now(timezone.utc)
+        alert = {
+            "code": "document_ready_for_review",
+            "content": notification.message,
+            "action": {
+                "label": "Review document",
+                "url": notification.action_url,
+            },
+        }
+        db.commit()
+    return JSONResponse({"alert": alert})
 
 
 @router.get("/ui/notifications", response_class=HTMLResponse)

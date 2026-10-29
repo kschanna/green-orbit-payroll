@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+        <div>
+            <h1 class="h3 mb-1">Agent Monitor</h1>
+            <p class="text-secondary mb-0">Runtime health and audit trail for the Timesheet Agent.</p>
+        </div>
+        <div class="text-end">
+            <a class="btn btn-outline-primary" href="/ui/agent-monitor">Refresh</a>
+            <div class="small text-secondary mt-1">Auto-refreshes every 30 seconds</div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-xl-3"><div class="card h-100"><div class="card-body">
+            <div class="text-secondary small text-uppercase">Runtime health</div>
+            <div class="fs-4 fw-semibold mt-1 {% if health == 'healthy' %}text-success{% else %}text-warning{% endif %}">{{ health|title }}</div>
+            <div class="small text-secondary">{{ failures_24h }} failed runs in 24 hours</div>
+        </div></div></div>
+        <div class="col-sm-6 col-xl-3"><div class="card h-100"><div class="card-body">
+            <div class="text-secondary small text-uppercase">Open tasks</div>
+            <div class="fs-4 fw-semibold mt-1">{{ counts.get('open', 0) }}</div>
+            <div class="small text-secondary">Compliance work requiring attention</div>
+        </div></div></div>
+        <div class="col-sm-6 col-xl-3"><div class="card h-100"><div class="card-body">
+            <div class="text-secondary small text-uppercase">Waiting for human</div>
+            <div class="fs-4 fw-semibold mt-1">{{ counts.get('waiting_for_human', 0) }}</div>
+            <div class="small text-secondary">Hand-offs awaiting a person</div>
+        </div></div></div>
+        <div class="col-sm-6 col-xl-3"><div class="card h-100"><div class="card-body">
+            <div class="text-secondary small text-uppercase">Recent runs</div>
+            <div class="fs-4 fw-semibold mt-1">{{ runs|length }}</div>
+            <div class="small text-secondary">Latest retained view (up to 50)</div>
+        </div></div></div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">Runtime configuration</div>
+        <div class="card-body"><div class="row g-3">
+            <div class="col-md-4"><div class="small text-secondary">Agent</div><code>{{ agent_name }}</code></div>
+            <div class="col-md-4"><div class="small text-secondary">Framework</div>Google ADK {{ adk_version }}</div>
+            <div class="col-md-4"><div class="small text-secondary">Model</div>{{ model_name }}</div>
+            <div class="col-md-4"><div class="small text-secondary">Execution</div>In-process event coordinator</div>
+            <div class="col-md-8"><div class="small text-secondary">Registered tools</div>{{ tool_names|join(', ') or 'None' }}</div>
+        </div></div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">Agent tasks</div>
+        <div class="table-responsive"><table class="table table-hover align-middle mb-0">
+            <thead><tr><th>ID</th><th>Priority</th><th>Issue</th><th>Worker</th><th>Status</th><th>Records</th><th>Updated</th></tr></thead>
+            <tbody>{% for task in tasks %}<tr>
+                <td>#{{ task.id }}</td><td>{{ task.priority|title }}</td>
+                <td><div class="fw-semibold">{{ task.title }}</div><div class="small text-secondary">{{ task.summary }}</div></td>
+                <td>{% if task.worker_id and workers.get(task.worker_id) %}<a href="/ui/workers/{{ task.worker_id }}">{{ workers[task.worker_id].first_name }} {{ workers[task.worker_id].last_name }}</a>{% else %}—{% endif %}</td>
+                <td><span class="badge {% if task.status == 'resolved' %}text-bg-success{% elif task.status == 'waiting_for_human' %}text-bg-warning{% else %}text-bg-primary{% endif %}">{{ task.status|replace('_', ' ')|title }}</span></td>
+                <td class="small">Assignment {{ task.assignment_id or '—' }}<br>Timesheet {{ task.timesheet_header_id or '—' }}</td>
+                <td class="text-nowrap">{{ task.updated_at.strftime('%d %b %Y %H:%M:%S') }}</td>
+            </tr>{% else %}<tr><td colspan="7" class="text-center text-secondary py-4">No agent tasks recorded.</td></tr>{% endfor %}</tbody>
+        </table></div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-xl-7"><div class="card h-100">
+            <div class="card-header fw-semibold">Recent runs</div>
+            <div class="table-responsive"><table class="table table-hover align-middle mb-0">
+                <thead><tr><th>ID</th><th>Event</th><th>Status</th><th>Duration</th><th>Started</th></tr></thead>
+                <tbody>{% for row in runs %}<tr><td>#{{ row.run.id }}</td><td>{{ row.run.event_type|replace('_', ' ')|title }}</td>
+                    <td><span class="badge {% if row.run.status == 'completed' %}text-bg-success{% elif row.run.status == 'failed' %}text-bg-danger{% else %}text-bg-secondary{% endif %}">{{ row.run.status|title }}</span></td>
+                    <td>{% if row.duration_ms is not none %}{{ row.duration_ms }} ms{% else %}—{% endif %}</td><td class="text-nowrap">{{ row.run.created_at.strftime('%d %b %H:%M:%S') }}</td></tr>
+                {% else %}<tr><td colspan="5" class="text-center text-secondary py-4">No agent runs recorded.</td></tr>{% endfor %}</tbody>
+            </table></div>
+        </div></div>
+        <div class="col-xl-5"><div class="card h-100">
+            <div class="card-header fw-semibold">Recent actions</div>
+            <div class="table-responsive"><table class="table table-hover align-middle mb-0">
+                <thead><tr><th>ID</th><th>Action</th><th>Task / Run</th><th>Status</th><th>Time</th></tr></thead>
+                <tbody>{% for action in actions %}<tr><td>#{{ action.id }}</td><td>{{ action.action_type|replace('_', ' ')|title }}</td><td>#{{ action.task_id }} / #{{ action.run_id }}</td><td>{{ action.status|title }}</td><td class="text-nowrap">{{ action.created_at.strftime('%d %b %H:%M:%S') }}</td></tr>
+                {% else %}<tr><td colspan="5" class="text-center text-secondary py-4">No agent actions recorded.</td></tr>{% endfor %}</tbody>
+            </table></div>
+        </div></div>
+    </div>
+
+    <p class="small text-secondary mt-3 mb-0">Last refreshed {{ last_refreshed.strftime('%d %b %Y %H:%M:%S UTC') }}. Sensitive prompts, TFNs, bank details, and raw payloads are intentionally excluded.</p>
+</div>
+<script>window.setTimeout(function () { window.location.reload(); }, 30000);</script>
+{% endblock %}

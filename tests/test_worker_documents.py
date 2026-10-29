@@ -19,6 +19,7 @@ def test_worker_document_routes_registered():
         ("/ui/notifications", "GET"),
         ("/ui/notifications/{notification_id}/open", "GET"),
         ("/ui/notifications/read-all", "POST"),
+        ("/api/agent-alerts/document-review", "GET"),
     }
     actual = {
         (route.path, method)

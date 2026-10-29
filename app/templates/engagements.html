@@ -50,7 +50,7 @@
                     <td>{{ engagement.customer_name }}</td>
                     <td>{{ engagement.host_organisation_name }}</td>
                     <td>{{ engagement.pbt_schedule_name }}</td>
-                    <td>${{ "{:,.2f}".format(engagement.billing_rate) }}/hr</td>
+                    <td>${{ engagement.billing_rate_display }}/hr</td>
                     <td>
                         {{ engagement.start_date_display }}
                     </td>

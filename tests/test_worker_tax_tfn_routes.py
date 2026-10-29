@@ -1,5 +1,6 @@
 from app.employee_tax_router import router as tax_router
 from app.employee_tfn_router import router as tfn_router
+from app.worker_forms_router import router as worker_forms_router
 
 
 def test_worker_tax_get_registered():
@@ -55,3 +56,22 @@ def test_worker_tax_requires_admin_and_csrf():
 
     assert "require_tfn_admin(request)" in source
     assert "require_csrf(request, csrf_token)" in source
+
+
+def test_secure_worker_form_review_requires_tfn_admin():
+    import inspect
+    from app.worker_forms_router import (
+        decide_worker_form,
+        review_worker_form_page,
+    )
+
+    assert sum(
+        route.path == "/ui/worker-forms/{submission_id}/review"
+        for route in worker_forms_router.routes
+    ) == 2
+    assert "require_tfn_admin(request)" in inspect.getsource(
+        review_worker_form_page
+    )
+    assert "require_tfn_admin(request)" in inspect.getsource(
+        decide_worker_form
+    )

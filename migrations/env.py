@@ -48,6 +48,7 @@ from app.models.document_review import DocumentReview
 from app.models.notification import Notification
 from app.models.assignment_component_application import AssignmentComponentApplication
 from app.models.invoice_component_allocation import InvoiceComponentAllocation
+from app.models.worker_form_submission import WorkerFormSubmission
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

@@ -6,6 +6,7 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 {% if embedded_assistant %}mb-2{% else %}mb-4{% endif %}">
         <div>
             <h2 class="mb-1 {% if embedded_assistant %}fs-5{% endif %}">AI Assistant</h2>
+            <div id="assistantContext" class="ai-context small text-muted" hidden></div>
             {% if not embedded_assistant %}
             <p class="text-muted mb-0">
                 {% if worker_mode is defined and worker_mode %}Ask about your work, pay and general payroll concepts.{% else %}Ask Green Orbit about general workforce and payroll concepts.{% endif %}
@@ -26,6 +27,8 @@
 
         <div id="chatStatus" class="ai-status px-3 px-md-4" role="status"></div>
 
+        <div id="suggestedPrompts" class="ai-suggested-prompts px-3 px-md-4" aria-label="Suggested questions"></div>
+
         <form id="chatForm" class="ai-composer p-3 p-md-4">
             <label for="chatInput" class="visually-hidden">Message</label>
             <textarea id="chatInput"
@@ -42,7 +45,7 @@
 
     <p class="small text-muted {% if embedded_assistant %}mt-2{% else %}mt-3{% endif %} mb-0">
         {% if worker_mode is defined and worker_mode %}
-        The worker assistant provides general guidance and cannot access or change payroll records.
+        The worker assistant can securely retrieve your records in read-only mode, but cannot access another worker's data or make changes.
         {% else %}
         The assistant can retrieve selected Green Orbit records in read-only mode,
         but it cannot perform business actions.
@@ -62,6 +65,8 @@
     const input = document.getElementById("chatInput");
     const sendButton = document.getElementById("sendButton");
     const newConversationButton = document.getElementById("newConversation");
+    const contextElement = document.getElementById("assistantContext");
+    const suggestedPromptsElement = document.getElementById("suggestedPrompts");
     const csrfToken = {{ csrf_token(request) | tojson }};
     const activeCharts = [];
     const chartColours = ["#36845b", "#495057", "#b7791f", "#5b6fb5"];
@@ -69,6 +74,86 @@
         style: "currency",
         currency: "AUD",
         maximumFractionDigits: 0
+    });
+    let currentPath = null;
+
+    const contextLabels = {
+        "/dashboard": "Dashboard",
+        "/portal": "Your dashboard",
+        "/portal/payslips": "Your payslips",
+        "/portal/timesheets": "Your timesheets",
+        "/portal/leave": "Your leave",
+        "/portal/assignments": "Your assignments",
+        "/portal/documents": "Your documents",
+        "/portal/notifications": "Your notifications",
+        "/portal/profile": "Your profile"
+    };
+
+    const promptSuggestions = {
+        payslips: ["Explain my latest payslip", "How has my net pay changed?"],
+        timesheets: ["Is my latest timesheet complete?", "Show my recent timesheet status"],
+        leave: ["What are my leave balances?", "Explain my available leave"],
+        documents: ["Are any of my documents expiring?", "Show my document status"],
+        assignments: ["Summarise my current assignments"],
+        notifications: ["Do I have any unread notifications?"]
+    };
+
+    function setScreenContext(path) {
+        if (typeof path !== "string" || !path.startsWith("/")) return;
+        currentPath = path.split("?", 1)[0];
+        const label = contextLabels[currentPath]
+            || (currentPath.startsWith("/ui/workers") ? "Worker records" : null)
+            || (currentPath.startsWith("/ui/pay-runs") ? "Pay runs" : null)
+            || (currentPath.startsWith("/ui/timesheets") ? "Timesheets" : null)
+            || (currentPath.startsWith("/ui/payslips") ? "Payslips" : null)
+            || (currentPath.startsWith("/ui/invoices") ? "Invoices" : null);
+        contextElement.hidden = !label;
+        contextElement.textContent = label ? `Context: ${label}` : "";
+        const key = Object.keys(promptSuggestions).find(item => currentPath.includes(item));
+        renderSuggestedPrompts(key ? promptSuggestions[key] : []);
+    }
+
+    function renderSuggestedPrompts(prompts) {
+        suggestedPromptsElement.replaceChildren();
+        prompts.forEach(prompt => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "btn btn-sm btn-outline-success";
+            button.textContent = prompt;
+            button.addEventListener("click", () => {
+                input.value = prompt;
+                input.focus();
+            });
+            suggestedPromptsElement.appendChild(button);
+        });
+    }
+
+    try {
+        if (document.referrer && new URL(document.referrer).origin === window.location.origin) {
+            setScreenContext(new URL(document.referrer).pathname);
+        }
+    } catch (_error) {}
+    window.addEventListener("message", event => {
+        if (event.origin === window.location.origin && event.data?.type === "green-orbit-page-context") {
+            setScreenContext(event.data.path);
+        }
+        if (
+            event.origin === window.location.origin &&
+            event.data?.type === "green-orbit-agent-alert" &&
+            ["missing_tfn_declaration", "document_ready_for_review"].includes(event.data.alert?.code) &&
+            typeof event.data.alert.content === "string"
+        ) {
+            const source = event.data.alert.source;
+            addMessage({
+                role: "assistant",
+                content: event.data.alert.content.slice(0, 1000),
+                actions: event.data.alert.action ? [event.data.alert.action] : [],
+                sources: source && /^\/ui\/workers\/\d+$/.test(source.url)
+                    ? [{...source, label: String(source.label).slice(0, 200)}]
+                    : []
+            });
+            messagesElement.scrollTop = messagesElement.scrollHeight;
+        }
     });
 
     function loadConversation() {
@@ -95,6 +180,17 @@
 
     function saveConversation() {
         sessionStorage.setItem(storageKey, JSON.stringify(conversation));
+    }
+
+    function trimConversationForRequest() {
+        const maximumCharacters = 24000;
+        const totalCharacters = () => conversation.reduce(
+            (total, message) => total + message.content.length,
+            0
+        );
+        while (conversation.length >= 3 && totalCharacters() > maximumCharacters) {
+            conversation.splice(0, 2);
+        }
     }
 
     function appendInlineMarkdown(parent, text) {
@@ -282,6 +378,38 @@
             if (Array.isArray(message.charts)) {
                 message.charts.forEach(chart => renderChart(bubble, chart));
             }
+            if (Array.isArray(message.sources) && message.sources.length) {
+                const sources = document.createElement("div");
+                sources.className = "ai-sources";
+                const label = document.createElement("span");
+                label.textContent = "Sources: ";
+                sources.appendChild(label);
+                message.sources.forEach((source, index) => {
+                    const link = document.createElement("a");
+                    link.href = source.url;
+                    link.textContent = source.label;
+                    link.target = "_top";
+                    sources.appendChild(link);
+                    if (index < message.sources.length - 1) {
+                        sources.appendChild(document.createTextNode(" · "));
+                    }
+                });
+                bubble.appendChild(sources);
+            }
+            if (Array.isArray(message.actions) && message.actions.length) {
+                const actions = document.createElement("div");
+                actions.className = "mt-3 d-flex gap-2";
+                message.actions.forEach(action => {
+                    if (!action || typeof action.label !== "string" || !/^\/ui\//.test(action.url || "")) return;
+                    const link = document.createElement("a");
+                    link.className = "btn btn-sm btn-success";
+                    link.href = action.url;
+                    link.target = "_top";
+                    link.textContent = action.label;
+                    actions.appendChild(link);
+                });
+                if (actions.childElementCount) bubble.appendChild(actions);
+            }
         } else {
             bubble.textContent = message.content;
         }
@@ -381,6 +509,24 @@
         statusElement.textContent = message;
     }
 
+    function apiErrorMessage(result) {
+        const fallback = "Unable to contact the AI Assistant.";
+        if (!result || result.detail == null) return fallback;
+        if (typeof result.detail === "string") return result.detail;
+        if (Array.isArray(result.detail)) {
+            const messages = result.detail
+                .map(item => typeof item === "string" ? item : item?.msg)
+                .filter(message => typeof message === "string" && message.trim());
+            return messages.length
+                ? `The message could not be sent: ${messages.join("; ")}`
+                : fallback;
+        }
+        if (typeof result.detail === "object" && typeof result.detail.message === "string") {
+            return result.detail.message;
+        }
+        return fallback;
+    }
+
     form.addEventListener("submit", async event => {
         event.preventDefault();
         const content = input.value.trim();
@@ -392,6 +538,7 @@
 
         const userMessage = {role: "user", content};
         conversation.push(userMessage);
+        trimConversationForRequest();
         input.value = "";
         renderConversation();
         setBusy(true);
@@ -404,14 +551,19 @@
                     "X-CSRF-Token": csrfToken
                 },
                 body: JSON.stringify({
-                    messages: conversation.map(({role, content}) => ({role, content}))
+                    messages: conversation.map(({role, content}) => ({role, content})),
+                    current_path: currentPath
                 })
             });
             const result = await response.json().catch(() => ({}));
             if (!response.ok) {
-                throw new Error(result.detail || "Unable to contact the AI Assistant.");
+                throw new Error(apiErrorMessage(result));
             }
-            conversation.push({...result.message, charts: result.charts || []});
+            conversation.push({
+                ...result.message,
+                charts: result.charts || [],
+                sources: result.sources || []
+            });
             saveConversation();
             renderConversation();
             setBusy(false);
