@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-start mb-4"><div><h1 class="h3 mb-1">Payroll Agent</h1><p class="text-secondary mb-0">Create a timesheet, produce reconciled invoice and payroll drafts, then hand off to a person.</p></div><a href="/ui/agent-monitor" class="btn btn-outline-secondary">Runtime diagnostics</a></div>
+  <div class="card mb-4"><div class="card-header fw-semibold">Start an autonomous run</div><div class="card-body">
+    <form method="post" action="/ui/payroll-agent/runs" class="row g-3 align-items-end"><input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+      <div class="col-lg-9"><label class="form-label">Worker, assignment and period</label><select class="form-select" id="agentCandidate" required><option value="">Select a scheduled period</option>{% for assignment, period, worker, customer in candidates %}<option data-assignment="{{ assignment.id }}" data-period="{{ period.id }}">{{ worker.first_name }} {{ worker.last_name }} — {{ customer.name }} — {{ period.period_start }} to {{ period.period_end }}</option>{% endfor %}</select><input type="hidden" name="assignment_id" id="agentAssignment"><input type="hidden" name="period_id" id="agentPeriod"></div>
+      <div class="col-lg-3"><button class="btn btn-primary w-100">Start agent run</button></div>
+    </form>
+  </div></div>
+  <div class="card"><div class="card-header fw-semibold">Recent payroll-agent runs</div><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th>Run</th><th>Worker</th><th>Status</th><th>Current step</th><th>Records</th><th></th></tr></thead><tbody>
+  {% for run in runs %}<tr><td>#{{ run.id }}</td><td>{{ workers[run.worker_id].first_name }} {{ workers[run.worker_id].last_name }}</td><td><span class="badge {% if run.status == 'awaiting_human_approval' %}text-bg-success{% elif 'waiting' in run.status %}text-bg-warning{% elif run.status == 'failed' %}text-bg-danger{% else %}text-bg-primary{% endif %}">{{ run.status|replace('_',' ')|title }}</span></td><td>{{ run.current_step|replace('_',' ')|title }}</td><td class="small">Timesheet #{{ run.records.get('timesheet_header_id','—') }} · Invoice #{{ run.records.get('invoice_id','—') }} · Pay run #{{ run.records.get('pay_run_id','—') }}</td><td><a class="btn btn-sm btn-outline-primary" href="/ui/payroll-agent/runs/{{ run.id }}">View run</a></td></tr>{% else %}<tr><td colspan="6" class="text-center text-secondary py-4">No payroll-agent runs yet.</td></tr>{% endfor %}
+  </tbody></table></div></div>
+</div>
+<script>document.getElementById('agentCandidate').addEventListener('change',function(){const o=this.options[this.selectedIndex];document.getElementById('agentAssignment').value=o.dataset.assignment||'';document.getElementById('agentPeriod').value=o.dataset.period||'';});</script>
+{% endblock %}

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-start mb-4"><div><a href="/ui/payroll-agent" class="small text-decoration-none">← Payroll Agent</a><h1 class="h3 mt-2 mb-1">Run #{{ run.id }}</h1><p class="text-secondary mb-0">{{ worker.first_name }} {{ worker.last_name }} · {{ customer.name }} · {{ period.period_start }} to {{ period.period_end }}</p></div><span class="badge fs-6 {% if run.status == 'awaiting_human_approval' %}text-bg-success{% elif 'waiting' in run.status %}text-bg-warning{% elif run.status == 'failed' %}text-bg-danger{% else %}text-bg-primary{% endif %}">{{ run.status|replace('_',' ')|title }}</span></div>
+  {% if run.blockers %}<div class="alert alert-warning"><h2 class="h6">The agent paused safely</h2><p class="mb-2">Complete the items below, then use <strong>Recheck requirements now</strong>. Worker tax, super and bank updates are also rechecked automatically.</p><div class="vstack gap-2">{% for blocker in run.blockers %}<div><strong>{{ blocker.label }}</strong>{% if blocker.help %}<div class="small">{{ blocker.help }}</div>{% endif %}{% if blocker.action_url %}<a class="btn btn-sm btn-outline-dark mt-1" href="{{ blocker.action_url }}">Open the relevant screen</a>{% endif %}</div>{% endfor %}</div></div>{% endif %}
+  <div class="row g-3 mb-4"><div class="col-md-4"><div class="card h-100"><div class="card-body"><div class="small text-secondary">Timesheet</div>{% if run.records.get('timesheet_header_id') %}<a class="fs-5" href="/ui/timesheets/scheduled/{{ run.records.timesheet_header_id }}/preview">#{{ run.records.timesheet_header_id }}</a>{% else %}<span class="fs-5">—</span>{% endif %}</div></div></div><div class="col-md-4"><div class="card h-100"><div class="card-body"><div class="small text-secondary">Draft invoice</div>{% if run.records.get('invoice_id') %}<a class="fs-5" href="/ui/invoices/{{ run.records.invoice_id }}/preview">#{{ run.records.invoice_id }}</a>{% else %}<span class="fs-5">—</span>{% endif %}</div></div></div><div class="col-md-4"><div class="card h-100"><div class="card-body"><div class="small text-secondary">Draft payroll</div>{% if run.records.get('payslip_id') %}<a class="fs-5" href="/ui/payslips/{{ run.records.payslip_id }}/preview">Pay run #{{ run.records.pay_run_id }}</a>{% else %}<span class="fs-5">—</span>{% endif %}</div></div></div></div>
+  {% if run.status == 'awaiting_human_approval' %}
+  <div class="alert alert-success mb-4">
+    <h2 class="h5">Drafts are ready for your review</h2>
+    <p>The agent has finished its work and paused before approval. Review both drafts, then approve the handoff only if the figures are correct.</p>
+    <div class="d-flex flex-wrap gap-2">
+      {% if run.records.get('invoice_id') %}<button type="button" class="btn btn-outline-success portal-preview" data-url="/ui/invoices/{{ run.records.invoice_id }}/preview?embed=1" data-title="Draft invoice #{{ run.records.invoice_id }}">1. Review draft invoice #{{ run.records.invoice_id }}</button>{% endif %}
+      {% if run.records.get('payslip_id') %}<button type="button" class="btn btn-outline-success portal-preview" data-url="/ui/payslips/{{ run.records.payslip_id }}/preview?embed=1" data-title="Payslip #{{ run.records.payslip_id }}">2. Review payslip #{{ run.records.payslip_id }}</button>{% endif %}
+      <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#approveHandoffModal">3. Approve reviewed drafts</button>
+    </div>
+    <div class="small mt-2">The <strong>Waiting</strong> handoff step is intentional: it records that control has passed to you.</div>
+  </div>
+  {% endif %}
+  {% if run.status == 'waiting_for_human' and run.current_step == 'confirm_hours' %}<div class="alert alert-info d-flex justify-content-between align-items-center"><div><strong>Confirm generated hours</strong><div class="small">Open the timesheet, review or edit its daily hours, then allow the agent to continue.</div></div><form method="post" action="/ui/payroll-agent/runs/{{ run.id }}/confirm-hours"><input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}"><button class="btn btn-primary">Hours reviewed — continue</button></form></div>{% endif %}
+  {% if run.status == 'waiting_for_requirements' %}<form method="post" action="/ui/payroll-agent/runs/{{ run.id }}/retry" class="mb-3"><input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}"><button class="btn btn-outline-primary">Recheck requirements now</button></form>{% elif run.status == 'failed' %}<div class="alert alert-danger"><strong>The agent stopped safely.</strong> Existing drafts have been preserved. Retry continues from the last completed step and will not intentionally create duplicates.</div><form method="post" action="/ui/payroll-agent/runs/{{ run.id }}/retry" class="mb-3"><input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}"><button class="btn btn-primary">Retry from last completed step</button></form>{% endif %}
+  {% if run.plan.get('adk_runtime') %}
+  {% set adk = run.plan.adk_runtime %}
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center"><span class="fw-semibold">Vertex ADK decision trace</span><span class="badge text-bg-primary">{{ adk.model }}</span></div>
+    <div class="card-body">
+      <div class="row g-3 small mb-3"><div class="col-md-4"><span class="text-secondary">Runtime</span><div>{{ adk.runtime|replace('_', ' ')|title }}</div></div><div class="col-md-4"><span class="text-secondary">Session</span><div>{{ adk.session_mode|replace('_', ' ')|title }}</div></div><div class="col-md-4"><span class="text-secondary">Session ID</span><div>{{ adk.session_id }}</div></div></div>
+      {% if adk.final_response %}<p class="mb-3">{{ adk.final_response }}</p>{% endif %}
+      <div class="list-group list-group-flush border rounded">
+        {% for event in adk.events %}<div class="list-group-item"><div class="small text-secondary mb-1">{{ event.author }}</div>{% for call in event.calls %}<div><strong>Tool selected:</strong> {{ call.name }}</div>{% endfor %}{% for response in event.responses %}<details class="mt-1"><summary class="small">{{ response.name }} result</summary><pre class="small bg-light rounded p-2 mt-2 mb-0" style="white-space:pre-wrap">{{ response.result|tojson(indent=2) }}</pre></details>{% endfor %}</div>{% else %}<div class="list-group-item text-secondary">No tool events were recorded.</div>{% endfor %}
+      </div>
+    </div>
+  </div>
+  {% elif run.plan.get('adk_fallback_reason') %}
+  <div class="alert alert-secondary"><strong>Vertex ADK fallback:</strong> {{ run.plan.adk_fallback_reason }}. The policy-controlled deterministic workflow continued safely.</div>
+  {% endif %}
+  <div class="card"><div class="card-header fw-semibold">Execution trace</div><div class="list-group list-group-flush">{% for step in steps %}<div class="list-group-item py-3"><div class="d-flex gap-3"><div class="fs-5">{% if step.status == 'completed' %}<span class="text-success">✓</span>{% elif step.status in ['blocked','waiting'] %}<span class="text-warning">●</span>{% elif step.status == 'running' %}<span class="text-primary">↻</span>{% else %}<span class="text-secondary">○</span>{% endif %}</div><div class="flex-grow-1"><div class="d-flex justify-content-between"><strong>{{ step.label }}</strong><span class="badge text-bg-light">{{ step.status|title }}</span></div><div class="small text-secondary">Decision: {{ step.decision_source|replace('_',' ') }}{% if step.started_at %} · Started {{ step.started_at.strftime('%d %b %H:%M:%S') }}{% endif %}</div>{% if step.details.get('message') %}<div class="small mt-2">{{ step.details.message }}</div>{% endif %}{% if step.details and not step.details.get('blockers') %}<details class="mt-2"><summary class="small text-secondary">Technical details</summary><pre class="small bg-light rounded p-2 mt-2 mb-0" style="white-space:pre-wrap">{{ step.details|tojson(indent=2) }}</pre></details>{% endif %}</div></div></div>{% endfor %}</div></div>
+  <p class="small text-secondary mt-3">This page refreshes every 15 seconds. Sensitive TFN and bank values are never written to the execution trace.</p>
+</div>
+{% if run.status == 'awaiting_human_approval' %}
+<div class="modal fade" id="approveHandoffModal" tabindex="-1" aria-labelledby="approveHandoffModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title fs-5" id="approveHandoffModalLabel">Approve reviewed drafts?</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Confirm that you have reviewed the following records and that their figures are correct:</p>
+        <ul class="mb-0">
+          <li>Invoice #{{ run.records.invoice_id }}</li>
+          <li>Pay run #{{ run.records.pay_run_id }} and payslip #{{ run.records.payslip_id }}</li>
+        </ul>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <form method="post" action="/ui/payroll-agent/runs/{{ run.id }}/approve-handoff">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+          <button class="btn btn-success">Confirm approval</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% include "_portal_preview_modal.html" %}
+<script>
+window.setTimeout(function refreshAgentRun() {
+  if (document.querySelector('.modal.show')) {
+    window.setTimeout(refreshAgentRun, 15000);
+    return;
+  }
+  window.location.reload();
+}, 15000);
+</script>
+{% endblock %}

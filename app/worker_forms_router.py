@@ -165,4 +165,8 @@ def decide_worker_form(
                 action_url="/portal#payroll-setup",
             ))
         db.commit()
+        worker_id = submission.worker_id
+    if decision == "approved":
+        from app.payroll_agent_service import resume_worker_payroll_runs
+        resume_worker_payroll_runs(worker_id)
     return RedirectResponse(f"/ui/worker-forms/{submission_id}/review", status_code=303)

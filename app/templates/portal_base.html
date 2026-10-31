@@ -20,11 +20,18 @@
                 <a class="nav-link" href="/portal/payslips">Payslips</a>
                 <a class="nav-link" href="/portal/timesheets">Timesheets</a>
                 <a class="nav-link" href="/portal/leave">Leave</a>
-                <a class="nav-link" href="/portal/assignments">Assignments</a>
                 <a class="nav-link" href="/portal/documents">Documents{% if payroll_setup_action_count|default(0) %} <span class="badge rounded-pill text-bg-danger">{{ payroll_setup_action_count }}</span>{% endif %}</a>
-                <a class="nav-link" href="/portal/notifications">Notifications</a>
-                <a class="nav-link" href="/portal/profile">Profile</a>
-                <a class="nav-link" href="/portal/help">Help</a>
+                <div class="nav-item dropdown">
+                    <button class="nav-link dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        More
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-lg-end shadow-sm">
+                        <li><a class="dropdown-item" href="/portal/assignments">Assignments</a></li>
+                        <li><a class="dropdown-item" href="/portal/notifications">Notifications</a></li>
+                        <li><a class="dropdown-item" href="/portal/profile">Profile</a></li>
+                        <li><a class="dropdown-item" href="/portal/help">Help</a></li>
+                    </ul>
+                </div>
                 <form action="/portal/logout" method="post" class="m-0">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
                     <button type="submit" class="btn btn-outline-secondary btn-sm">Sign out</button>

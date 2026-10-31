@@ -287,21 +287,29 @@ def next_document_review_alert(request: Request):
         user = db.get(User, user_id)
         if user is None or user.role != "admin":
             raise HTTPException(403, "Administrator access required")
+        alert_types = {
+            "document_ready_for_review": ("document_ready_for_review", "Review document"),
+            "payroll_agent_hours_review": ("payroll_agent_hours_review", "Review generated hours"),
+            "payroll_agent_blocked": ("payroll_agent_blocked", "Resolve payroll blockers"),
+            "payroll_agent_failed": ("payroll_agent_failed", "Review and retry run"),
+            "payroll_agent_handoff": ("payroll_agent_handoff", "Review payroll drafts"),
+        }
         notification = db.scalar(
             select(Notification).where(
                 Notification.recipient_user_id == user.id,
-                Notification.notification_type == "document_ready_for_review",
+                Notification.notification_type.in_(alert_types),
                 Notification.read_at.is_(None),
             ).order_by(Notification.id).limit(1)
         )
         if notification is None:
             return JSONResponse({"alert": None})
         notification.read_at = datetime.now(timezone.utc)
+        code, action_label = alert_types[notification.notification_type]
         alert = {
-            "code": "document_ready_for_review",
+            "code": code,
             "content": notification.message,
             "action": {
-                "label": "Review document",
+                "label": action_label,
                 "url": notification.action_url,
             },
         }

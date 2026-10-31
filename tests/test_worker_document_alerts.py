@@ -72,3 +72,34 @@ def test_document_alert_is_delivered_once_and_contains_review_action(monkeypatch
     assert '"alert":null' in second
     with factory() as db:
         assert db.scalar(select(Notification)).read_at is not None
+
+
+def test_payroll_agent_alert_opens_run_with_cta(monkeypatch):
+    engine = _engine()
+    factory = sessionmaker(bind=engine)
+    with factory() as db:
+        admin = User(
+            email="payroll-alert-admin@example.com", password_hash="test",
+            role="admin", is_active=True,
+        )
+        db.add(admin)
+        db.flush()
+        db.add(Notification(
+            recipient_user_id=admin.id,
+            notification_type="payroll_agent_failed",
+            title="Payroll agent stopped",
+            message="I stopped safely. Review the run and retry.",
+            action_url="/ui/payroll-agent/runs/7",
+        ))
+        db.commit()
+        admin_id = admin.id
+    monkeypatch.setattr(document_routes, "SessionLocal", factory)
+    request = Request({
+        "type": "http", "method": "GET",
+        "path": "/api/agent-alerts/document-review", "query_string": b"",
+        "headers": [], "session": {"user_id": admin_id},
+    })
+    body = document_routes.next_document_review_alert(request).body.decode()
+    assert '"code":"payroll_agent_failed"' in body
+    assert '"label":"Review and retry run"' in body
+    assert '"url":"/ui/payroll-agent/runs/7"' in body

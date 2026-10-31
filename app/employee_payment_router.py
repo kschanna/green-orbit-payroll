@@ -164,6 +164,8 @@ def save_worker_payment_details(
         )
         db.commit()
 
+    from app.payroll_agent_service import resume_worker_payroll_runs
+    resume_worker_payroll_runs(worker_id)
     return RedirectResponse(
         f"/ui/workers/{worker_id}/payment",
         status_code=303,
@@ -253,6 +255,8 @@ def update_worker_payment_details(
         profile.effective_to = effective_to
         db.commit()
 
+    from app.payroll_agent_service import resume_worker_payroll_runs
+    resume_worker_payroll_runs(worker_id)
     return RedirectResponse(
         f"/ui/workers/{worker_id}/payment",
         status_code=303,

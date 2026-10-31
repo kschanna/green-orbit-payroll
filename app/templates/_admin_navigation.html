@@ -1,0 +1,60 @@
+{% macro admin_navigation(prefix) %}
+{% set path = request.url.path %}
+<nav class="admin-nav" data-nav-instance="{{ prefix }}" aria-label="Main navigation">
+    <a class="admin-nav-link{% if path == '/dashboard' %} active{% endif %}" href="/dashboard">
+        <span aria-hidden="true">⌂</span><span>Dashboard</span>
+    </a>
+
+    <details class="admin-nav-group" data-nav-section="people"{% if path.startswith('/ui/organisations') or path.startswith('/ui/workers') or path.startswith('/ui/agreements') or path.startswith('/ui/engagements') %} data-active="true" open{% endif %}>
+        <summary><span><span aria-hidden="true">♙</span> People</span></summary>
+        <div class="admin-nav-group-links">
+            <a{% if path.startswith('/ui/organisations') %} class="active"{% endif %} href="/ui/organisations">Organisations</a>
+            <a{% if path.startswith('/ui/workers') %} class="active"{% endif %} href="/ui/workers">Workers</a>
+            <a{% if path.startswith('/ui/engagements') %} class="active"{% endif %} href="/ui/engagements">Assignments</a>
+            <a{% if path.startswith('/ui/agreements') %} class="active"{% endif %} href="/ui/agreements">Work Patterns</a>
+        </div>
+    </details>
+
+    <details class="admin-nav-group" data-nav-section="time-billing"{% if path.startswith('/ui/timesheets') or path.startswith('/ui/timesheet-runs') or path.startswith('/ui/invoices') %} data-active="true" open{% endif %}>
+        <summary><span><span aria-hidden="true">◷</span> Time &amp; Billing</span></summary>
+        <div class="admin-nav-group-links">
+            <a{% if path.startswith('/ui/timesheets') %} class="active"{% endif %} href="/ui/timesheets">Timesheets</a>
+            <a{% if path.startswith('/ui/timesheet-runs') %} class="active"{% endif %} href="/ui/timesheet-runs">Timesheet Runs</a>
+            <a{% if path.startswith('/ui/invoices') %} class="active"{% endif %} href="/ui/invoices">Invoices</a>
+        </div>
+    </details>
+
+    <details class="admin-nav-group" data-nav-section="payroll"{% if path.startswith('/ui/pay-runs') or path.startswith('/ui/payslips') or path.startswith('/ui/pbt-schedules') or path.startswith('/ui/components') %} data-active="true" open{% endif %}>
+        <summary><span><span aria-hidden="true">$</span> Payroll</span></summary>
+        <div class="admin-nav-group-links">
+            <a{% if path.startswith('/ui/pay-runs') %} class="active"{% endif %} href="/ui/pay-runs">Pay Runs</a>
+            <a{% if path.startswith('/ui/payslips') %} class="active"{% endif %} href="/ui/payslips">Payslips</a>
+            <a{% if path.startswith('/ui/pbt-schedules') %} class="active"{% endif %} href="/ui/pbt-schedules">PBT Schedules</a>
+            <a{% if path.startswith('/ui/components') %} class="active"{% endif %} href="/ui/components">Pay Components</a>
+        </div>
+    </details>
+
+    <details class="admin-nav-group" data-nav-section="automation"{% if path.startswith('/ui/payroll-agent') or path.startswith('/ui/ai-assistant') or path.startswith('/ui/agent-monitor') %} data-active="true" open{% endif %}>
+        <summary><span><span aria-hidden="true">✦</span> Automation</span></summary>
+        <div class="admin-nav-group-links">
+            <a{% if path.startswith('/ui/payroll-agent') %} class="active"{% endif %} href="/ui/payroll-agent">Payroll Agent</a>
+            <a{% if path.startswith('/ui/ai-assistant') %} class="active"{% endif %} href="/ui/ai-assistant">AI Assistant</a>
+            <a{% if path.startswith('/ui/agent-monitor') %} class="active"{% endif %} href="/ui/agent-monitor">Agent Monitor</a>
+        </div>
+    </details>
+
+    <div class="admin-nav-utility">
+        <a class="admin-nav-link{% if path.startswith('/ui/notifications') %} active{% endif %}" href="/ui/notifications">
+            <span aria-hidden="true">◉</span><span>Notifications</span>
+        </a>
+        <a class="admin-nav-link{% if path.startswith('/ui/help') %} active{% endif %}" href="/ui/help">
+            <span aria-hidden="true">?</span><span>Help</span>
+        </a>
+    </div>
+
+    <form action="/logout" method="post" class="admin-nav-logout">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+        <button type="submit" class="btn btn-outline-light btn-sm w-100">Sign out</button>
+    </form>
+</nav>
+{% endmacro %}

@@ -146,6 +146,8 @@ def save_worker_super_details(
         )
         db.commit()
 
+    from app.payroll_agent_service import resume_worker_payroll_runs
+    resume_worker_payroll_runs(worker_id)
     return RedirectResponse(
         f"/ui/workers/{worker_id}/super",
         status_code=303,
@@ -213,6 +215,8 @@ def update_worker_super_details(
         profile.effective_to = effective_to
         db.commit()
 
+    from app.payroll_agent_service import resume_worker_payroll_runs
+    resume_worker_payroll_runs(worker_id)
     return RedirectResponse(
         f"/ui/workers/{worker_id}/super",
         status_code=303,

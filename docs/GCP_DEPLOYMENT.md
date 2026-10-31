@@ -31,6 +31,21 @@ The runtime reads these Secret Manager secrets:
 
 Never place secret values in GitHub variables, workflow YAML, container images, or committed `.env` files.
 
+## Optional Vertex AI payroll planning
+
+The payroll agent uses an approved deterministic plan by default. To enable its
+bounded Vertex AI planning rationale, grant the Cloud Run runtime service
+account permission to invoke the selected Vertex model and configure:
+
+- `VERTEX_AI_PLANNING_ENABLED=true`
+- `VERTEX_AI_PLANNING_MODEL` with an available Vertex model ID
+- `GOOGLE_CLOUD_LOCATION` for the selected model region
+
+No additional API key is required in Cloud Run. The application uses the
+attached runtime service account through Application Default Credentials. The
+model receives assignment and period identifiers only; it cannot change the
+approved workflow steps or execute financial actions.
+
 After authenticating the Google Cloud CLI, synchronise the local application secrets without printing them:
 
 ```bash

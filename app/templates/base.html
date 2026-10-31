@@ -13,6 +13,8 @@
 
 <body>
 
+    {% from "_admin_navigation.html" import admin_navigation with context %}
+
     {# ?embed=1 renders the page without navigation, for use inside modal iframes #}
     {% set embedded = request.query_params.get("embed") == "1" %}
 
@@ -54,68 +56,15 @@
             </button>
         </div>
 
-        <div class="offcanvas-body">
-            <nav class="nav flex-column gap-3">
-                <a href="/dashboard">Dashboard</a>
-                <a href="/ui/organisations">Organisations</a>
-                <a href="/ui/workers">Workers</a>
-                <a href="/ui/agreements">Work Patterns</a>
-                <a href="/ui/engagements">Assignments</a>
-                <a href="/ui/pbt-schedules">PBT Schedules</a>
-                <a href="/ui/components">Components</a>
-                <a href="/ui/timesheets">Timesheets</a>
-                <a href="/ui/timesheet-runs">Timesheet Run</a>
-                <a href="/ui/invoices">Invoices</a>
-                <a href="/ui/pay-runs">Pay Runs</a>
-                <a href="/ui/payslips">Payslips</a>
-                <a href="/ui/ai-assistant">AI Assistant</a>
-                <a href="/ui/agent-monitor">Agent Monitor</a>
-                <a href="/ui/notifications">Notifications</a>
-                <a href="/ui/help">Help</a>
-                <form action="/logout" method="post" class="mt-3">
-                    <input type="hidden"
-                        name="csrf_token"
-                        value="{{ csrf_token(request) }}">
-                    <button type="submit" class="btn btn-outline-danger w-100">
-                        Logout
-                    </button>
-                </form>
-            </nav>
-        </div>
+        <div class="offcanvas-body">{{ admin_navigation("mobile") }}</div>
     </div>
 
     <!-- Desktop layout -->
     <div class="app-layout">
 
         <aside class="sidebar p-4 d-none d-lg-block">
-            <h4 class="mb-5">🌿 Green Orbit</h4>
-
-            <nav class="nav flex-column gap-3">
-                <a href="/dashboard">Dashboard</a>
-                <a href="/ui/organisations">Organisations</a>
-                <a href="/ui/workers">Workers</a>
-                <a href="/ui/agreements">Work Patterns</a>
-                <a href="/ui/engagements">Assignments</a>
-                <a href="/ui/pbt-schedules">PBT Schedules</a>
-                <a href="/ui/components">Components</a>
-                <a href="/ui/timesheets">Timesheets</a>
-                <a href="/ui/timesheet-runs">Timesheet Run</a>
-                <a href="/ui/invoices">Invoices</a>
-                <a href="/ui/pay-runs">Pay Runs</a>
-                <a href="/ui/payslips">Payslips</a>
-                <a href="/ui/ai-assistant">AI Assistant</a>
-                <a href="/ui/agent-monitor">Agent Monitor</a>
-                <a href="/ui/notifications">Notifications</a>
-                <a href="/ui/help">Help</a>
-                <form action="/logout" method="post" class="mt-3">
-                    <input type="hidden"
-                        name="csrf_token"
-                        value="{{ csrf_token(request) }}">
-                    <button type="submit" class="btn btn-outline-danger w-100">
-                        Logout
-                    </button>
-                </form>
-            </nav>
+            <a class="sidebar-brand" href="/dashboard">🌿 Green Orbit</a>
+            {{ admin_navigation("desktop") }}
         </aside>
 
         <main class="main-content">
@@ -167,6 +116,19 @@
 
     <!-- Bootstrap JavaScript for mobile menu -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    {% if not embedded %}
+    <script>
+    document.querySelectorAll(".admin-nav-group").forEach(group => {
+        const storageKey = `green-orbit-nav-${group.dataset.navSection}`;
+        if (!group.dataset.active && localStorage.getItem(storageKey) === "open") {
+            group.open = true;
+        }
+        group.addEventListener("toggle", () => {
+            localStorage.setItem(storageKey, group.open ? "open" : "closed");
+        });
+    });
+    </script>
+    {% endif %}
 
     {% if not embedded and request.session.get("user_id") and request.url.path != "/ui/ai-assistant" %}
     <script>
@@ -181,7 +143,7 @@
                 sessionStorage.getItem("green-orbit-agent-alert") || "null"
             );
             sessionStorage.removeItem("green-orbit-agent-alert");
-            if (!pendingAgentAlert || !["missing_tfn_declaration", "document_ready_for_review"].includes(pendingAgentAlert.code)) {
+            if (!pendingAgentAlert || !["missing_tfn_declaration", "document_ready_for_review", "payroll_agent_hours_review", "payroll_agent_blocked", "payroll_agent_failed", "payroll_agent_handoff"].includes(pendingAgentAlert.code)) {
                 pendingAgentAlert = null;
             }
         } catch (_error) {

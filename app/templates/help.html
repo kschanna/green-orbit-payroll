@@ -1,86 +1,36 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="mb-4">
-  <h2>Green Orbit Help</h2>
-  <p class="text-muted">End-user documentation</p>
-  <p class="small text-muted">Last updated: 15 October 2026</p>
-</div>
-<div class="card mb-4"><div class="card-body">
-  <h5>Contents</h5>
-  <div class="d-flex flex-wrap gap-3">
-    <a href="#getting-started">Getting Started</a>
-    <a href="#organisations">Organisations</a>
-    <a href="#employees">Workers</a>
-    <a href="#agreements">Work Patterns</a>
-    <a href="#engagements">Assignments</a>
-    <a href="#timesheets">Timesheets</a>
-    <a href="#payroll">Pay Runs</a>
-    <a href="#payslips">Payslips</a>
-    <a href="#invoices">Invoices</a>
-    <a href="#troubleshooting">Troubleshooting</a>
-  </div>
-</div></div>
-<section id="getting-started" class="card mb-3">
-  <div class="card-body">
-    <h4>Getting Started</h4>
-    <p class="mb-0">Sign in using your Green Orbit account. Use the navigation menu to access the main application screens. On mobile devices, open the navigation menu using the menu button.</p>
-  </div>
-</section>
-<section id="organisations" class="card mb-3">
-  <div class="card-body">
-    <h4>Organisations</h4>
-    <p class="mb-0">Use Organisations to manage business and customer records. Select New Organisation to create a record. Enter the organisation name and its 11-digit Australian Business Number (ABN). Existing organisations can be edited from the organisation list.</p>
-  </div>
-</section>
-<section id="employees" class="card mb-3">
-  <div class="card-body">
-    <h4>Workers</h4>
-    <p class="mb-0">Use Workers to maintain people, then use Engagements to link each Worker to an Organisation. Review Work Patterns and payroll details before processing a pay run.</p>
-  </div>
-</section>
-<section id="agreements" class="card mb-3">
-  <div class="card-body">
-    <h4>Work Patterns</h4>
-    <p class="mb-0">Work Patterns define an employee's employment type, pay basis, hourly rate, ordinary weekly hours, pay frequency and effective dates. Create agreements from the employee's details page. Review the agreement before processing payroll.</p>
-  </div>
-</section>
-<section id="engagements" class="card mb-3">
-  <div class="card-body">
-    <h4>Assignments</h4>
-    <p class="mb-0">Work Engagements connect an employee to a customer organisation and define the hourly billing rate. Create or edit assignments from the Work Engagements screen. An appropriate assignment is required when generating an invoice from a timesheet.</p>
-  </div>
-</section>
-<section id="timesheets" class="card mb-3">
-  <div class="card-body">
-    <h4>Timesheets</h4>
-    <p class="mb-0">Use Timesheets to record hours worked. Green Orbit supports daily and weekly timesheets. Review hours and dates before approving a timesheet. Approved timesheets can be used for payroll and invoicing, subject to system validation.</p>
-  </div>
-</section>
-<section id="payroll" class="card mb-3">
-  <div class="card-body">
-    <h4>Pay Runs</h4>
-    <p class="mb-0">Use Pay Runs to prepare employee payroll. Create a pay run, process it, review the results and approve it before completion. Check employee agreements, approved timesheets and calculated amounts carefully. Do not treat a draft or unapproved pay run as a completed payroll.</p>
-  </div>
-</section>
-<section id="payslips" class="card mb-3">
-  <div class="card-body">
-    <h4>Payslips</h4>
-    <p class="mb-0">Use Payslips to view payroll results and access available payslip PDFs. Verify the pay period, employee, earnings and deductions before distributing a payslip.</p>
-  </div>
-</section>
-<section id="invoices" class="card mb-3">
-  <div class="card-body">
-    <h4>Invoices</h4>
-    <p class="mb-0">Invoices are generated from approved timesheets using the selected Work Engagement and its customer billing rate. Open Timesheets, select Generate Invoice for an eligible approved timesheet and choose the relevant engagement. The Invoices screen lists generated invoices and provides available invoice actions and PDF access.</p>
-  </div>
-</section>
-<section id="troubleshooting" class="card mb-3">
-  <div class="card-body">
-    <h4>Troubleshooting</h4>
-    <p class="mb-0">If a Assignment does not appear during invoice generation, confirm that an engagement exists for the timesheet employee. If an action is rejected, read the displayed error and check required fields, approval status and record dates. Contact your system administrator if the problem persists.</p>
-  </div>
-</section>
-<p class="text-muted small mt-4">
-Green Orbit — End-user guide. Review this documentation with each production release.
-</p>
+<div class="mb-4"><h2>Green Orbit Help</h2><p class="text-muted mb-1">Administrator and payroll user guide</p><p class="small text-muted">Last updated: 31 October 2026</p></div>
+<div class="card mb-4"><div class="card-body"><h5>Contents</h5><div class="d-flex flex-wrap gap-3">
+  <a href="#getting-started">Getting started</a><a href="#people">People</a><a href="#time-billing">Time &amp; billing</a><a href="#payroll">Payroll</a><a href="#documents">Documents</a><a href="#payments">Payments</a><a href="#portal">Worker portal</a><a href="#automation">Automation</a><a href="#troubleshooting">Troubleshooting</a>
+</div></div></div>
+<section id="getting-started" class="card mb-3"><div class="card-body"><h4>Getting started</h4><p>Sign in with your Green Orbit account. The main menu is grouped into <strong>People</strong>, <strong>Time &amp; Billing</strong>, <strong>Payroll</strong>, and <strong>Automation</strong>. Select a heading to expand it. The current section opens automatically, and your other expanded sections are remembered.</p><p class="mb-0">On a phone or tablet, use the menu button to open the same navigation. Notifications and Help remain available as standalone items.</p></div></section>
+<section id="people" class="card mb-3"><div class="card-body"><h4>People</h4>
+  <h5 class="h6 mt-3">Organisations</h5><p>Organisations hold employing-business and customer records. Create or edit an organisation with its name and 11-digit ABN. Configure an ABA profile before exporting bank payment files.</p>
+  <h5 class="h6">Workers</h5><p>Workers contain identity, contact, tax, payment, superannuation, leave, document, and portal-access information. Open a worker to manage those records. Deactivate a worker when appropriate instead of deleting records needed for payroll history.</p>
+  <h5 class="h6">Assignments and work patterns</h5><p class="mb-0">An assignment links a worker to a customer and defines billing arrangements. A work pattern records employment and pay terms, ordinary hours, frequency, rates, and effective dates. Check that effective dates cover the intended work and pay period.</p>
+</div></section>
+<section id="time-billing" class="card mb-3"><div class="card-body"><h4>Time &amp; billing</h4>
+  <h5 class="h6 mt-3">Timesheets</h5><p>Create daily or weekly timesheets against the correct assignment and pay component. Review dates, hours, and status before approval. Approved time can feed invoicing and payroll.</p>
+  <h5 class="h6">Timesheet Runs</h5><p>Timesheet Runs generate and manage scheduled timesheets for a period. Filter by customer, worker, or status; review generated entries; then save and approve them when correct.</p>
+  <h5 class="h6">Invoices</h5><p class="mb-0">Generate invoices only from eligible approved time. Confirm the customer, assignment, billing rates, source timesheets, totals, and status before progressing an invoice. PDF previews remain available from the invoice list.</p>
+</div></section>
+<section id="payroll" class="card mb-3"><div class="card-body"><h4>Payroll</h4>
+  <h5 class="h6 mt-3">Payroll readiness</h5><p>Run readiness checks before payroll. Resolve critical worker-setup and timesheet findings using the provided links; review warnings before deciding whether to continue.</p>
+  <h5 class="h6">Pay Runs and payslips</h5><p>Create a Pay Run for the correct organisation and period, process it, review worker calculations, then approve and complete it in order. Draft and unapproved runs are not completed payroll. Payslips show the resulting earnings, deductions, super, and net pay.</p>
+  <h5 class="h6">PBT Schedules</h5><p>PBT (Pay, Bill &amp; Time) Schedules define customer cycles and generate scheduled periods. Check effective dates, frequency, generated-through date, and active status.</p>
+  <h5 class="h6">Pay Components</h5><p class="mb-0">Pay Components classify time and payroll amounts such as ordinary hours or allowances. Configure definitions centrally and assign allowed components to assignments. Verify effective settings before use.</p>
+</div></section>
+<section id="documents" class="card mb-3"><div class="card-body"><h4>Documents, forms, and notifications</h4><p>Open a worker’s Documents page to upload PDFs, preview them, and track processing status. Documents marked <strong>Ready for review</strong> require a human decision. Compare extracted values with the original, correct permitted values, and approve or reject the review.</p><p>Secure TFN and super forms submitted through the worker portal also require review before values are applied. Never request or copy a TFN through chat, ordinary messages, or Help enquiries.</p><p class="mb-0">Notifications report document, form, and compliance activity. Open a notification to follow its action link, or mark all as read after review.</p></div></section>
+<section id="payments" class="card mb-3"><div class="card-body"><h4>Payments and ABA files</h4><p class="mb-0">Prepare a payment batch from an eligible Pay Run, verify every recipient, bank destination, reference, and amount, then validate and download the ABA file. Manual direct-entry lines require a reason and are not payroll. Export locks the batch; retain and verify its checksum under your payment-control process.</p></div></section>
+<section id="portal" class="card mb-3"><div class="card-body"><h4>Worker portal</h4><p>Enable portal access from the worker record. Workers can view payslips, submit and review timesheets, check leave balances and request leave, see assignments, upload documents, complete secure payroll-setup forms, read notifications, and update permitted profile details.</p><p class="mb-0">Payroll setup items appear on the worker’s dashboard until complete or under review. Direct workers to the secure action shown there. Bank, tax, and super changes remain subject to verification.</p></div></section>
+<section id="automation" class="card mb-3"><div class="card-body"><h4>Automation</h4>
+  <h5 class="h6 mt-3">Payroll Agent</h5><p>The supervised Payroll Agent creates a draft scheduled timesheet, pauses for human review of hours, checks payroll requirements, and can prepare reconciled draft invoice and payroll records. Resolve linked blockers and use Retry when ready. It does not issue invoices, finalise payroll, or release payments.</p>
+  <h5 class="h6">AI Assistant</h5><p>The AI Assistant can explain selected application data through approved read-only tools. Verify answers against linked source records. It cannot replace payroll approval or reveal sensitive tax and bank values.</p>
+  <h5 class="h6">Agent Monitor</h5><p class="mb-0">Agent Monitor provides runtime diagnostics for automation tasks. Use it to investigate status and failures; use the underlying business records as authoritative.</p>
+</div></section>
+<section id="troubleshooting" class="card mb-3"><div class="card-body"><h4>Troubleshooting</h4><ul class="mb-0">
+  <li>If an assignment is unavailable, confirm the correct customer and effective dates.</li><li>If payroll or invoicing is blocked, check approval status, dates, rates, worker setup, and readiness findings.</li><li>If a document fails, confirm it is a readable PDF and upload a clean replacement.</li><li>If a worker cannot sign in, check portal access and account status.</li><li>Read the displayed error before retrying and contact your administrator if it persists.</li>
+</ul></div></section>
+<p class="text-muted small mt-4">Green Orbit — End-user guide. Review this documentation with each production release.</p>
 {% endblock %}

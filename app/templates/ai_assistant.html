@@ -140,7 +140,7 @@
         if (
             event.origin === window.location.origin &&
             event.data?.type === "green-orbit-agent-alert" &&
-            ["missing_tfn_declaration", "document_ready_for_review"].includes(event.data.alert?.code) &&
+            ["missing_tfn_declaration", "document_ready_for_review", "payroll_agent_hours_review", "payroll_agent_blocked", "payroll_agent_failed", "payroll_agent_handoff"].includes(event.data.alert?.code) &&
             typeof event.data.alert.content === "string"
         ) {
             const source = event.data.alert.source;

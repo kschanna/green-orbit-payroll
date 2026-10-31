@@ -18,6 +18,7 @@ from app.worker_portal_router import router as worker_portal_router
 from app.payroll_readiness_router import router as payroll_readiness_router
 from app.agent_monitor_router import router as agent_monitor_router
 from app.worker_forms_router import router as worker_forms_router
+from app.payroll_agent_router import router as payroll_agent_router
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -100,6 +101,7 @@ app.router.include_router(worker_portal_router)
 app.router.include_router(payroll_readiness_router)
 app.router.include_router(agent_monitor_router)
 app.router.include_router(worker_forms_router)
+app.router.include_router(payroll_agent_router)
 
 session_secret = os.environ.get("SESSION_SECRET")
 
@@ -4832,7 +4834,9 @@ def preview_invoice_page(request: Request, invoice_id: int):
 # supplier invoice/payment obligation workflow.
 # ============================================================
 
-def _prepare_invoice_contractor_payroll(db, invoice_id):
+def _prepare_invoice_contractor_payroll(
+    db, invoice_id, *, allow_draft_invoice: bool = False
+):
 
     from datetime import timedelta
     from decimal import Decimal
@@ -4852,10 +4856,15 @@ def _prepare_invoice_contractor_payroll(db, invoice_id):
     if invoice is None:
         raise HTTPException(404, "Invoice not found")
 
-    if invoice.status not in ("issued", "paid"):
+    allowed_invoice_statuses = (
+        ("draft", "issued", "paid")
+        if allow_draft_invoice
+        else ("issued", "paid")
+    )
+    if invoice.status not in allowed_invoice_statuses:
         raise HTTPException(
             409,
-            "Customer invoice must be issued before payroll generation",
+            "Customer invoice must be issued before manual payroll generation",
         )
 
     # Historical field name: Invoice.engagement_id
@@ -4873,10 +4882,12 @@ def _prepare_invoice_contractor_payroll(db, invoice_id):
 
     engagement = assignment.engagement
 
-    if engagement.engagement_type != "payg_contractor":
+    if engagement.engagement_type not in {
+        "payg_contractor", "payg_employee", "employee"
+    }:
         raise HTTPException(
             409,
-            "Invoice-linked payroll is available only for PAYG Contractors",
+            "Timesheet-linked payroll is available only for supported PAYG engagements",
         )
 
     if engagement.status != "active" or not engagement.worker.active:
@@ -5354,6 +5365,7 @@ def generate_invoice_contractor_payroll(
             payroll = _prepare_invoice_contractor_payroll(
                 db,
                 invoice_id,
+                allow_draft_invoice=request is None,
             )
 
             if payroll["period_start"].isoformat() != expected_period_start:
