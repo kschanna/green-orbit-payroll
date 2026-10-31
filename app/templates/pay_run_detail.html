@@ -100,7 +100,7 @@
                 Configure ABA Profile
             </a>
         {% elif pay_run.status in ["approved", "completed"] and totals.employees_paid > 0 %}
-            <form method="post"
+            <form method="post" id="preparePaymentsForm"
                   action="/ui/pay-runs/{{ pay_run.id }}/payments/prepare">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
                 <button class="btn btn-primary">Prepare Payments</button>
@@ -332,10 +332,129 @@
 
 </div>
 
+<div class="modal fade" id="payRunErrorModal" tabindex="-1"
+     aria-labelledby="payRunErrorModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="payRunErrorModalLabel">
+                    Unable to Complete Action
+                </h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex gap-3 align-items-start">
+                    <span class="text-danger fs-3" aria-hidden="true">!</span>
+                    <div>
+                        <p id="payRunErrorMessage" class="mb-2"></p>
+                        <p id="payRunErrorExplanation" class="mb-2 d-none"></p>
+                        <div id="payRunErrorStepsContainer" class="d-none">
+                            <div class="fw-semibold mb-1">How to fix it</div>
+                            <ol id="payRunErrorSteps" class="mb-2 ps-3"></ol>
+                        </div>
+                        <p class="small text-muted mb-0">
+                            No changes were saved. Correct the issue and try again.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary"
+                        data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 
 <!-- PAYROLL ACTION JAVASCRIPT -->
 
 <script>
+function showPayRunError(message, title = "Unable to Complete Action") {
+    document.getElementById("payRunErrorModalLabel").textContent = title;
+    const messageElement = document.getElementById("payRunErrorMessage");
+    const explanationElement = document.getElementById("payRunErrorExplanation");
+    const stepsContainer = document.getElementById("payRunErrorStepsContainer");
+    const stepsElement = document.getElementById("payRunErrorSteps");
+    const structured = message && typeof message === "object";
+    messageElement.textContent = structured
+        ? (message.message || "The action could not be completed.")
+        : String(message);
+    explanationElement.textContent = structured ? (message.explanation || "") : "";
+    explanationElement.classList.toggle("d-none", !explanationElement.textContent);
+    stepsElement.replaceChildren();
+    const steps = structured && Array.isArray(message.steps) ? message.steps : [];
+    steps.forEach(step => {
+        const item = document.createElement("li");
+        item.textContent = step;
+        stepsElement.append(item);
+    });
+    stepsContainer.classList.toggle("d-none", steps.length === 0);
+    bootstrap.Modal.getOrCreateInstance(
+        document.getElementById("payRunErrorModal")
+    ).show();
+}
+
+const preparePaymentsForm = document.getElementById("preparePaymentsForm");
+if (preparePaymentsForm) {
+    preparePaymentsForm.addEventListener("submit", async event => {
+        event.preventDefault();
+        const button = event.submitter || preparePaymentsForm.querySelector("button");
+        const originalHtml = button.innerHTML;
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.innerHTML = '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Preparing…';
+
+        try {
+            const response = await fetch(preparePaymentsForm.action, {
+                method: "POST",
+                body: new FormData(preparePaymentsForm),
+                headers: {
+                    "Accept": "application/json",
+                    "X-CSRF-Token": preparePaymentsForm.elements.csrf_token.value
+                }
+            });
+            if (response.redirected) {
+                window.location.href = response.url;
+                return;
+            }
+            const responseText = await response.text();
+            let result = {};
+            try {
+                result = responseText ? JSON.parse(responseText) : {};
+            } catch (_error) {}
+            if (!response.ok) {
+                let detail = result.detail;
+                if (Array.isArray(detail)) {
+                    detail = detail.map(item => item.msg || String(item)).join("; ");
+                } else if (
+                    detail && typeof detail !== "string"
+                    && !(detail.message && Array.isArray(detail.steps))
+                ) {
+                    detail = JSON.stringify(detail);
+                }
+                showPayRunError(
+                    detail || responseText.trim() || "Payment preparation failed.",
+                    "Unable to Prepare Payments"
+                );
+                return;
+            }
+            window.location.reload();
+        } catch (error) {
+            showPayRunError(
+                "Unable to connect to the payroll server.",
+                "Connection Error"
+            );
+            console.error(error);
+        } finally {
+            button.disabled = false;
+            button.removeAttribute("aria-busy");
+            button.innerHTML = originalHtml;
+        }
+    });
+}
+
 async function runPayrollAction(action) {
 
     const payRunId = {{ pay_run.id }};
@@ -362,14 +481,17 @@ async function runPayrollAction(action) {
         const result = await response.json();
 
         if (!response.ok) {
-            alert(result.detail || "Payroll action failed.");
+            showPayRunError(result.detail || "Payroll action failed.");
             return;
         }
 
         window.location.reload();
 
     } catch (error) {
-        alert("Unable to connect to the payroll server.");
+        showPayRunError(
+            "Unable to connect to the payroll server.",
+            "Connection Error"
+        );
         console.error(error);
     }
 }

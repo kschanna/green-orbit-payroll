@@ -23,13 +23,13 @@
                     <th>Effective To</th>
                     <th>Generated Through</th>
                     <th>Status</th>
-                    <th>View</th>
                 </tr>
             </thead>
             <tbody>
                 {% for schedule in schedules %}
                 <tr>
-                    <td>#{{ schedule.id }}</td>
+                    <td><a href="/ui/pbt-schedules/{{ schedule.id }}"
+                           class="text-decoration-none fw-semibold">#{{ schedule.id }}</a></td>
                     <td class="fw-semibold">{{ schedule.name }}</td>
                     <td>{{ schedule.customer_name }}</td>
                     <td>{{ schedule.effective_from | date_au }}</td>
@@ -40,14 +40,10 @@
                             {{ schedule.status | title }}
                         </span>
                     </td>
-                    <td>
-                        <a href="/ui/pbt-schedules/{{ schedule.id }}"
-                           class="btn btn-sm btn-outline-secondary">View</a>
-                    </td>
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="8" class="text-center text-muted">
+                    <td colspan="7" class="text-center text-muted">
                         No PBT schedules configured.
                     </td>
                 </tr>

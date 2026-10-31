@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="interaction-lab">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div><div class="text-uppercase small fw-bold text-success mb-2">Experiment</div><h1 class="h2 mb-2">Buttons &amp; Progress Lab</h1><p class="text-muted mb-0">Try five tactile action styles with five different submission-feedback patterns. These demos simulate processing and do not save data.</p></div>
+    <button id="resetExperiments" class="btn btn-outline-secondary" type="button">Reset all demos</button>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-xl-6"><section class="card interaction-demo h-100 p-4" data-demo="spinner">
+      <div class="d-flex gap-3 align-items-start mb-4"><span class="interaction-demo-number">1</span><div><h2 class="h5 mb-1">Raised action + inline spinner</h2><p class="text-muted small mb-0">Strong depth, a physical press, then immediate status inside the button.</p></div></div>
+      <button class="tactile-btn tactile-raised demo-trigger" type="button"><span class="button-label">Save changes</span><span class="spinner-border spinner-border-sm ms-2 d-none" aria-hidden="true"></span></button>
+      <div class="demo-feedback mt-4" hidden role="status"><div class="saving-pulse"><span>Saving your changes…</span></div></div>
+    </section></div>
+
+    <div class="col-xl-6"><section class="card interaction-demo h-100 p-4" data-demo="bar">
+      <div class="d-flex gap-3 align-items-start mb-4"><span class="interaction-demo-number">2</span><div><h2 class="h5 mb-1">Gradient action + progress bar</h2><p class="text-muted small mb-0">Best when progress is measurable, such as uploading or generating a file.</p></div></div>
+      <button class="tactile-btn tactile-gradient demo-trigger" type="button">Generate payroll</button>
+      <div class="demo-feedback mt-4" hidden role="status"><div class="d-flex justify-content-between small mb-2"><span class="feedback-label">Preparing records…</span><strong class="progress-value">0%</strong></div><div class="progress progress-thick"><div class="progress-bar" style="width:0%"></div></div></div>
+    </section></div>
+
+    <div class="col-xl-6"><section class="card interaction-demo h-100 p-4" data-demo="steps">
+      <div class="d-flex gap-3 align-items-start mb-4"><span class="interaction-demo-number">3</span><div><h2 class="h5 mb-1">Outlined action + processing steps</h2><p class="text-muted small mb-0">Shows the user which stage a multi-step business process has reached.</p></div></div>
+      <button class="tactile-btn tactile-outline demo-trigger" type="button">Validate &amp; submit</button>
+      <div class="demo-feedback mt-4" hidden role="status"><div class="feedback-label small fw-semibold mb-2">Validating details…</div><div class="step-progress" aria-label="Three processing steps"><span></span><span></span><span></span></div></div>
+    </section></div>
+
+    <div class="col-xl-6"><section class="card interaction-demo h-100 p-4" data-demo="ring">
+      <div class="d-flex gap-3 align-items-start mb-4"><span class="interaction-demo-number">4</span><div><h2 class="h5 mb-1">Soft pill + progress ring</h2><p class="text-muted small mb-0">Friendly and compact for secondary actions that take a few seconds.</p></div></div>
+      <button class="tactile-btn tactile-soft demo-trigger" type="button">Upload document</button>
+      <div class="demo-feedback mt-4" hidden role="status"><div class="d-flex align-items-center gap-3"><div class="progress-ring" data-progress="0" style="--ring-progress:0%"></div><div><div class="feedback-label fw-semibold">Uploading securely…</div><div class="small text-muted">Please keep this page open.</div></div></div></div>
+    </section></div>
+
+    <div class="col-12"><section class="card interaction-demo p-4" data-demo="stages">
+      <div class="d-flex gap-3 align-items-start mb-4"><span class="interaction-demo-number">5</span><div><h2 class="h5 mb-1">Dark action + full status panel</h2><p class="text-muted small mb-0">High-confidence treatment for consequential workflows with a clear completion state.</p></div></div>
+      <div class="d-flex flex-wrap align-items-start gap-4"><button class="tactile-btn tactile-dark demo-trigger" type="button">Approve pay run</button><div class="demo-feedback flex-grow-1 m-0" hidden role="status"><div class="feedback-label fw-semibold">Checking pay run controls…</div><div class="small text-muted mt-1">The action remains locked while checks are running.</div></div></div>
+    </section></div>
+  </div>
+
+  <div class="alert alert-light border mt-4 mb-0"><strong>What to compare:</strong> press depth, label clarity, disabled state, how quickly feedback appears, and whether the progress pattern matches the expected wait.</div>
+</div>
+
+<script>
+(() => {
+  const timers = new Map();
+  let generation = 0;
+  const sleep = ms => new Promise(resolve => {
+    const id = setTimeout(resolve, ms);
+    timers.set(id, resolve);
+  });
+  function clearTimers() {
+    timers.forEach((resolve, id) => { clearTimeout(id); resolve(); });
+    timers.clear();
+  }
+  function resetDemo(demo) {
+    const button = demo.querySelector('.demo-trigger');
+    const feedback = demo.querySelector('.demo-feedback');
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+    feedback.hidden = true;
+    feedback.classList.remove('completion-banner');
+    const spinner = button.querySelector('.spinner-border');
+    if (spinner) spinner.classList.add('d-none');
+    const label = button.querySelector('.button-label');
+    if (label) label.textContent = 'Save changes';
+    const bar = demo.querySelector('.progress-bar');
+    if (bar) bar.style.width = '0%';
+    const value = demo.querySelector('.progress-value');
+    if (value) value.textContent = '0%';
+    demo.querySelectorAll('.step-progress span').forEach(step => step.classList.remove('active'));
+    const ring = demo.querySelector('.progress-ring');
+    if (ring) { ring.dataset.progress = '0'; ring.style.setProperty('--ring-progress', '0%'); }
+  }
+  async function runDemo(demo) {
+    const runGeneration = generation;
+    const button = demo.querySelector('.demo-trigger');
+    const feedback = demo.querySelector('.demo-feedback');
+    if (button.disabled) return;
+    resetDemo(demo);
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    feedback.hidden = false;
+    const kind = demo.dataset.demo;
+    if (kind === 'spinner') {
+      button.querySelector('.button-label').textContent = 'Saving';
+      button.querySelector('.spinner-border').classList.remove('d-none');
+      await sleep(1800);
+      if (runGeneration !== generation) return;
+    } else if (kind === 'bar' || kind === 'ring') {
+      for (const progress of [12, 28, 49, 67, 84, 100]) {
+        if (kind === 'bar') {
+          demo.querySelector('.progress-bar').style.width = `${progress}%`;
+          demo.querySelector('.progress-value').textContent = `${progress}%`;
+        } else {
+          const ring = demo.querySelector('.progress-ring');
+          ring.dataset.progress = progress;
+          ring.style.setProperty('--ring-progress', `${progress}%`);
+        }
+        await sleep(260);
+        if (runGeneration !== generation) return;
+      }
+    } else if (kind === 'steps') {
+      const labels = ['Validating details…', 'Applying changes…', 'Confirming result…'];
+      const steps = demo.querySelectorAll('.step-progress span');
+      for (let index = 0; index < steps.length; index += 1) {
+        steps[index].classList.add('active');
+        demo.querySelector('.feedback-label').textContent = labels[index];
+        await sleep(600);
+        if (runGeneration !== generation) return;
+      }
+    } else {
+      const labels = ['Checking pay run controls…', 'Recording approval…', 'Preparing confirmation…'];
+      for (const label of labels) {
+        demo.querySelector('.feedback-label').textContent = label;
+        await sleep(600);
+        if (runGeneration !== generation) return;
+      }
+    }
+    feedback.classList.add('completion-banner');
+    const feedbackLabel = demo.querySelector('.feedback-label') || feedback.querySelector('.saving-pulse span');
+    if (feedbackLabel) feedbackLabel.textContent = 'Complete — your action was successful.';
+    const spinner = button.querySelector('.spinner-border');
+    if (spinner) spinner.classList.add('d-none');
+    const buttonLabel = button.querySelector('.button-label');
+    if (buttonLabel) buttonLabel.textContent = 'Saved';
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+  }
+  document.querySelectorAll('.interaction-demo').forEach(demo => {
+    demo.querySelector('.demo-trigger').addEventListener('click', () => runDemo(demo));
+  });
+  document.getElementById('resetExperiments').addEventListener('click', () => {
+    generation += 1;
+    clearTimers();
+    document.querySelectorAll('.interaction-demo').forEach(resetDemo);
+  });
+})();
+</script>
+{% endblock %}

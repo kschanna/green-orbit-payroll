@@ -154,18 +154,35 @@
                     <td>Gross Pay</td>
                     <td class="text-end">${{ "{:,.2f}".format(payroll.gross) }}</td>
                 </tr>
+                {% if payroll.is_company_contractor %}
+                <tr>
+                    <td>Assignment Deductions</td>
+                    <td class="text-end">-${{ "{:,.2f}".format(payroll.deductions_total) }}</td>
+                </tr>
+                <tr>
+                    <td>Net Before GST</td>
+                    <td class="text-end">${{ "{:,.2f}".format(payroll.net_before_gst) }}</td>
+                </tr>
+                <tr>
+                    <td>GST Paid (10%)</td>
+                    <td class="text-end">${{ "{:,.2f}".format(payroll.gst_paid) }}</td>
+                </tr>
+                {% else %}
                 <tr>
                     <td>PAYG Withholding</td>
                     <td class="text-end">${{ "{:,.2f}".format(payroll.payg) }}</td>
                 </tr>
+                {% endif %}
                 <tr class="table-light fw-bold">
-                    <td>Net Pay</td>
+                    <td>{{ "Payment Amount" if payroll.is_company_contractor else "Net Pay" }}</td>
                     <td class="text-end">${{ "{:,.2f}".format(payroll.net) }}</td>
                 </tr>
+                {% if not payroll.is_company_contractor %}
                 <tr>
                     <td>Employer Superannuation</td>
                     <td class="text-end">${{ "{:,.2f}".format(payroll.total_super) }}</td>
                 </tr>
+                {% endif %}
             </tbody>
         </table>
 

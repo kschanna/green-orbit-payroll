@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div>
+        <h2>ABA Files</h2>
+        <p class="text-muted mb-0">Immutable Australian Direct Entry export history</p>
+    </div>
+    <span class="badge bg-success fs-6">{{ pagination.total }} Files</span>
+</div>
+
+<div class="card p-4">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>File ID</th>
+                    <th>Filename</th>
+                    <th>Payment Batch</th>
+                    <th>Organisation</th>
+                    <th>Created</th>
+                    <th class="text-end">Size</th>
+                    <th>Checksum</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for file in files %}
+                <tr>
+                    <td>
+                        <a class="fw-semibold text-decoration-none"
+                           href="/ui/aba-files/{{ file.id }}/download">#{{ file.id }}</a>
+                    </td>
+                    <td>{{ file.filename }}</td>
+                    <td>
+                        <a href="/ui/payment-batches/{{ file.batch_id }}">#{{ file.batch_id }}</a>
+                    </td>
+                    <td>{{ file.organisation_name }}</td>
+                    <td>{{ file.created_at.strftime("%d/%m/%Y %H:%M") }}</td>
+                    <td class="text-end">{{ file.byte_size }} bytes</td>
+                    <td>
+                        <span class="d-inline-block text-truncate font-monospace"
+                              style="max-width: 12rem" title="{{ file.checksum }}">
+                            {{ file.checksum }}
+                        </span>
+                    </td>
+                    <td class="text-end">
+                        <a href="/ui/aba-files/{{ file.id }}/download"
+                           class="btn btn-sm btn-outline-success">Download</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" class="text-center text-muted py-5">
+                        No ABA files have been exported yet.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% include "_pagination.html" %}
+{% endblock %}

@@ -10,9 +10,10 @@
         </p>
     </div>
 
-    <a href="/ui/organisations/new" class="btn btn-success">
+    <button type="button" class="btn btn-success"
+            data-bs-toggle="modal" data-bs-target="#newOrganisationModal">
         + New Organisation
-    </a>
+    </button>
 </div>
 
 <!-- Desktop listing -->
@@ -100,5 +101,102 @@
     </div>
     {% endfor %}
 </div>
+
+<div class="modal fade" id="newOrganisationModal" tabindex="-1"
+     aria-labelledby="newOrganisationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form id="newOrganisationForm">
+                <div class="modal-header">
+                    <div>
+                        <h2 class="modal-title fs-5" id="newOrganisationModalLabel">
+                            New Organisation
+                        </h2>
+                        <p class="text-muted mb-0 small">Organisation details</p>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"
+                            aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="newOrganisationName">
+                            Organisation Name
+                        </label>
+                        <input class="form-control" id="newOrganisationName"
+                               maxlength="200" required autocomplete="organization">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="newOrganisationAbn">ABN</label>
+                        <input class="form-control" id="newOrganisationAbn"
+                               maxlength="14" required inputmode="numeric">
+                        <div class="form-text">11-digit Australian Business Number</div>
+                    </div>
+                    <div>
+                        <label class="form-label" for="newOrganisationCountry">Country</label>
+                        <input class="form-control" id="newOrganisationCountry"
+                               value="AU" readonly>
+                    </div>
+                    <div id="newOrganisationMessage" class="alert mt-3 d-none"
+                         role="alert"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary"
+                            data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-success" id="createOrganisationButton"
+                            type="submit">Create Organisation</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+const newOrganisationModal = document.getElementById("newOrganisationModal");
+const newOrganisationForm = document.getElementById("newOrganisationForm");
+const newOrganisationMessage = document.getElementById("newOrganisationMessage");
+const createOrganisationButton = document.getElementById("createOrganisationButton");
+
+newOrganisationModal.addEventListener("shown.bs.modal", () => {
+    document.getElementById("newOrganisationName").focus();
+});
+
+newOrganisationModal.addEventListener("hidden.bs.modal", () => {
+    newOrganisationForm.reset();
+    newOrganisationMessage.className = "alert mt-3 d-none";
+    newOrganisationMessage.textContent = "";
+    createOrganisationButton.disabled = false;
+});
+
+newOrganisationForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    createOrganisationButton.disabled = true;
+    newOrganisationMessage.classList.add("d-none");
+
+    try {
+        const response = await fetch("/api/organisations", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-Token": {{ csrf_token(request) | tojson }}
+            },
+            body: JSON.stringify({
+                name: document.getElementById("newOrganisationName").value,
+                abn: document.getElementById("newOrganisationAbn").value,
+                country: "AU"
+            })
+        });
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(typeof result.detail === "string"
+                ? result.detail : JSON.stringify(result.detail));
+        }
+        window.location.reload();
+    } catch (error) {
+        newOrganisationMessage.textContent = error.message;
+        newOrganisationMessage.className = "alert alert-danger mt-3";
+        createOrganisationButton.disabled = false;
+    }
+});
+</script>
 
 {% endblock %}

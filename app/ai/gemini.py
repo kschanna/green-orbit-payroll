@@ -221,3 +221,56 @@ class GeminiAIProvider:
             charts=tuple(charts),
             sources=tuple(sources),
         )
+
+    def generate_json(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
+        """Generate a schema-constrained JSON object without tools."""
+        if not self.api_key.strip():
+            raise AIConfigurationError("Gemini API key is not configured")
+        try:
+            from google import genai
+            from google.genai import errors, types
+        except ImportError as exc:
+            raise AIConfigurationError(
+                "Google Gen AI SDK is not installed"
+            ) from exc
+        config = types.GenerateContentConfig(
+            system_instruction=(
+                "Return concise, accurate end-user guidance using only the "
+                "facts and permitted actions supplied. Do not invent details."
+            ),
+            response_mime_type="application/json",
+            response_json_schema=schema,
+            max_output_tokens=max(self.max_output_tokens, 2048),
+            temperature=0.1,
+        )
+        try:
+            with genai.Client(
+                api_key=self.api_key,
+                http_options=types.HttpOptions(
+                    timeout=self.timeout_seconds * 1000,
+                ),
+            ) as client:
+                response = client.models.generate_content(
+                    model=self.model,
+                    contents=prompt,
+                    config=config,
+                )
+            value = response.parsed
+            if value is None:
+                import json
+                value = json.loads(response.text)
+            if not isinstance(value, dict):
+                raise AIProviderError("Gemini returned invalid structured output")
+            return value
+        except (TimeoutError, socket.timeout) as exc:
+            raise AITimeoutError("Gemini request timed out") from exc
+        except errors.APIError as exc:
+            if getattr(exc, "code", None) in {408, 504}:
+                raise AITimeoutError("Gemini request timed out") from exc
+            raise AIProviderError("Gemini request failed") from exc
+        except AIProviderError:
+            raise
+        except Exception as exc:
+            if "timeout" in type(exc).__name__.lower():
+                raise AITimeoutError("Gemini request timed out") from exc
+            raise AIProviderError("Gemini returned invalid structured output") from exc

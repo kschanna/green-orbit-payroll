@@ -19,6 +19,7 @@ from app.payroll_readiness_router import router as payroll_readiness_router
 from app.agent_monitor_router import router as agent_monitor_router
 from app.worker_forms_router import router as worker_forms_router
 from app.payroll_agent_router import router as payroll_agent_router
+from app.finance_router import router as finance_router
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -102,6 +103,7 @@ app.router.include_router(payroll_readiness_router)
 app.router.include_router(agent_monitor_router)
 app.router.include_router(worker_forms_router)
 app.router.include_router(payroll_agent_router)
+app.router.include_router(finance_router)
 
 session_secret = os.environ.get("SESSION_SECRET")
 
@@ -371,6 +373,15 @@ def help_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="help.html",
+        context={}
+    )
+
+
+@app.get("/ui/experiments/interactions", response_class=HTMLResponse)
+def interaction_experiment_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="interaction_experiment.html",
         context={}
     )
 
@@ -1059,6 +1070,7 @@ def generate_contractor_payroll(
 
     from app.models.payroll_component import PayrollComponent
     from app.models.component_definition import ComponentDefinition
+    from app.models.component_family import ComponentFamily
     from app.models.payslip_timesheet import PayslipTimesheet
 
     with SessionLocal() as db:
@@ -1705,6 +1717,7 @@ def timesheet_component_options(db, assignment_id, work_date):
             "id": definition.id,
             "name": definition.name,
             "family": family.name,
+            "family_code": family.code,
             "leave_plan_id": None,
         })
     if assignment is not None:
@@ -1737,6 +1750,7 @@ def timesheet_component_options(db, assignment_id, work_date):
                 "id": definition.id,
                 "name": definition.name,
                 "family": family.name,
+                "family_code": family.code,
                 "leave_plan_id": plan.id,
             })
     return options
@@ -2502,11 +2516,15 @@ def preview_payslip_page(request: Request, payslip_id: int):
         # Read the actual saved payroll components.
         # Do not recalculate historical earnings.
         rows = db.execute(
-            select(PayrollComponent, ComponentDefinition)
+            select(PayrollComponent, ComponentDefinition, ComponentFamily)
             .join(
                 ComponentDefinition,
                 PayrollComponent.component_definition_id
                 == ComponentDefinition.id,
+            )
+            .join(
+                ComponentFamily,
+                ComponentFamily.id == ComponentDefinition.family_id,
             )
             .where(
                 PayrollComponent.payslip_id == payslip.id
@@ -2518,17 +2536,18 @@ def preview_payslip_page(request: Request, payslip_id: int):
             {
                 "code": definition.code,
                 "name": definition.name,
+                "family_code": family.code,
                 "quantity": component.quantity,
                 "rate": component.rate,
                 "amount": component.amount,
             }
-            for component, definition in rows
+            for component, definition, family in rows
         ]
 
         ordinary_hours = sum(
             (
                 Decimal(component.quantity)
-                for component, definition in rows
+                for component, definition, _family in rows
                 if definition.code == "ORDINARY_HOURS"
             ),
             Decimal("0"),
@@ -2536,7 +2555,7 @@ def preview_payslip_page(request: Request, payslip_id: int):
         paid_leave_hours = sum(
             (
                 Decimal(component.quantity)
-                for component, definition in rows
+                for component, definition, _family in rows
                 if definition.code in {"ANNUAL_LEAVE", "PERSONAL_LEAVE"}
             ),
             Decimal("0"),
@@ -2604,6 +2623,59 @@ def preview_payslip_page(request: Request, payslip_id: int):
             ),
             "reference": instruction.lodgement_reference,
         } for instruction, batch in payment_rows]
+
+        if engagement.engagement_type == "company_contractor":
+            gst_paid = sum(
+                (item["amount"] for item in components if item["code"] == "GST_PAID"),
+                Decimal("0.00"),
+            )
+            supply_lines = [
+                item for item in components
+                if item["family_code"] in {"EARNINGS", "ALLOWANCE", "LEAVE"}
+            ]
+            deduction_lines = [
+                item for item in components if item["family_code"] == "DEDUCTION"
+            ]
+            deductions_total = sum(
+                (item["amount"] for item in deduction_lines), Decimal("0.00")
+            )
+            linked_invoice = db.scalar(
+                select(Invoice)
+                .join(InvoiceTimesheet, InvoiceTimesheet.invoice_id == Invoice.id)
+                .join(
+                    PayslipTimesheet,
+                    PayslipTimesheet.timesheet_id == InvoiceTimesheet.timesheet_id,
+                )
+                .where(PayslipTimesheet.payslip_id == payslip.id)
+                .limit(1)
+            )
+            recipient = (
+                linked_invoice.engagement.customer
+                if linked_invoice is not None
+                and linked_invoice.engagement is not None
+                else organisation
+            )
+            supplier = engagement.organisation
+            return templates.TemplateResponse(
+                request=request,
+                name="rcti_preview.html",
+                context={
+                    "payslip": payslip,
+                    "pay_run": pay_run,
+                    "worker": worker,
+                    "engagement": engagement,
+                    "recipient": recipient,
+                    "supplier": supplier,
+                    "contractor_name": f"{worker.first_name} {worker.last_name}",
+                    "supply_lines": supply_lines,
+                    "deduction_lines": deduction_lines,
+                    "deductions_total": deductions_total,
+                    "taxable_value": payslip.net_pay - gst_paid,
+                    "gst_paid": gst_paid,
+                    "payment_instructions": payment_instructions,
+                    "linked_invoice": linked_invoice,
+                },
+            )
 
         return templates.TemplateResponse(
             request=request,
@@ -2686,6 +2758,83 @@ def download_payslip_pdf(payslip_id: int):
             else "Multiple" if assignment_ids
             else "—"
         )
+
+        if engagement.engagement_type == "company_contractor":
+            from app.models.component_family import ComponentFamily
+            from app.reports.rcti_pdf import RCTIPDFGenerator
+
+            assignment = (
+                session.get(Assignment, assignment_ids[0])
+                if len(assignment_ids) == 1 else None
+            )
+            if assignment is None or assignment.customer is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="RCTI requires one valid Assignment and recipient",
+                )
+            rcti_rows = session.execute(
+                select(PayrollComponent, ComponentDefinition, ComponentFamily)
+                .join(
+                    ComponentDefinition,
+                    ComponentDefinition.id
+                    == PayrollComponent.component_definition_id,
+                )
+                .join(
+                    ComponentFamily,
+                    ComponentFamily.id == ComponentDefinition.family_id,
+                )
+                .where(PayrollComponent.payslip_id == payslip.id)
+                .order_by(PayrollComponent.id)
+            ).all()
+            supply_lines = [{
+                "name": definition.name,
+                "amount": component.amount,
+            } for component, definition, family in rcti_rows
+                if family.code in {"EARNINGS", "ALLOWANCE", "LEAVE"}]
+            deduction_lines = [{
+                "name": definition.name,
+                "amount": component.amount,
+            } for component, definition, family in rcti_rows
+                if family.code == "DEDUCTION"]
+            gst_paid = sum(
+                (
+                    component.amount
+                    for component, definition, _family in rcti_rows
+                    if definition.code == "GST_PAID"
+                ),
+                Decimal("0.00"),
+            )
+            source_invoice = session.scalar(
+                select(Invoice)
+                .join(InvoiceTimesheet, InvoiceTimesheet.invoice_id == Invoice.id)
+                .join(
+                    PayslipTimesheet,
+                    PayslipTimesheet.timesheet_id == InvoiceTimesheet.timesheet_id,
+                )
+                .where(PayslipTimesheet.payslip_id == payslip.id)
+                .limit(1)
+            )
+            pdf_buffer = RCTIPDFGenerator().generate(
+                payslip=payslip,
+                pay_run=pay_run,
+                recipient=assignment.customer,
+                supplier=engagement.organisation,
+                contractor_name=f"{worker.first_name} {worker.last_name}",
+                supply_lines=supply_lines,
+                deduction_lines=deduction_lines,
+                gst_paid=gst_paid,
+                source_reference=(
+                    source_invoice.invoice_number if source_invoice else None
+                ),
+            )
+            return StreamingResponse(
+                pdf_buffer,
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition":
+                        f'attachment; filename="rcti_{payslip.id}.pdf"'
+                },
+            )
 
         earnings_lines = []
         withholding_lines = []
@@ -4632,6 +4781,8 @@ def delete_invoice(invoice_id: int):
 def invoices_page(
     request: Request, page: int = 1, page_size: int = 25,
 ):
+    from app.payroll.payment_policy import supports_payment_policy
+
     with SessionLocal() as session:
         assignments = session.scalars(
             select(Assignment).order_by(Assignment.id)
@@ -4686,9 +4837,9 @@ def invoices_page(
                 )
             elif engagement is None:
                 payroll_unavailable_reason = "Invoice has no canonical engagement"
-            elif engagement.engagement_type != "payg_contractor":
+            elif not supports_payment_policy(engagement.engagement_type):
                 payroll_unavailable_reason = (
-                    "Invoice payroll is available only for PAYG contractors"
+                    "Invoice payroll is unavailable for this engagement type"
                 )
             elif invoice.status not in {"issued", "paid"}:
                 payroll_unavailable_reason = (
@@ -4883,7 +5034,7 @@ def _prepare_invoice_contractor_payroll(
     engagement = assignment.engagement
 
     if engagement.engagement_type not in {
-        "payg_contractor", "payg_employee", "employee"
+        "payg_contractor", "payg_employee", "employee", "company_contractor"
     }:
         raise HTTPException(
             409,
@@ -5071,96 +5222,31 @@ def _prepare_invoice_contractor_payroll(
     else:
         payment_date = payroll_period_end + timedelta(days=1)
 
-    # Tax profile
-    tax_profiles = db.scalars(
-        select(EmployeeTaxProfile).where(
-            EmployeeTaxProfile.worker_id == engagement.worker_id,
-            EmployeeTaxProfile.effective_from <= payment_date,
-            (
-                EmployeeTaxProfile.effective_to.is_(None)
-                | (
-                    EmployeeTaxProfile.effective_to >= payment_date
-                )
-            ),
-        )
-    ).all()
-
-    if len(tax_profiles) != 1:
-        raise HTTPException(
-            409,
-            "Expected exactly one effective Tax Profile",
-        )
-
-    tax = tax_profiles[0]
-
-    if (
-        tax.residency_status != "resident"
-        or tax.has_study_loan
-        or not tax.tfn_declaration_received
-    ):
-        raise HTTPException(
-            409,
-            "Tax Profile is incomplete or unsupported",
-        )
+    from app.payroll.payment_policy import payment_policy_for
 
     try:
-        payg = PAYGWithholdingCalculator().calculate(
+        payment = payment_policy_for(engagement.engagement_type).calculate(
             session=db,
-            gross_pay=gross,
-            pay_frequency=pay_frequency,
-            claims_tax_free_threshold=tax.claims_tax_free_threshold,
+            assignment=assignment,
+            engagement=engagement,
+            entries=entries,
+            gross=gross,
             payment_date=payment_date,
+            pay_frequency=pay_frequency,
         )
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
 
-    # Superannuation profile
-    super_profiles = db.scalars(
-        select(EmployeeSuperProfile).where(
-            EmployeeSuperProfile.worker_id == engagement.worker_id,
-            EmployeeSuperProfile.effective_from <= payment_date,
-            (
-                EmployeeSuperProfile.effective_to.is_(None)
-                | (
-                    EmployeeSuperProfile.effective_to >= payment_date
-                )
-            ),
-        )
-    ).all()
-
-    if len(super_profiles) != 1:
-        raise HTTPException(
-            409,
-            "Expected exactly one effective Superannuation Profile",
-        )
-
-    additional_rate = (
-        super_profiles[0].additional_employer_rate
-        or Decimal("0")
-    )
-
-    if additional_rate < 0:
-        raise HTTPException(
-            409,
-            "Invalid additional employer super rate",
-        )
-
-    statutory_super = SuperannuationCalculator().calculate(
-        ordinary_time_earnings=gross
-    )
-
-    additional_super = SuperannuationCalculator().calculate(
-        ordinary_time_earnings=gross,
-        rate=additional_rate / Decimal("100"),
-    )
-
-    total_super = statutory_super + additional_super
-
     earnings_definition_ids = {
         line["component_definition_id"] for line in earnings["lines"]
     }
-    statutory_codes = {
-        "PAYG_WITHHOLDING", "SUPER_GUARANTEE", "SUPER_EMPLOYER_EXTRA"
+    statutory_codes = (
+        {"GST_PAID"}
+        if engagement.engagement_type == "company_contractor"
+        else {"PAYG_WITHHOLDING", "SUPER_GUARANTEE", "SUPER_EMPLOYER_EXTRA"}
+    )
+    payment_definition_ids = {
+        line["component_definition_id"] for line in payment.component_lines
     }
     definition_rows = db.execute(
         select(ComponentDefinition, ComponentFamily)
@@ -5169,7 +5255,7 @@ def _prepare_invoice_contractor_payroll(
             ComponentFamily.id == ComponentDefinition.family_id,
         )
         .where(
-            (ComponentDefinition.id.in_(earnings_definition_ids))
+            (ComponentDefinition.id.in_(earnings_definition_ids | payment_definition_ids))
             | (ComponentDefinition.code.in_(statutory_codes))
         )
     ).all()
@@ -5218,27 +5304,45 @@ def _prepare_invoice_contractor_payroll(
             *details, line["quantity"], line["rate"], line["amount"]
         )
 
-    payg_definition, payg_family = definitions_by_code["PAYG_WITHHOLDING"]
-    add_component(
-        payg_definition, payg_family, Decimal("1"), payg, payg
-    )
-    guarantee_definition, guarantee_family = definitions_by_code[
-        "SUPER_GUARANTEE"
-    ]
-    add_component(
-        guarantee_definition, guarantee_family, gross, Decimal("0.12"),
-        statutory_super,
-    )
-    extra_definition, extra_family = definitions_by_code[
-        "SUPER_EMPLOYER_EXTRA"
-    ]
-    add_component(
-        extra_definition, extra_family, gross,
-        additional_rate / Decimal("100"), additional_super,
-    )
+    for line in payment.component_lines:
+        details = definition_details[line["component_definition_id"]]
+        add_component(
+            *details, line["quantity"], line["rate"], line["amount"]
+        )
+
+    if engagement.engagement_type == "company_contractor":
+        gst_definition, gst_family = definitions_by_code["GST_PAID"]
+        add_component(
+            gst_definition, gst_family, payment.net_before_gst,
+            Decimal("0.10"), payment.gst_paid,
+        )
+    else:
+        payg_definition, payg_family = definitions_by_code["PAYG_WITHHOLDING"]
+        add_component(
+            payg_definition, payg_family, Decimal("1"),
+            payment.payg, payment.payg,
+        )
+        guarantee_definition, guarantee_family = definitions_by_code[
+            "SUPER_GUARANTEE"
+        ]
+        add_component(
+            guarantee_definition, guarantee_family, gross, Decimal("0.12"),
+            payment.statutory_super,
+        )
+        extra_definition, extra_family = definitions_by_code[
+            "SUPER_EMPLOYER_EXTRA"
+        ]
+        additional_rate = (
+            payment.additional_super / gross if gross else Decimal("0")
+        )
+        add_component(
+            extra_definition, extra_family, gross,
+            additional_rate, payment.additional_super,
+        )
 
     family_order = {
-        "EARNINGS": 0, "LEAVE": 1, "TAX": 2, "SUPERANNUATION": 3
+        "EARNINGS": 0, "LEAVE": 1, "DEDUCTION": 2,
+        "SUPERANNUATION": 3, "TAX": 4,
     }
     component_groups = sorted(
         grouped_components.values(),
@@ -5278,13 +5382,18 @@ def _prepare_invoice_contractor_payroll(
         "pay_frequency": pay_frequency,
         "hours": hours,
         "gross": gross,
-        "payg": payg,
-        "net": gross - payg,
-        "statutory_super": statutory_super,
-        "additional_super": additional_super,
-        "total_super": total_super,
+        "payg": payment.payg,
+        "deductions_total": payment.deductions_total,
+        "net_before_gst": payment.net_before_gst,
+        "gst_paid": payment.gst_paid,
+        "net": payment.payment_total,
+        "statutory_super": payment.statutory_super,
+        "additional_super": payment.additional_super,
+        "total_super": payment.total_super,
+        "is_company_contractor": engagement.engagement_type == "company_contractor",
         "component_groups": component_groups,
         "earnings_lines": earnings["lines"],
+        "payment_component_lines": payment.component_lines,
         "timesheet_ids": [entry.id for entry in entries],
     }
 
@@ -5374,12 +5483,15 @@ def generate_invoice_contractor_payroll(
                     "Payroll period changed. Refresh the preview.",
                 )
 
-            required_codes = {
-                "ORDINARY_HOURS",
-                "PAYG_WITHHOLDING",
-                "SUPER_GUARANTEE",
-                "SUPER_EMPLOYER_EXTRA",
-            }
+            required_codes = (
+                {"GST_PAID"}
+                if payroll["is_company_contractor"]
+                else {
+                    "PAYG_WITHHOLDING",
+                    "SUPER_GUARANTEE",
+                    "SUPER_EMPLOYER_EXTRA",
+                }
+            )
 
             definitions = {
                 definition.code: definition
@@ -5438,31 +5550,48 @@ def generate_invoice_contractor_payroll(
                     )
                 )
 
-            # Statutory payroll components
-            statutory_components = (
-                (
-                    "PAYG_WITHHOLDING",
-                    Decimal("1"),
-                    payroll["payg"],
-                    payroll["payg"],
-                ),
-                (
-                    "SUPER_GUARANTEE",
-                    payroll["gross"],
-                    Decimal("0.12"),
-                    payroll["statutory_super"],
-                ),
-                (
-                    "SUPER_EMPLOYER_EXTRA",
-                    payroll["gross"],
+            # Assignment deductions are realised before GST.
+            for line in payroll["payment_component_lines"]:
+                db.add(PayrollComponent(
+                    payslip_id=payslip.id,
+                    component_definition_id=line["component_definition_id"],
+                    quantity=line["quantity"],
+                    rate=line["rate"],
+                    amount=line["amount"],
+                ))
+
+            if payroll["is_company_contractor"]:
+                statutory_components = ((
+                    "GST_PAID",
+                    payroll["net_before_gst"],
+                    Decimal("0.10"),
+                    payroll["gst_paid"],
+                ),)
+            else:
+                statutory_components = (
                     (
-                        payroll["additional_super"] / payroll["gross"]
-                        if payroll["gross"]
-                        else Decimal("0")
+                        "PAYG_WITHHOLDING",
+                        Decimal("1"),
+                        payroll["payg"],
+                        payroll["payg"],
                     ),
-                    payroll["additional_super"],
-                ),
-            )
+                    (
+                        "SUPER_GUARANTEE",
+                        payroll["gross"],
+                        Decimal("0.12"),
+                        payroll["statutory_super"],
+                    ),
+                    (
+                        "SUPER_EMPLOYER_EXTRA",
+                        payroll["gross"],
+                        (
+                            payroll["additional_super"] / payroll["gross"]
+                            if payroll["gross"]
+                            else Decimal("0")
+                        ),
+                        payroll["additional_super"],
+                    ),
+                )
 
             for code, quantity, rate, amount in statutory_components:
                 db.add(

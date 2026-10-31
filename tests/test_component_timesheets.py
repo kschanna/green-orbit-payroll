@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
@@ -181,6 +182,14 @@ def test_component_options_are_configured_earnings_and_leave_only(component_data
     assert {item["id"] for item in options} == {
         ids["ordinary"], ids["overtime"], ids["leave"]
     }
+    assert {item["family_code"] for item in options} == {"EARNINGS", "LEAVE"}
+
+
+def test_timesheet_editors_default_the_only_earning_component():
+    for template_name in ("timesheet_weekly.html", "timesheet_scheduled_edit.html"):
+        template = Path("app/templates", template_name).read_text()
+        assert "family_code" in template
+        assert "earningItems.length===1" in template
 
 
 def test_weekly_rejects_unconfigured_component_and_over_24_hours(component_data):

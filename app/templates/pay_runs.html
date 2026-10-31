@@ -28,7 +28,6 @@
                     <th>Pay Period</th>
                     <th>Payment Date</th>
                     <th>Status</th>
-                    <th>Actions</th>
                 </tr>
             </thead>
 
@@ -36,7 +35,8 @@
                 {% for run in pay_runs %}
 
                 <tr>
-                    <td><strong>#{{ run.id }}</strong></td>
+                    <td><a href="/ui/pay-runs/{{ run.id }}"
+                           class="text-decoration-none fw-semibold">#{{ run.id }}</a></td>
 
                     <td>
                         {{ run.period_start | date_au }}
@@ -56,18 +56,12 @@
                         {% endif %}
                     </td>
 
-                    <td>
-                        <a href="/ui/pay-runs/{{ run.id }}"
-                           class="btn btn-sm btn-outline-success">
-                            View Details
-                        </a>
-                    </td>
                 </tr>
 
                 {% else %}
 
                 <tr>
-                    <td colspan="5" class="text-center text-muted">
+                    <td colspan="4" class="text-center text-muted">
                         No pay runs found.
                     </td>
                 </tr>

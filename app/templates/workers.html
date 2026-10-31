@@ -68,7 +68,7 @@
                     <th>Worker</th>
                     <th>Email</th>
                     <th>Phone</th>
-                    <th>Engagement Type</th>
+                    <th>Engagement</th>
                     <th>Status</th>
                     <th></th>
                 </tr>
@@ -77,7 +77,10 @@
             <tbody>
                 {% for worker in workers %}
                 <tr>
-                    <td>{{ worker.id }}</td>
+                    <td>
+                        <a href="/ui/workers/{{ worker.id }}"
+                           class="text-decoration-none fw-semibold">#{{ worker.id }}</a>
+                    </td>
 
                     <td>
                         <a href="/ui/workers/{{ worker.id }}"
@@ -87,7 +90,12 @@
                         </a>
                     </td>
 
-                    <td>{{ worker.email }}</td>
+                    <td>
+                        <span class="worker-email-truncate"
+                              title="{{ worker.email }}">
+                            {{ worker.email }}
+                        </span>
+                    </td>
                     <td>{{ worker.phone or "—" }}</td>
 
                     <td>
@@ -106,16 +114,13 @@
                         {{ "Active" if worker.active else "Inactive" }}
                     </td>
 
-                    <td>
-                        <a href="/ui/workers/{{ worker.id }}"
-                           class="btn btn-sm btn-outline-success">
-                            View
-                        </a>
-
-                        <a href="/ui/workers/{{ worker.id }}/edit"
-                           class="btn btn-sm btn-outline-secondary">
-                            Edit
-                        </a>
+                    <td class="text-nowrap">
+                        <div class="d-inline-flex flex-nowrap gap-1">
+                            <a href="/ui/workers/{{ worker.id }}/edit"
+                               class="btn btn-sm btn-outline-secondary">
+                                Edit
+                            </a>
+                        </div>
                     </td>
                 </tr>
 

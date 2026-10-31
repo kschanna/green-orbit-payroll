@@ -24,13 +24,23 @@
         </div>
     </details>
 
-    <details class="admin-nav-group" data-nav-section="payroll"{% if path.startswith('/ui/pay-runs') or path.startswith('/ui/payslips') or path.startswith('/ui/pbt-schedules') or path.startswith('/ui/components') %} data-active="true" open{% endif %}>
+    <details class="admin-nav-group" data-nav-section="payroll"{% if path.startswith('/ui/pay-runs') or path.startswith('/ui/payslips') or path.startswith('/ui/pbt-schedules') or path.startswith('/ui/components') or path.startswith('/ui/aba-files') %} data-active="true" open{% endif %}>
         <summary><span><span aria-hidden="true">$</span> Payroll</span></summary>
         <div class="admin-nav-group-links">
             <a{% if path.startswith('/ui/pay-runs') %} class="active"{% endif %} href="/ui/pay-runs">Pay Runs</a>
             <a{% if path.startswith('/ui/payslips') %} class="active"{% endif %} href="/ui/payslips">Payslips</a>
+            <a{% if path.startswith('/ui/aba-files') %} class="active"{% endif %} href="/ui/aba-files">ABA Files</a>
             <a{% if path.startswith('/ui/pbt-schedules') %} class="active"{% endif %} href="/ui/pbt-schedules">PBT Schedules</a>
             <a{% if path.startswith('/ui/components') %} class="active"{% endif %} href="/ui/components">Pay Components</a>
+        </div>
+    </details>
+
+    <details class="admin-nav-group" data-nav-section="finance"{% if path.startswith('/ui/finance') %} data-active="true" open{% endif %}>
+        <summary><span><span aria-hidden="true">≡</span> Finance</span></summary>
+        <div class="admin-nav-group-links">
+            <a{% if path.startswith('/ui/finance/postings') %} class="active"{% endif %} href="/ui/finance/postings">Reconciliation</a>
+            <a{% if path.startswith('/ui/finance/chart-of-accounts') %} class="active"{% endif %} href="/ui/finance/chart-of-accounts">Chart of Accounts</a>
+            <a{% if path.startswith('/ui/finance/component-mappings') %} class="active"{% endif %} href="/ui/finance/component-mappings">Component GLs</a>
         </div>
     </details>
 
@@ -40,6 +50,13 @@
             <a{% if path.startswith('/ui/payroll-agent') %} class="active"{% endif %} href="/ui/payroll-agent">Payroll Agent</a>
             <a{% if path.startswith('/ui/ai-assistant') %} class="active"{% endif %} href="/ui/ai-assistant">AI Assistant</a>
             <a{% if path.startswith('/ui/agent-monitor') %} class="active"{% endif %} href="/ui/agent-monitor">Agent Monitor</a>
+        </div>
+    </details>
+
+    <details class="admin-nav-group" data-nav-section="experiment"{% if path.startswith('/ui/experiments') %} data-active="true" open{% endif %}>
+        <summary><span><span aria-hidden="true">⚗</span> Experiment</span></summary>
+        <div class="admin-nav-group-links">
+            <a{% if path == '/ui/experiments/interactions' %} class="active"{% endif %} href="/ui/experiments/interactions">Buttons &amp; Progress</a>
         </div>
     </details>
 

@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .rcti-preview { max-width: 950px; margin: 0 auto; }
+    .rcti-document { position: relative; overflow: hidden; }
+    .rcti-content { position: relative; z-index: 2; }
+    .rcti-rule { border-color: #222; opacity: 1; }
+    .rcti-party { border-bottom: 1px solid #222; padding-bottom: 1rem; }
+    .draft-watermark {
+        position: absolute; top: 45%; left: 50%;
+        transform: translate(-50%, -50%) rotate(-30deg);
+        font-size: 7rem; font-weight: 800;
+        color: rgba(180, 0, 0, 0.10); pointer-events: none; z-index: 1;
+    }
+    @media print {
+        nav, .navbar, footer, .rcti-actions { display: none !important; }
+        body { background: white !important; }
+        .rcti-preview { max-width: 100%; }
+        .rcti-document { border: 0 !important; box-shadow: none !important; }
+        .rcti-content { padding: 0 !important; }
+    }
+</style>
+
+<div class="rcti-preview mt-4">
+    <div class="d-flex justify-content-between align-items-center gap-2 mb-4 rcti-actions">
+        {% if request.query_params.get("embed") != "1" %}
+        <a href="/ui/payslips" class="btn btn-outline-secondary">← Back to Payments</a>
+        {% else %}<span></span>{% endif %}
+        <div class="d-flex gap-2">
+            <a href="/payslips/{{ payslip.id }}/pdf" class="btn btn-outline-success">
+                Download RCTI PDF
+            </a>
+            <button type="button" onclick="window.print()" class="btn btn-primary">
+                Print RCTI
+            </button>
+        </div>
+    </div>
+
+    <div class="card shadow-sm rcti-document">
+        {% if pay_run.status == "draft" %}<div class="draft-watermark">DRAFT</div>{% endif %}
+        <div class="card-body p-5 rcti-content">
+            <div class="d-flex justify-content-between align-items-start gap-4 mb-4">
+                <div>
+                    <h1 class="h3 mb-2">RECIPIENT CREATED TAX INVOICE</h1>
+                    <div class="text-muted">RCTI #{{ payslip.id }}</div>
+                    {% if linked_invoice %}
+                    <div class="text-muted">Source: {{ linked_invoice.invoice_number }}</div>
+                    {% endif %}
+                </div>
+                <div class="text-end">
+                    <div><strong>Date:</strong> {{ pay_run.payment_date | date_au }}</div>
+                    <div><strong>Pay Run:</strong> #{{ pay_run.id }}</div>
+                    <span class="badge mt-2 bg-{{ 'warning text-dark' if pay_run.status == 'draft' else 'success' }}">
+                        {{ pay_run.status | title }}
+                    </span>
+                </div>
+            </div>
+
+            <div class="rcti-party py-3">
+                <div class="text-uppercase fw-bold mb-2">From - Recipient</div>
+                <div class="fs-5 fw-semibold">{{ recipient.name }}</div>
+                <div>Australian business number (ABN): {{ recipient.abn }}</div>
+                <div>Country: {{ recipient.country }}</div>
+            </div>
+
+            <div class="rcti-party py-3 mb-4">
+                <div class="text-uppercase fw-bold mb-2">To - Supplier</div>
+                <div class="fs-5 fw-semibold">{{ supplier.name }}</div>
+                <div>Australian business number (ABN): {{ supplier.abn }}</div>
+                <div>Country: {{ supplier.country }}</div>
+                <div class="text-muted mt-1">Contractor: {{ contractor_name }}</div>
+            </div>
+
+            <h2 class="h5 text-uppercase">Supplies made by supplier to recipient</h2>
+            <div class="table-responsive">
+                <table class="table table-bordered align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Description of taxable supplies</th>
+                            <th class="text-end">Value</th>
+                            <th class="text-end">GST</th>
+                            <th class="text-end">Price</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in supply_lines %}
+                        <tr>
+                            <td>{{ item.name }}{% if item.quantity %} - {{ "%.2f"|format(item.quantity) }} units{% endif %}</td>
+                            <td class="text-end">${{ "{:,.2f}".format(item.amount) }}</td>
+                            <td class="text-end">-</td>
+                            <td class="text-end">${{ "{:,.2f}".format(item.amount) }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% for item in deduction_lines %}
+                        <tr>
+                            <td>{{ item.name }}</td>
+                            <td class="text-end">-${{ "{:,.2f}".format(item.amount) }}</td>
+                            <td class="text-end">-</td>
+                            <td class="text-end">-${{ "{:,.2f}".format(item.amount) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="fw-semibold">
+                        <tr>
+                            <td>TOTALS</td>
+                            <td class="text-end">${{ "{:,.2f}".format(taxable_value) }}</td>
+                            <td class="text-end">${{ "{:,.2f}".format(gst_paid) }}</td>
+                            <td class="text-end">${{ "{:,.2f}".format(payslip.net_pay) }}</td>
+                        </tr>
+                        <tr class="table-light fs-5">
+                            <td colspan="3">AMOUNT DEPOSITED TO YOUR BANK ACCOUNT</td>
+                            <td class="text-end">${{ "{:,.2f}".format(payslip.net_pay) }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            <p class="small mt-3">
+                The GST shown forms part of the supplier's GST payable for the relevant tax period.
+            </p>
+            <h2 class="h6 fw-bold mt-4">Written Agreement</h2>
+            <p class="small mb-2">
+                The recipient may issue tax invoices for these supplies and the supplier will not issue a separate tax invoice. Both parties confirm they are registered for GST and will notify the other party if that changes. Accepting this RCTI confirms agreement to these terms.
+            </p>
+            <p class="small mb-0">
+                The supplier should notify the recipient within 21 days if it does not accept the proposed RCTI agreement.
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

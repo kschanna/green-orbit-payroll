@@ -98,6 +98,18 @@ def test_login_succeeds(client):
     assert dashboard.status_code == 200
 
 
+def test_interaction_experiment_requires_login_and_renders_after_login(client):
+    anonymous = client.get("/ui/experiments/interactions")
+    assert anonymous.status_code == 303
+    assert anonymous.headers["location"] == "/login"
+
+    assert login(client).status_code == 303
+    page = client.get("/ui/experiments/interactions")
+    assert page.status_code == 200
+    assert "Buttons &amp; Progress Lab" in page.text
+    assert page.text.count('data-demo="') == 5
+
+
 def test_invalid_password_rejected(client):
     response = client.get("/login")
     assert response.status_code == 200

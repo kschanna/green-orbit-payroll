@@ -6,17 +6,20 @@ from io import BytesIO
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.database import SessionLocal
 from app.employee_tfn_router import require_csrf
 from app.models.aba_profile import ABAProfile
+from app.models.aba_file import ABAFile
 from app.models.organisation import Organisation
 from app.models.pay_run import PayRun
 from app.models.payment_batch import PaymentBatch
 from app.models.payment_instruction import PaymentInstruction
 from app.models.worker import Worker
 from app.payments.service import PaymentBatchService
+from app.ai.error_explainer import explain_payment_error
+from app.pagination import build_pagination
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -121,7 +124,13 @@ def prepare_payments(request: Request, pay_run_id: int, csrf_token: str = Form(.
             batch_id = batch.id
         except ValueError as error:
             db.rollback()
-            raise HTTPException(409, str(error)) from error
+            pay_run = db.get(PayRun, pay_run_id)
+            detail = explain_payment_error(
+                error=str(error),
+                pay_run_id=pay_run_id,
+                payment_date=pay_run.payment_date if pay_run else None,
+            )
+            raise HTTPException(409, detail) from error
     return RedirectResponse(f"/ui/payment-batches/{batch_id}", status_code=303)
 
 
@@ -219,8 +228,70 @@ def download_aba(request: Request, batch_id: int, csrf_token: str = Form(...)):
             raise HTTPException(409, str(error)) from error
         batch.exported_by_user_id = request.session.get("user_id")
         filename = f"payrun-{batch.pay_run_id or batch.id}-{batch.processing_date:%Y%m%d}.aba"
+        db.add(ABAFile(
+            payment_batch_id=batch.id,
+            filename=filename,
+            content=content,
+            checksum=batch.file_checksum,
+            byte_size=len(content),
+            created_by_user_id=request.session.get("user_id"),
+        ))
         db.commit()
     return StreamingResponse(
         BytesIO(content), media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/ui/aba-files", response_class=HTMLResponse)
+def aba_files_page(
+    request: Request, page: int = 1, page_size: int = 25,
+):
+    with SessionLocal() as db:
+        total = int(db.scalar(select(func.count(ABAFile.id))) or 0)
+        pagination = build_pagination(
+            total=total, page=page, page_size=page_size, path="/ui/aba-files"
+        )
+        rows = db.execute(
+            select(ABAFile, PaymentBatch, Organisation)
+            .join(
+                PaymentBatch,
+                PaymentBatch.id == ABAFile.payment_batch_id,
+            )
+            .join(
+                Organisation,
+                Organisation.id == PaymentBatch.organisation_id,
+            )
+            .order_by(ABAFile.id.desc())
+            .offset(pagination.offset)
+            .limit(pagination.page_size)
+        ).all()
+        files = [{
+            "id": aba_file.id,
+            "filename": aba_file.filename,
+            "batch_id": batch.id,
+            "organisation_name": organisation.name,
+            "created_at": aba_file.created_at,
+            "byte_size": aba_file.byte_size,
+            "checksum": aba_file.checksum,
+        } for aba_file, batch, organisation in rows]
+    return templates.TemplateResponse(
+        request=request,
+        name="aba_files.html",
+        context={"files": files, "pagination": pagination},
+    )
+
+
+@router.get("/ui/aba-files/{aba_file_id}/download")
+def download_saved_aba_file(aba_file_id: int):
+    with SessionLocal() as db:
+        aba_file = db.get(ABAFile, aba_file_id)
+        if aba_file is None:
+            raise HTTPException(404, "ABA file not found")
+        content = bytes(aba_file.content)
+        filename = aba_file.filename
+    return StreamingResponse(
+        BytesIO(content),
+        media_type="text/plain",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

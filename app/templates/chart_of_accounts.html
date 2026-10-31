@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<a href="/ui/finance/postings" class="btn btn-link mb-3">← Financial Reconciliation</a>
+<div class="mb-4"><h2>Chart of Accounts</h2><p class="text-muted mb-0">The shared accounting environment used by every organisation and finance posting.</p></div>
+<div class="card p-4"><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th>Code</th><th>Account</th><th>Type</th><th>Posting role</th><th>Status</th></tr></thead><tbody>
+{% for account in rows %}<tr><td class="font-monospace fw-semibold">{{ account.code }}</td><td>{{ account.name }}</td><td>{{ account.account_type|title }}</td><td>{{ (account.role or 'Component mapping').replace('_', ' ')|title }}</td><td><span class="badge bg-{{ 'success' if account.active else 'secondary' }}">{{ 'Active' if account.active else 'Inactive' }}</span></td></tr>{% else %}<tr><td colspan="5" class="text-center text-muted py-5">No accounts configured.</td></tr>{% endfor %}
+</tbody></table></div></div>
+{% endblock %}

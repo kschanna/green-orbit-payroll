@@ -6,6 +6,9 @@ Green Orbit deploys two Cloud Run services from one image:
 - `green-orbit-document-listener`: private, single-instance Pub/Sub listener with always-allocated CPU.
 
 Database migrations run as the `green-orbit-payroll-migrate` Cloud Run job before either service is updated.
+The migration chain also seeds the canonical component catalogue, shared chart of
+accounts, and global payroll/invoice GL mappings. No page visit or manual seed
+command is required after deployment.
 
 ## Required resources
 

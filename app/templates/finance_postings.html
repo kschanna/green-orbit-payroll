@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+  <div><h2>Financial Reconciliation</h2><p class="text-muted mb-0">Post source transactions and verify every journal balances.</p></div>
+  <a href="/ui/finance/chart-of-accounts" class="btn btn-outline-secondary">Chart of Accounts</a>
+</div>
+
+<div class="row g-4 mb-4">
+  <div class="col-xl-6"><div class="card h-100 p-4">
+    <h5>Invoices ready to post</h5><p class="text-muted small">Issued customer invoices not yet represented in finance.</p>
+    <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Invoice</th><th>Organisation</th><th class="text-end">Total</th><th></th></tr></thead><tbody>
+    {% for row in invoices %}<tr><td><a href="/ui/invoices/{{ row.invoice.id }}/preview">{{ row.invoice.invoice_number }}</a><div class="small text-muted">{{ row.invoice.issue_date.strftime('%d/%m/%Y') }}</div></td><td>{{ row.organisation.name }}</td><td class="text-end">${{ '{:,.2f}'.format(row.invoice.total) }}</td><td class="text-end"><form method="post" action="/ui/finance/postings/invoices/{{ row.invoice.id }}"><input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}"><button class="btn btn-sm btn-success">Post</button></form></td></tr>
+    {% else %}<tr><td colspan="4" class="text-center text-muted py-4">No invoices are waiting.</td></tr>{% endfor %}
+    </tbody></table></div>
+  </div></div>
+  <div class="col-xl-6"><div class="card h-100 p-4">
+    <h5>Payments ready to post</h5><p class="text-muted small">Exported payment batches not yet represented in finance.</p>
+    <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Batch</th><th>Organisation</th><th class="text-end">Total</th><th></th></tr></thead><tbody>
+    {% for row in batches %}<tr><td><a href="/ui/payment-batches/{{ row.batch.id }}">#{{ row.batch.id }}</a><div class="small text-muted">{{ row.batch.processing_date.strftime('%d/%m/%Y') }}</div></td><td>{{ row.organisation.name }}</td><td class="text-end">${{ '{:,.2f}'.format(row.batch.total_amount) }}</td><td class="text-end"><form method="post" action="/ui/finance/postings/payment-batches/{{ row.batch.id }}"><input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}"><button class="btn btn-sm btn-success">Post</button></form></td></tr>
+    {% else %}<tr><td colspan="4" class="text-center text-muted py-4">No payment batches are waiting.</td></tr>{% endfor %}
+    </tbody></table></div>
+  </div></div>
+</div>
+
+<div class="card p-4 mb-4">
+  <h5>Pay runs ready to post</h5><p class="text-muted small">Completed pay runs derive journal lines from every payroll component's debit and credit GL mapping.</p>
+  <div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>Pay run</th><th>Organisation</th><th>Period</th><th>Payment date</th><th></th></tr></thead><tbody>
+  {% for row in pay_runs %}<tr><td><a href="/ui/pay-runs/{{ row.pay_run.id }}">#{{ row.pay_run.id }}</a></td><td>{{ row.organisation.name }}</td><td>{{ row.pay_run.period_start.strftime('%d/%m/%Y') }}–{{ row.pay_run.period_end.strftime('%d/%m/%Y') }}</td><td>{{ row.pay_run.payment_date.strftime('%d/%m/%Y') }}</td><td class="text-end"><form method="post" action="/ui/finance/postings/pay-runs/{{ row.pay_run.id }}"><input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}"><button class="btn btn-sm btn-success">Post components</button></form></td></tr>
+  {% else %}<tr><td colspan="5" class="text-center text-muted py-4">No completed pay runs are waiting.</td></tr>{% endfor %}
+  </tbody></table></div>
+</div>
+
+<div class="card p-4"><h5>Posting history</h5><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th>Posting</th><th>Date</th><th>Source</th><th>Organisation</th><th class="text-end">Debits</th><th class="text-end">Credits</th><th>Checks</th></tr></thead><tbody>
+{% for row in postings %}{% set p = row.posting %}<tr><td><a class="fw-semibold text-decoration-none" href="/ui/finance/postings/{{ p.id }}" data-bs-toggle="modal" data-bs-target="#postingPreviewModal" data-preview-url="/ui/finance/postings/{{ p.id }}?embed=1" data-preview-title="Posting FP-{{ '%06d'|format(p.id) }}">FP-{{ '%06d'|format(p.id) }}</a></td><td>{{ p.posting_date.strftime('%d/%m/%Y') }}</td><td>{{ p.source_type.replace('_', ' ')|title }}<div class="small text-muted">{{ p.source_reference }}</div></td><td>{{ row.organisation.name }}</td><td class="text-end">${{ '{:,.2f}'.format(p.total_debits) }}</td><td class="text-end">${{ '{:,.2f}'.format(p.total_credits) }}</td><td><span class="badge bg-success">Balanced</span> <span class="badge bg-success">Reconciled</span></td></tr>
+{% else %}<tr><td colspan="7" class="text-center text-muted py-5">No finance postings yet.</td></tr>{% endfor %}
+</tbody></table></div></div>
+{% include "_pagination.html" %}
+
+<div class="modal fade" id="postingPreviewModal" tabindex="-1" aria-labelledby="postingPreviewModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-fullscreen-md-down">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title" id="postingPreviewModalLabel">Finance Posting</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+      <div class="modal-body p-0"><iframe id="postingPreviewFrame" title="Finance posting" class="w-100 border-0" style="height: 82vh"></iframe></div>
+    </div>
+  </div>
+</div>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const modal = document.getElementById("postingPreviewModal");
+  const frame = document.getElementById("postingPreviewFrame");
+  const title = document.getElementById("postingPreviewModalLabel");
+  modal.addEventListener("show.bs.modal", event => {
+    const link = event.relatedTarget;
+    title.textContent = link.dataset.previewTitle || "Finance Posting";
+    frame.src = link.dataset.previewUrl;
+  });
+  modal.addEventListener("hidden.bs.modal", () => frame.removeAttribute("src"));
+});
+</script>
+{% endblock %}
